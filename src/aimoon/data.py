@@ -190,6 +190,12 @@ def get_spot_data() -> Result[pd.DataFrame, str]:
 
 
 def filter_by_spot(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    num_cols = ["price", "turnover", "total_market_cap", "float_market_cap", "pe", "pb"]
+    for col in num_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=["price", "turnover", "total_market_cap"])
     cap_yi = df["total_market_cap"] / 1e8
     mask = (
         (cap_yi >= CONFIG.min_market_cap_yi)
