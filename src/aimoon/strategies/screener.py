@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -38,6 +39,11 @@ class SignalScore:
 class StockScreener:
     def __init__(self) -> None:
         self.results: list[SignalScore] = []
+        self._lock = threading.Lock()
+
+    def add_result(self, score: SignalScore) -> None:
+        with self._lock:
+            self.results.append(score)
 
     def screen_stock(
         self, stock_code: str, stock_name: str,
@@ -50,12 +56,36 @@ class StockScreener:
         except Exception:
             return None
         price = float(kline_df["close"].iloc[-1])
-        pct_change = float(kline_df["pct_change"].iloc[-1]) if "pct_change" in kline_df.columns else 0.0
-        turnover = float(kline_df["turnover"].iloc[-1]) if "turnover" in kline_df.columns else 0.0
-        pe = float(spot_row["pe"]) if spot_row is not None and "pe" in spot_row.index and pd.notna(spot_row["pe"]) else 0.0
-        pb = float(spot_row["pb"]) if spot_row is not None and "pb" in spot_row.index and pd.notna(spot_row["pb"]) else 0.0
-        total_cap = float(spot_row["total_market_cap"]) / 1e8 if spot_row is not None and "total_market_cap" in spot_row.index and pd.notna(spot_row["total_market_cap"]) else 0.0
-        float_cap = float(spot_row["float_market_cap"]) / 1e8 if spot_row is not None and "float_market_cap" in spot_row.index and pd.notna(spot_row["float_market_cap"]) else 0.0
+        pct_change = (
+            float(kline_df["pct_change"].iloc[-1])
+            if "pct_change" in kline_df.columns
+            else 0.0
+        )
+        turnover = (
+            float(kline_df["turnover"].iloc[-1])
+            if "turnover" in kline_df.columns
+            else 0.0
+        )
+        pe = 0.0
+        if spot_row is not None and "pe" in spot_row.index and pd.notna(spot_row["pe"]):
+            pe = float(spot_row["pe"])
+        pb = 0.0
+        if spot_row is not None and "pb" in spot_row.index and pd.notna(spot_row["pb"]):
+            pb = float(spot_row["pb"])
+        total_cap = 0.0
+        if (
+            spot_row is not None
+            and "total_market_cap" in spot_row.index
+            and pd.notna(spot_row["total_market_cap"])
+        ):
+            total_cap = float(spot_row["total_market_cap"]) / 1e8
+        float_cap = 0.0
+        if (
+            spot_row is not None
+            and "float_market_cap" in spot_row.index
+            and pd.notna(spot_row["float_market_cap"])
+        ):
+            float_cap = float(spot_row["float_market_cap"]) / 1e8
         score = SignalScore(
             stock_code=stock_code, stock_name=stock_name,
             price=price, pct_change=pct_change, turnover=turnover,
@@ -73,6 +103,7 @@ class StockScreener:
         )
         score.suggestion, score.confidence = self._generate_suggestion(score)
         return score
+
     def _score_trend(self, ti: TechnicalIndicators, score: SignalScore) -> None:
         trend = ti.ma_trend()
         if trend == "bullish":

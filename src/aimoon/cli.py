@@ -1,12 +1,23 @@
 """CLI entry point for aimoon"""
 from __future__ import annotations
 
-import argparse, logging, sys, time
+import argparse
+import logging
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from aimoon.config import CONFIG
-from aimoon.data import (filter_by_spot, filter_stock_list, get_history_kline, get_spot_data, get_stock_list)
+from aimoon.data import (
+    filter_by_spot,
+    filter_stock_list,
+    get_history_kline,
+    get_spot_data,
+    get_stock_list,
+)
 from aimoon.output.formatter import OutputFormatter
 from aimoon.strategies.screener import StockScreener
+
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
@@ -19,7 +30,8 @@ def parse_args():
     return p.parse_args()
 
 def generate_demo():
-    import numpy as np, pandas as pd
+    import numpy as np
+    import pandas as pd
     np.random.seed(42)
     stocks = [
         ("000001", "PingAnBank"), ("000002", "VankeA"),
@@ -41,7 +53,27 @@ def generate_demo():
     rows = []
     for code, name in stocks:
         price = float(np.random.uniform(10, 200))
-        rows.append({"stock_code":code,"stock_name":name,"price":price,"pct_change":float(np.random.uniform(-5,5)),"turnover":float(np.random.uniform(1,15)),"volume":float(np.random.randint(100000,10000000)),"amount":float(np.random.randint(10000000,1000000000)),"amplitude":float(np.random.uniform(1,8)),"high":price*1.02,"low":price*0.98,"open":price*1.001,"prev_close":price*0.99,"volume_ratio":float(np.random.uniform(0.5,3)),"pe":float(np.random.uniform(5,50)),"pb":float(np.random.uniform(0.5,10)),"total_market_cap":float(np.random.uniform(5e9,3e12)),"float_market_cap":float(np.random.uniform(1e9,2e12)),"pct_60d":float(np.random.uniform(-30,30)),"pct_ytd":float(np.random.uniform(-20,50))})
+        rows.append({
+            "stock_code": code,
+            "stock_name": name,
+            "price": price,
+            "pct_change": float(np.random.uniform(-5, 5)),
+            "turnover": float(np.random.uniform(1, 15)),
+            "volume": float(np.random.randint(100000, 10000000)),
+            "amount": float(np.random.randint(10000000, 1000000000)),
+            "amplitude": float(np.random.uniform(1, 8)),
+            "high": price * 1.02,
+            "low": price * 0.98,
+            "open": price * 1.001,
+            "prev_close": price * 0.99,
+            "volume_ratio": float(np.random.uniform(0.5, 3)),
+            "pe": float(np.random.uniform(5, 50)),
+            "pb": float(np.random.uniform(0.5, 10)),
+            "total_market_cap": float(np.random.uniform(5e9, 3e12)),
+            "float_market_cap": float(np.random.uniform(1e9, 2e12)),
+            "pct_60d": float(np.random.uniform(-30, 30)),
+            "pct_ytd": float(np.random.uniform(-20, 50)),
+        })
     spot_df = pd.DataFrame(rows)
     klines = {}
     for code, name in stocks:
@@ -53,7 +85,15 @@ def generate_demo():
         low = close - np.abs(np.random.randn(n) * close * 0.02)
         open_ = close + np.random.randn(n) * close * 0.01
         vol = np.random.randint(100000, 10000000, n).astype(float)
-        df = pd.DataFrame({"open":open_,"close":close,"high":high,"low":low,"volume":vol,"turnover":np.random.uniform(0.5,15,n),"pct_change":np.random.randn(n)*3}, index=dates)
+        df = pd.DataFrame({
+            "open": open_,
+            "close": close,
+            "high": high,
+            "low": low,
+            "volume": vol,
+            "turnover": np.random.uniform(0.5, 15, n),
+            "pct_change": np.random.randn(n) * 3,
+        }, index=dates)
         df.index.name = "date"
         klines[code] = df
     return spot_df, klines
@@ -63,10 +103,12 @@ def process_stock(code, name, spot_row, screener, klines=None):
         kdf = klines[code]
     else:
         r = get_history_kline(code, days=CONFIG.history_days)
-        if r.is_err(): return
+        if r.is_err():
+            return
         kdf = r.unwrap()
     s = screener.screen_stock(code, name, kdf, spot_row)
-    if s: screener.results.append(s)
+    if s:
+        screener.add_result(s)
 
 def main():
     args = parse_args()
@@ -82,17 +124,17 @@ def main():
         fmt.console.print("[dim]Fetching real-time data...[/dim]")
         sr = get_spot_data()
         if sr.is_err():
-            fmt.console.print("f[red]Failed: {sr.error}[/red]")
+            fmt.console.print(f"[red]Failed: {sr.error}[/red]")
             fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
             sys.exit(1)
         spot_df = sr.unwrap()
         filtered = filter_by_spot(spot_df)
-        fmt.console.print("[dim]Filtered: {len(filtered)} stocks[/dim]")
+        fmt.console.print(f"[dim]Filtered: {len(filtered)} stocks[/dim]")
         sl = get_stock_list()
         if sl.is_ok():
             vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
             filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
-        fmt.console.print("[dim]Analyzing {len(filtered)} stocks...[/dim]")
+        fmt.console.print(f"[dim]Analyzing {len(filtered)} stocks...[/dim]")
         t0 = time.time()
         done, total = 0, len(filtered)
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
@@ -107,8 +149,10 @@ def main():
                     el = time.time() - t0
                     r2 = done / el if el > 0 else 0
                     print(f"\r  {done}/{total} ({r2:.1f}/s)", end="", flush=True)
-                try: fut.result()
-                except Exception: pass
+                try:
+                    fut.result()
+                except Exception as e:
+                    logger.warning("Stock processing failed: %s", e)
         el = time.time() - t0
         print(f"\n[dim]Done in {el:.1f}s[/dim]")
     picks = scr.get_top_picks(args.top)
