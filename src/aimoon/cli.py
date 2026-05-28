@@ -82,7 +82,7 @@ def main():
         fmt.console.print("[dim]Fetching real-time data...[/dim]")
         sr = get_spot_data()
         if sr.is_err():
-            fmt.console.print("[red]Failed: {sr.error}[/red]")
+            fmt.console.print("f[red]Failed: {sr.error}[/red]")
             fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
             sys.exit(1)
         spot_df = sr.unwrap()
@@ -116,7 +116,7 @@ def main():
     fmt.display_results(picks)
     if not args.no_csv and picks:
         fp2 = fmt.export_csv(picks)
-        fmt.console.print("[dim]Exported: {fp2}[/dim]")
+        fmt.console.print(f"[dim]Exported: {fp2}[/dim]")
 
 if __name__ == "__main__":
     main()
