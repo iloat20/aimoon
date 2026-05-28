@@ -363,10 +363,13 @@ def get_northbound_holdings(min_shares: int = 5_000_000) -> set[str]:
         return set()
 
 
-def get_social_security_holdings(min_pct: float = 2.0) -> set[str]:
-    """获取社保基金持股比例 >= min_pct% 的股票代码集合。"""
+def get_social_security_holdings(
+    min_pct: float = 2.0, spot_df: pd.DataFrame | None = None,
+) -> set[str]:
+    """获取社保基金持股占流通股比例 >= min_pct% 的股票代码集合。
+    需要 spot_df 提供流通市值和股价来计算流通股数。
+    """
     today = date.today()
-    # 用最近一个季报日期
     quarters = [(12, 31), (9, 30), (6, 30), (3, 31)]
     report_date = None
     for m, d in quarters:
@@ -381,21 +384,27 @@ def get_social_security_holdings(min_pct: float = 2.0) -> set[str]:
         df = ak.stock_report_fund_hold(symbol="社保持仓", date=report_date)
         if df is None or df.empty:
             return set()
-        # 列名可能是中文，取第2列(代码)和最后几列中含"比例"的
         cols = df.columns.tolist()
-        code_col = cols[1]  # 股票代码
-        # 找持股比例列 - 通常是最后一列或含"比例"的列
-        pct_col = None
-        for c in cols:
-            if "比例" in str(c) or "ratio" in str(c).lower():
-                pct_col = c
-                break
-        if pct_col is None:
-            # 没有比例列，尝试用持股数量/总股数计算
-            # 这种情况下直接返回所有社保持股股票（无比例过滤）
-            return set(df[code_col].astype(str).tolist())
-        df[pct_col] = pd.to_numeric(df[pct_col], errors="coerce")
-        return set(df[df[pct_col] >= min_pct][code_col].astype(str).tolist())
+        code_col = cols[1]    # 股票代码
+        shares_col = cols[4]  # 持股数量
+        df = df[[code_col, shares_col]].copy()
+        df.columns = ["stock_code", "held_shares"]
+        df["held_shares"] = pd.to_numeric(df["held_shares"], errors="coerce").fillna(0)
+
+        if spot_df is not None and not spot_df.empty:
+            # 用流通市值和股价计算流通股数
+            cap = spot_df[["stock_code", "float_market_cap", "price"]].copy()
+            cap["float_market_cap"] = pd.to_numeric(cap["float_market_cap"], errors="coerce")
+            cap["price"] = pd.to_numeric(cap["price"], errors="coerce")
+            cap = cap.dropna(subset=["float_market_cap", "price"])
+            cap = cap[cap["price"] > 0]
+            cap["float_shares"] = cap["float_market_cap"] / cap["price"]
+            df = df.merge(cap[["stock_code", "float_shares"]], on="stock_code", how="inner")
+            df["pct"] = df["held_shares"] / df["float_shares"] * 100
+            return set(df[df["pct"] >= min_pct]["stock_code"].tolist())
+        else:
+            # 无 spot_df 时无法计算流通股占比，返回所有社保持仓股票
+            return set(df["stock_code"].tolist())
     except Exception as e:
         logger.warning("Social security holdings fetch failed: %s", e)
         return set()

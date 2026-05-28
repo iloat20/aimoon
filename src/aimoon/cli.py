@@ -214,7 +214,7 @@ def main():
             fmt.console.print(f"[dim]Northbound >= {cfg.min_northbound_shares // 10000}万股: {len(filtered)} stocks[/dim]")
         else:
             fmt.console.print("[dim]Northbound data unavailable, skipping filter[/dim]")
-        ss = get_social_security_holdings(min_pct=cfg.min_social_security_pct)
+        ss = get_social_security_holdings(min_pct=cfg.min_social_security_pct, spot_df=spot_df)
         if ss:
             filtered = filtered[filtered["stock_code"].isin(ss)].reset_index(drop=True)
             fmt.console.print(f"[dim]Social security >= {cfg.min_social_security_pct}%: {len(filtered)} stocks[/dim]")
