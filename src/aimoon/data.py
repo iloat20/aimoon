@@ -327,29 +327,31 @@ def compute_market_rankings(
 
 def get_northbound_holdings(min_shares: int = 5_000_000) -> set[str]:
     """获取北向持股 >= min_shares 的股票代码集合。
-    使用东方财富 push2delay 接口，f18 字段为持股数（万股）。
+    数据来源：东方财富 datacenter-web 季报数据。
     """
-    min_wan = min_shares / 10000  # 转换为万股
     all_codes: set[str] = set()
     try:
-        url = "https://push2delay.eastmoney.com/api/qt/clist/get"
-        for page in range(1, 50):
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        for page in range(1, 20):
             params = {
-                "pn": str(page), "pz": "500", "po": "1", "np": "1",
-                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                "fltt": "2", "invt": "2", "fid": "f18",
-                "fs": "b:BK0707",
-                "fields": "f12,f18",
+                "sortColumns": "HOLD_SHARES",
+                "sortTypes": "-1",
+                "pageSize": "500",
+                "pageNumber": str(page),
+                "reportName": "RPT_MUTUAL_HOLDSTOCKNORTH_STA",
+                "columns": "SECURITY_CODE,HOLD_SHARES",
+                "source": "WEB",
+                "client": "WEB",
             }
             r = requests.get(url, params=params, timeout=15, headers=_DEFAULT_HEADERS)
             data = r.json()
-            items = data.get("data", {}).get("diff", [])
-            if not items:
+            if not data.get("success") or not data.get("result") or not data["result"].get("data"):
                 break
+            items = data["result"]["data"]
             for item in items:
-                code = str(item.get("f12", ""))
-                shares_wan = float(item.get("f18", 0) or 0)
-                if shares_wan >= min_wan:
+                code = str(item.get("SECURITY_CODE", ""))
+                shares = float(item.get("HOLD_SHARES", 0) or 0)
+                if shares >= min_shares:
                     all_codes.add(code)
                 else:
                     return all_codes  # sorted desc, stop early
