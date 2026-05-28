@@ -16,7 +16,9 @@ from aimoon.data import (
     get_stock_list,
 )
 from aimoon.output.formatter import OutputFormatter
+from aimoon.strategies.backtester import BacktestEngine
 from aimoon.strategies.screener import StockScreener
+from aimoon.strategies.technical import TechnicalStrategy
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -28,6 +30,9 @@ def parse_args():
     p.add_argument("--no-csv", action="store_true")
     p.add_argument("--demo", action="store_true")
     sub = p.add_subparsers(dest="command")
+    bt_p = sub.add_parser("backtest", help="Backtest strategies on historical data")
+    bt_p.add_argument("--stocks", type=str, default="000001", help="Comma-separated stock codes")
+    bt_p.add_argument("--hold-days", type=int, default=5, help="Hold period in days")
     cache_p = sub.add_parser("cache", help="Cache management")
     cache_sub = cache_p.add_subparsers(dest="cache_action")
     cache_sub.add_parser("clear", help="Clear all cached data")
@@ -122,6 +127,27 @@ def main():
             removed = cache.clear()
             print(f"Cleared {removed} cached files")
             return
+        return
+
+    if args.command == "backtest":
+        strategy = TechnicalStrategy()
+        engine = BacktestEngine(strategy, hold_days=args.hold_days)
+        fmt = OutputFormatter()
+        fmt.console.print(f"[bold blue]=== Backtest: {strategy.name} (hold {args.hold_days}d) ===[/bold blue]")
+
+        if args.stocks:
+            codes = [c.strip() for c in args.stocks.split(",")]
+            fmt.console.print(f"[dim]Backtesting {len(codes)} stocks...[/dim]")
+            for code in codes:
+                r = get_history_kline(code, days=CONFIG.history_days)
+                if r.is_ok():
+                    result = engine.run(code, code, r.unwrap())
+                    color = "green" if result.total_return > 0 else "red"
+                    fmt.console.print(
+                        f"  {result.stock_code}: [{color}]{result.total_return:+.2f}%[/{color}] "
+                        f"胜率={result.win_rate:.0%} 交易={result.trade_count}次 "
+                        f"最大回撤={result.max_drawdown:.2%}"
+                    )
         return
 
     fmt = OutputFormatter()
