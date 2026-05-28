@@ -27,6 +27,10 @@ def parse_args():
     p.add_argument("--workers", type=int, default=5)
     p.add_argument("--no-csv", action="store_true")
     p.add_argument("--demo", action="store_true")
+    sub = p.add_subparsers(dest="command")
+    cache_p = sub.add_parser("cache", help="Cache management")
+    cache_sub = cache_p.add_subparsers(dest="cache_action")
+    cache_sub.add_parser("clear", help="Clear all cached data")
     return p.parse_args()
 
 def generate_demo():
@@ -107,11 +111,19 @@ def process_stock(code, name, spot_row, screener, klines=None):
             return
         kdf = r.unwrap()
     s = screener.screen_stock(code, name, kdf, spot_row)
-    if s:
-        screener.add_result(s)
 
 def main():
     args = parse_args()
+
+    if args.command == "cache":
+        if args.cache_action == "clear":
+            from aimoon.cache.provider import DataCache
+            cache = DataCache()
+            removed = cache.clear()
+            print(f"Cleared {removed} cached files")
+            return
+        return
+
     fmt = OutputFormatter()
     scr = StockScreener()
     fmt.console.print("[bold blue]=== A-Share Quant Screener ===[/bold blue]")
