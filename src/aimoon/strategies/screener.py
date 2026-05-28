@@ -66,6 +66,27 @@ class StockScreener:
             if "turnover" in kline_df.columns
             else 0.0
         )
+        fields = self._extract_spot_fields(spot_row)
+        score = SignalScore(
+            stock_code=stock_code, stock_name=stock_name,
+            price=price, pct_change=pct_change, turnover=turnover,
+            pe=fields["pe"], pb=fields["pb"],
+            total_market_cap_yi=fields["total_cap"], float_market_cap_yi=fields["float_cap"],
+        )
+        self._score_trend(ti, score)
+        self._score_rsi(ti, score)
+        self._score_macd(ti, score)
+        self._score_kdj(ti, score)
+        self._score_volume(ti, score)
+        self._score_bollinger(ti, score)
+        score.total_score = (
+            score.trend_score + score.rsi_score + score.macd_score +
+            score.kdj_score + score.volume_score + score.boll_score
+        )
+        score.suggestion, score.confidence = self._generate_suggestion(score)
+        return score
+
+    def _extract_spot_fields(self, spot_row: pd.Series | None) -> dict[str, float]:
         pe = 0.0
         if spot_row is not None and "pe" in spot_row.index and pd.notna(spot_row["pe"]):
             pe = float(spot_row["pe"])
@@ -86,23 +107,7 @@ class StockScreener:
             and pd.notna(spot_row["float_market_cap"])
         ):
             float_cap = float(spot_row["float_market_cap"]) / 1e8
-        score = SignalScore(
-            stock_code=stock_code, stock_name=stock_name,
-            price=price, pct_change=pct_change, turnover=turnover,
-            pe=pe, pb=pb, total_market_cap_yi=total_cap, float_market_cap_yi=float_cap,
-        )
-        self._score_trend(ti, score)
-        self._score_rsi(ti, score)
-        self._score_macd(ti, score)
-        self._score_kdj(ti, score)
-        self._score_volume(ti, score)
-        self._score_bollinger(ti, score)
-        score.total_score = (
-            score.trend_score + score.rsi_score + score.macd_score +
-            score.kdj_score + score.volume_score + score.boll_score
-        )
-        score.suggestion, score.confidence = self._generate_suggestion(score)
-        return score
+        return {"pe": pe, "pb": pb, "total_cap": total_cap, "float_cap": float_cap}
 
     def _score_trend(self, ti: TechnicalIndicators, score: SignalScore) -> None:
         trend = ti.ma_trend()
