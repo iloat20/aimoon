@@ -165,6 +165,9 @@ def main():
         for _, row in spot_df.iterrows():
             process_stock(row["stock_code"], row["stock_name"], row, scr, klines)
     else:
+        from aimoon.data import get_top_sectors, get_sector_stocks, compute_market_rankings
+
+        # 第一步：获取全市场行情
         fmt.console.print("[dim]Fetching real-time data...[/dim]")
         sr = get_spot_data()
         if sr.is_err():
@@ -172,23 +175,41 @@ def main():
             fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
             sys.exit(1)
         spot_df = sr.unwrap()
-        filtered = filter_by_spot(spot_df)
-        fmt.console.print(f"[dim]Filtered: {len(filtered)} stocks[/dim]")
+
+        # 第二步：先找强势板块
+        fmt.console.print("[dim]Finding top sectors...[/dim]")
+        ts = get_top_sectors(top_pct=5.0)
+        if ts.is_err():
+            fmt.console.print(f"[yellow]Sector data unavailable: {ts.error}, falling back to full scan[/yellow]")
+            sector_map = {}
+            top_sector_names = []
+        else:
+            top_sector_list = ts.unwrap()
+            top_sector_names = [name for name, _ in top_sector_list]
+            fmt.console.print(f"[dim]Top sectors: {', '.join(top_sector_names[:8])}{'...' if len(top_sector_names) > 8 else ''}[/dim]")
+
+            # 第三步：只取强势板块的成分股
+            fmt.console.print(f"[dim]Fetching stocks from {len(top_sector_names)} sectors...[/dim]")
+            sector_map = get_sector_stocks(top_sector_names)
+            fmt.console.print(f"[dim]Found {len(sector_map)} stocks in top sectors[/dim]")
+
+        # 第四步：在强势板块中筛选个股
+        if sector_map:
+            filtered = spot_df[spot_df["stock_code"].isin(set(sector_map.keys()))].reset_index(drop=True)
+            filtered = filter_by_spot(filtered)
+        else:
+            filtered = filter_by_spot(spot_df)
         sl = get_stock_list()
         if sl.is_ok():
             vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
             filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
-        # 获取板块数据和市场排名
-        from aimoon.data import get_sector_mapping, compute_market_rankings
-        fmt.console.print("[dim]Fetching sector data...[/dim]")
-        sm = get_sector_mapping()
-        if sm.is_ok():
-            ctx = compute_market_rankings(spot_df, sm.unwrap())
+
+        # 第五步：计算市场排名上下文
+        if sector_map:
+            ctx = compute_market_rankings(spot_df, sector_map)
             scr.set_market_context(ctx)
-            n_sect = len(ctx.get("top_sectors", set()))
-            n_stock = len(ctx.get("top_stocks", set()))
-            fmt.console.print(f"[dim]Top sectors: {n_sect}, Top stocks: {n_stock}[/dim]")
-        fmt.console.print(f"[dim]Analyzing {len(filtered)} stocks...[/dim]")
+
+        fmt.console.print(f"[dim]Analyzing {len(filtered)} stocks from top sectors...[/dim]")
         t0 = time.time()
         done, total = 0, len(filtered)
         with ThreadPoolExecutor(max_workers=args.workers) as ex:

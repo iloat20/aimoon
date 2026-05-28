@@ -245,6 +245,47 @@ def get_sector_returns(sector_map: dict[str, str], spot_df: pd.DataFrame) -> dic
     return df.groupby("sector")["pct_30d"].mean().to_dict()
 
 
+def get_top_sectors(top_pct: float = 5.0) -> Result[list[tuple[str, float]], str]:
+    """从东方财富获取行业板块涨幅排名，返回 Top N% 的板块名和涨跌幅。
+    返回 [(板块名, 涨跌幅%), ...] 按涨幅降序。
+    """
+    try:
+        df = ak.stock_board_industry_name_em()
+        if df is None or df.empty:
+            return Err("Empty sector board data")
+        name_col = "板块名称" if "板块名称" in df.columns else "name"
+        change_col = None
+        for c in ["涨跌幅", "涨幅"]:
+            if c in df.columns:
+                change_col = c
+                break
+        if change_col is None:
+            return Err("No change column found in sector data")
+        df[change_col] = pd.to_numeric(df[change_col], errors="coerce")
+        df = df.dropna(subset=[change_col])
+        df = df.sort_values(change_col, ascending=False).reset_index(drop=True)
+        n_top = max(1, int(len(df) * top_pct / 100))
+        top = df.head(n_top)
+        return Ok(list(zip(top[name_col].tolist(), top[change_col].tolist())))
+    except Exception as e:
+        return Err(f"Fetch sector ranking failed: {e}")
+
+
+def get_sector_stocks(sector_names: list[str]) -> dict[str, str]:
+    """获取多个板块的成分股。返回 {stock_code: sector_name}。"""
+    mapping: dict[str, str] = {}
+    for name in sector_names:
+        try:
+            cons = ak.stock_board_industry_cons_em(symbol=name)
+            if cons is not None and not cons.empty:
+                code_col = "代码" if "代码" in cons.columns else "code"
+                for code in cons[code_col].tolist():
+                    mapping[str(code)] = name
+        except Exception as e:
+            logger.warning("Failed to fetch constituents for sector %s: %s", name, e)
+    return mapping
+
+
 def compute_market_rankings(
     spot_df: pd.DataFrame,
     sector_map: dict[str, str],
