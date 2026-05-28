@@ -1,7 +1,11 @@
 """配置模块 - 禁止直访环境变量"""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, fields
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +34,33 @@ class AppConfig:
     output_dir: str = "output"
     exclude_boards: tuple[str, ...] = ("ST", "退", "北交所")
     exclude_prefixes: tuple[str, ...] = ("8", "4")
+    cache_ttl_hours: int = 4
+
+
+def load_config(path: str | None = None) -> AppConfig:
+    """加载配置：默认值 < YAML 文件。
+    YAML 文件不存在时使用默认值并记录警告。
+    """
+    if path is None:
+        return AppConfig()
+
+    p = Path(path)
+    if not p.exists():
+        logger.warning("Config file not found: %s, using defaults", path)
+        return AppConfig()
+
+    try:
+        import yaml
+
+        with open(p, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.warning("Failed to load config %s: %s, using defaults", path, e)
+        return AppConfig()
+
+    valid_fields = {f.name for f in fields(AppConfig)}
+    filtered = {k: v for k, v in data.items() if k in valid_fields}
+    return AppConfig(**filtered)
 
 
 CONFIG = AppConfig()

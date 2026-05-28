@@ -11,10 +11,21 @@ import akshare as ak
 import pandas as pd
 import requests
 
+from aimoon.cache.provider import DataCache
 from aimoon.config import CONFIG
 from aimoon.result import Err, Ok, Result
 
 logger = logging.getLogger(__name__)
+
+_cache: DataCache | None = None
+
+
+def _get_cache() -> DataCache:
+    global _cache
+    if _cache is None:
+        _cache = DataCache(ttl_hours=CONFIG.cache_ttl_hours)
+    return _cache
+
 
 _DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -114,6 +125,12 @@ def _tencent_kline(stock_code, days):
         return Err(f"{stock_code}: Tencent fallback failed: {e}")
 def get_history_kline(stock_code: str, days: int | None = None) -> Result[pd.DataFrame, str]:
     days = days or CONFIG.history_days
+
+    cache = _get_cache()
+    cached = cache.get(stock_code)
+    if cached is not None:
+        return Ok(cached)
+
     end_date = date.today().strftime("%Y%m%d")
     start_date = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
     try:
@@ -129,10 +146,15 @@ def get_history_kline(stock_code: str, days: int | None = None) -> Result[pd.Dat
             "涨跌幅": "pct_change", "涨跌额": "change", "换手率": "turnover",
 })
         df["date"] = pd.to_datetime(df["date"])
-        return Ok(df.set_index("date").sort_index())
+        result_df = df.set_index("date").sort_index()
+        cache.put(stock_code, result_df)
+        return Ok(result_df)
     except Exception as e:
         logger.warning("AKShare kline failed for %s: %s, trying Tencent", stock_code, e)
-        return _tencent_kline(stock_code, days)
+        result = _tencent_kline(stock_code, days)
+        if result.is_ok():
+            cache.put(stock_code, result.unwrap())
+        return result
 
 
 def get_spot_data() -> Result[pd.DataFrame, str]:

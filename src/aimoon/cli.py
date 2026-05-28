@@ -7,7 +7,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from aimoon.config import CONFIG
+import aimoon.config as _config_mod
 from aimoon.data import (
     filter_by_spot,
     filter_stock_list,
@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 def parse_args():
     p = argparse.ArgumentParser(description="A-share quant screener")
-    p.add_argument("--top", type=int, default=CONFIG.top_n)
+    p.add_argument("--config", type=str, default=None, help="YAML config file path")
+    p.add_argument("--top", type=int, default=_config_mod.CONFIG.top_n)
     p.add_argument("--workers", type=int, default=5)
     p.add_argument("--no-csv", action="store_true")
     p.add_argument("--demo", action="store_true")
@@ -111,7 +112,7 @@ def process_stock(code, name, spot_row, screener, klines=None):
     if klines and code in klines:
         kdf = klines[code]
     else:
-        r = get_history_kline(code, days=CONFIG.history_days)
+        r = get_history_kline(code, days=_config_mod.CONFIG.history_days)
         if r.is_err():
             return
         kdf = r.unwrap()
@@ -119,6 +120,11 @@ def process_stock(code, name, spot_row, screener, klines=None):
 
 def main():
     args = parse_args()
+
+    if hasattr(args, "config") and args.config:
+        from aimoon.config import load_config
+
+        _config_mod.CONFIG = load_config(args.config)
 
     if args.command == "cache":
         if args.cache_action == "clear":
@@ -139,7 +145,7 @@ def main():
             codes = [c.strip() for c in args.stocks.split(",")]
             fmt.console.print(f"[dim]Backtesting {len(codes)} stocks...[/dim]")
             for code in codes:
-                r = get_history_kline(code, days=CONFIG.history_days)
+                r = get_history_kline(code, days=_config_mod.CONFIG.history_days)
                 if r.is_ok():
                     result = engine.run(code, code, r.unwrap())
                     color = "green" if result.total_return > 0 else "red"
