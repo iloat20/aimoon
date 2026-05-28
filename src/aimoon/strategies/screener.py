@@ -45,6 +45,11 @@ class StockScreener:
         self._strategies = strategies
         self.results: list[SignalScore] = []
         self._lock = threading.Lock()
+        self._market_context: dict | None = None
+
+    def set_market_context(self, context: dict) -> None:
+        """设置全市场上下文（板块涨幅、全市场排名等）。"""
+        self._market_context = context
 
     def _get_strategies(self) -> list[Strategy]:
         if self._strategies is None:
@@ -57,7 +62,10 @@ class StockScreener:
         kline_df: pd.DataFrame, spot_row: pd.Series | None = None,
     ) -> SignalScore | None:
         for strategy in self._get_strategies():
-            result = strategy.score(stock_code, stock_name, kline_df, spot_row)
+            result = strategy.score(
+                stock_code, stock_name, kline_df, spot_row,
+                market_context=self._market_context,
+            )
             if result:
                 self.add_result(result)
                 return result

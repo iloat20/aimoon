@@ -206,3 +206,79 @@ def filter_by_spot(df: pd.DataFrame) -> pd.DataFrame:
         & (df["price"] <= CONFIG.max_price)
     )
     return df[mask].reset_index(drop=True)
+
+
+def get_sector_mapping() -> Result[dict[str, str], str]:
+    """获取股票 -> 行业板块映射。返回 {stock_code: sector_name}。"""
+    try:
+        df = ak.stock_board_industry_name_em()
+        if df is None or df.empty:
+            return Err("Empty sector list")
+        mapping: dict[str, str] = {}
+        for _, row in df.iterrows():
+            sector_name = row.get("板块名称") or row.get("name", "")
+            if not sector_name:
+                continue
+            try:
+                cons = ak.stock_board_industry_cons_em(symbol=sector_name)
+                if cons is not None and not cons.empty:
+                    code_col = "代码" if "代码" in cons.columns else "code"
+                    for code in cons[code_col].tolist():
+                        mapping[str(code)] = sector_name
+            except Exception:
+                continue
+        if not mapping:
+            return Err("No sector data fetched")
+        return Ok(mapping)
+    except Exception as e:
+        return Err(f"Fetch sector mapping failed: {e}")
+
+
+def get_sector_returns(sector_map: dict[str, str], spot_df: pd.DataFrame) -> dict[str, float]:
+    """计算各板块近一个月平均涨幅。返回 {sector_name: avg_pct}。"""
+    df = spot_df.copy()
+    df["pct_30d"] = pd.to_numeric(df.get("pct_60d", 0), errors="coerce").fillna(0)
+    df["sector"] = df["stock_code"].map(sector_map)
+    df = df.dropna(subset=["sector"])
+    if df.empty:
+        return {}
+    return df.groupby("sector")["pct_30d"].mean().to_dict()
+
+
+def compute_market_rankings(
+    spot_df: pd.DataFrame,
+    sector_map: dict[str, str],
+    top_pct: float = 5.0,
+) -> dict:
+    """计算全市场排名，返回市场上下文字典。
+    包含 sector_map, sector_returns, top_sectors, top_stocks, top_pct。
+    """
+    spot_df = spot_df.copy()
+    for col in ["pct_60d", "pct_ytd"]:
+        if col in spot_df.columns:
+            spot_df[col] = pd.to_numeric(spot_df[col], errors="coerce")
+    spot_df["pct_60d"] = spot_df["pct_60d"].fillna(0)
+
+    # 板块涨幅排名
+    sector_returns = get_sector_returns(sector_map, spot_df)
+    if sector_returns:
+        sorted_sectors = sorted(sector_returns.items(), key=lambda x: x[1], reverse=True)
+        n_top = max(1, int(len(sorted_sectors) * top_pct / 100))
+        top_sectors = {name for name, _ in sorted_sectors[:n_top]}
+    else:
+        top_sectors = set()
+
+    # 全市场股票涨幅排名（近60日）
+    if "pct_60d" in spot_df.columns and len(spot_df) > 0:
+        threshold = spot_df["pct_60d"].quantile(1 - top_pct / 100)
+        top_stocks = set(spot_df[spot_df["pct_60d"] >= threshold]["stock_code"].tolist())
+    else:
+        top_stocks = set()
+
+    return {
+        "sector_map": sector_map,
+        "sector_returns": sector_returns,
+        "top_sectors": top_sectors,
+        "top_stocks": top_stocks,
+        "top_pct": top_pct,
+    }

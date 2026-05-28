@@ -26,6 +26,7 @@ class TechnicalStrategy(Strategy):
         name: str,
         kline: pd.DataFrame,
         spot: pd.Series | None = None,
+        market_context: dict | None = None,
     ) -> SignalScore | None:
         if kline is None or len(kline) < CONFIG.ma_long:
             return None
@@ -59,6 +60,7 @@ class TechnicalStrategy(Strategy):
         self._score_volume(ti, result)
         self._score_bollinger(ti, result)
         self._score_momentum(ti, result)
+        self._score_sector_momentum(code, result, market_context)
         result.total_score = (
             result.trend_score + result.rsi_score + result.macd_score +
             result.kdj_score + result.volume_score + result.boll_score +
@@ -205,9 +207,15 @@ class TechnicalStrategy(Strategy):
             score.momentum_score -= 1
             score.signals.append("动量偏弱")
 
-        # 20日新高/新低
-        if ti.new_high(20):
+        # 近期新高（5日/10日/20日）
+        if ti.new_high(5):
             score.momentum_score += 2
+            score.signals.append("5日新高")
+        elif ti.new_high(10):
+            score.momentum_score += 1
+            score.signals.append("10日新高")
+        elif ti.new_high(20):
+            score.momentum_score += 1
             score.signals.append("20日新高")
         elif ti.new_low(20):
             score.momentum_score -= 2
@@ -218,6 +226,34 @@ class TechnicalStrategy(Strategy):
         if adx_val > 25:
             score.momentum_score += 1
             score.signals.append("ADX强趋势")
+
+    @staticmethod
+    def _score_sector_momentum(
+        code: str, score: SignalScore, ctx: dict | None,
+    ) -> None:
+        """板块动量 + 全市场涨幅排名。"""
+        if ctx is None:
+            return
+        top_pct = ctx.get("top_pct", 5)
+
+        # 板块动量
+        sector_map = ctx.get("sector_map", {})
+        sector_returns = ctx.get("sector_returns", {})
+        top_sectors = ctx.get("top_sectors", set())
+        sector = sector_map.get(code)
+        if sector:
+            ret = sector_returns.get(sector)
+            if ret is not None:
+                score.signals.append(f"板块:{sector}({ret:+.1f}%)")
+            if sector in top_sectors:
+                score.momentum_score += 3
+                score.signals.append(f"强势板块(Top{top_pct}%)")
+
+        # 全市场涨幅排名
+        top_stocks = ctx.get("top_stocks", set())
+        if code in top_stocks:
+            score.momentum_score += 3
+            score.signals.append(f"全市场涨幅Top{top_pct}%")
 
     @staticmethod
     def _generate_suggestion(score: SignalScore) -> tuple[str, str]:

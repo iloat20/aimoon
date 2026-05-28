@@ -18,8 +18,11 @@ class Strategy(ABC):
         name: str,
         kline: pd.DataFrame,
         spot: pd.Series | None = None,
+        market_context: dict | None = None,
     ) -> SignalScore | None:
-        """对单只股票打分，返回 None 表示跳过。"""
+        """对单只股票打分，返回 None 表示跳过。
+        market_context 可包含 sector_map, sector_returns, top_sectors, top_stocks。
+        """
 
     @property
     @abstractmethod

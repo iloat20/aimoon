@@ -73,7 +73,7 @@ class TestStockScreener:
             @property
             def name(self) -> str:
                 return "dummy"
-            def score(self, code, name, kline, spot=None):
+            def score(self, code, name, kline, spot=None, market_context=None):
                 return SignalScore(
                     stock_code=code, stock_name=name,
                     price=10.0, pct_change=0.0, turnover=5.0,

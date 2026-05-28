@@ -178,6 +178,16 @@ def main():
         if sl.is_ok():
             vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
             filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
+        # 获取板块数据和市场排名
+        from aimoon.data import get_sector_mapping, compute_market_rankings
+        fmt.console.print("[dim]Fetching sector data...[/dim]")
+        sm = get_sector_mapping()
+        if sm.is_ok():
+            ctx = compute_market_rankings(spot_df, sm.unwrap())
+            scr.set_market_context(ctx)
+            n_sect = len(ctx.get("top_sectors", set()))
+            n_stock = len(ctx.get("top_stocks", set()))
+            fmt.console.print(f"[dim]Top sectors: {n_sect}, Top stocks: {n_stock}[/dim]")
         fmt.console.print(f"[dim]Analyzing {len(filtered)} stocks...[/dim]")
         t0 = time.time()
         done, total = 0, len(filtered)
