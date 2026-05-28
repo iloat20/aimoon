@@ -35,7 +35,7 @@ class OutputFormatter:
         for i, r in enumerate(results, 1):
             ps = "green" if r.pct_change >= 0 else "red"
             ts = "bold green" if r.total_score >= 4 else ("yellow" if r.total_score >= 0 else "red")
-            ss = "bold green" if "Buy" in r.suggestion or "buy" in r.suggestion.lower() else ("red" if "Sell" in r.suggestion or "sell" in r.suggestion.lower() else "dim")
+            ss = "bold green" if "买" in r.suggestion else ("red" if "卖" in r.suggestion else "dim")
             table.add_row(
                 str(i), r.stock_code, r.stock_name,
                 f"{r.price:.2f}",
