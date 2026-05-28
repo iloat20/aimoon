@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeVar, Generic
+from typing import TypeVar
 
 T = TypeVar("T")
 E = TypeVar("E", bound=str)
 
 
 @dataclass(frozen=True, slots=True)
-class Ok(Generic[T]):
+class Ok[T]:
     value: T
 
     def is_ok(self) -> bool:
@@ -23,7 +23,7 @@ class Ok(Generic[T]):
 
 
 @dataclass(frozen=True, slots=True)
-class Err(Generic[E]):
+class Err[E]:
     error: E
 
     def is_ok(self) -> bool:
