@@ -35,6 +35,8 @@ class AppConfig:
     exclude_boards: tuple[str, ...] = ("ST", "退", "北交所")
     exclude_prefixes: tuple[str, ...] = ("8", "4")
     cache_ttl_hours: int = 4
+    min_northbound_shares: int = 5_000_000
+    min_social_security_pct: float = 2.0
 
 
 def load_config(path: str | None = None) -> AppConfig:

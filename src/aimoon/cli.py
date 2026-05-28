@@ -204,6 +204,23 @@ def main():
             vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
             filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
 
+        # 第五步：机构持仓过滤
+        from aimoon.data import get_northbound_holdings, get_social_security_holdings
+        cfg = _config_mod.CONFIG
+        fmt.console.print("[dim]Checking institutional holdings...[/dim]")
+        nb = get_northbound_holdings(min_shares=cfg.min_northbound_shares)
+        if nb:
+            filtered = filtered[filtered["stock_code"].isin(nb)].reset_index(drop=True)
+            fmt.console.print(f"[dim]Northbound >= {cfg.min_northbound_shares // 10000}万股: {len(filtered)} stocks[/dim]")
+        else:
+            fmt.console.print("[dim]Northbound data unavailable, skipping filter[/dim]")
+        ss = get_social_security_holdings(min_pct=cfg.min_social_security_pct)
+        if ss:
+            filtered = filtered[filtered["stock_code"].isin(ss)].reset_index(drop=True)
+            fmt.console.print(f"[dim]Social security >= {cfg.min_social_security_pct}%: {len(filtered)} stocks[/dim]")
+        else:
+            fmt.console.print("[dim]Social security data unavailable, skipping filter[/dim]")
+
         # 第五步：计算市场排名上下文
         if sector_map:
             ctx = compute_market_rankings(spot_df, sector_map)

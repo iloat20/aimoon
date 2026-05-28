@@ -323,3 +323,77 @@ def compute_market_rankings(
         "top_stocks": top_stocks,
         "top_pct": top_pct,
     }
+
+
+def get_northbound_holdings(min_shares: int = 5_000_000) -> set[str]:
+    """获取北向持股 >= min_shares 的股票代码集合。
+    使用东方财富 push2delay 接口，f18 字段为持股数（万股）。
+    """
+    min_wan = min_shares / 10000  # 转换为万股
+    all_codes: set[str] = set()
+    try:
+        url = "https://push2delay.eastmoney.com/api/qt/clist/get"
+        for page in range(1, 50):
+            params = {
+                "pn": str(page), "pz": "500", "po": "1", "np": "1",
+                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                "fltt": "2", "invt": "2", "fid": "f18",
+                "fs": "b:BK0707",
+                "fields": "f12,f18",
+            }
+            r = requests.get(url, params=params, timeout=15, headers=_DEFAULT_HEADERS)
+            data = r.json()
+            items = data.get("data", {}).get("diff", [])
+            if not items:
+                break
+            for item in items:
+                code = str(item.get("f12", ""))
+                shares_wan = float(item.get("f18", 0) or 0)
+                if shares_wan >= min_wan:
+                    all_codes.add(code)
+                else:
+                    return all_codes  # sorted desc, stop early
+            if len(items) < 500:
+                break
+        return all_codes
+    except Exception as e:
+        logger.warning("Northbound holdings fetch failed: %s", e)
+        return set()
+
+
+def get_social_security_holdings(min_pct: float = 2.0) -> set[str]:
+    """获取社保基金持股比例 >= min_pct% 的股票代码集合。"""
+    today = date.today()
+    # 用最近一个季报日期
+    quarters = [(12, 31), (9, 30), (6, 30), (3, 31)]
+    report_date = None
+    for m, d in quarters:
+        candidate = date(today.year, m, d)
+        if candidate <= today:
+            report_date = candidate.strftime("%Y%m%d")
+            break
+    if report_date is None:
+        report_date = f"{today.year - 1}1231"
+
+    try:
+        df = ak.stock_report_fund_hold(symbol="社保持仓", date=report_date)
+        if df is None or df.empty:
+            return set()
+        # 列名可能是中文，取第2列(代码)和最后几列中含"比例"的
+        cols = df.columns.tolist()
+        code_col = cols[1]  # 股票代码
+        # 找持股比例列 - 通常是最后一列或含"比例"的列
+        pct_col = None
+        for c in cols:
+            if "比例" in str(c) or "ratio" in str(c).lower():
+                pct_col = c
+                break
+        if pct_col is None:
+            # 没有比例列，尝试用持股数量/总股数计算
+            # 这种情况下直接返回所有社保持股股票（无比例过滤）
+            return set(df[code_col].astype(str).tolist())
+        df[pct_col] = pd.to_numeric(df[pct_col], errors="coerce")
+        return set(df[df[pct_col] >= min_pct][code_col].astype(str).tolist())
+    except Exception as e:
+        logger.warning("Social security holdings fetch failed: %s", e)
+        return set()
