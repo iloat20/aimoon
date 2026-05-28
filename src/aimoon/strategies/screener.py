@@ -196,5 +196,6 @@ class StockScreener:
 
     def get_top_picks(self, n: int | None = None) -> list[SignalScore]:
         n = n or CONFIG.top_n
-        sorted_results = sorted(self.results, key=lambda x: x.total_score, reverse=True)
+        with self._lock:
+            sorted_results = sorted(self.results, key=lambda x: x.total_score, reverse=True)
         return sorted_results[:n]
