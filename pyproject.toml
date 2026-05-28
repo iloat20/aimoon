@@ -1,0 +1,23 @@
+[project]
+name = "aimoon"
+version = "0.1.0"
+description = "A-share quant screening system"
+requires-python = ">=3.12"
+dependencies = [
+    "akshare>=1.14",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "tabulate>=0.9",
+    "colorama>=0.4",
+    "rich>=13.0",
+]
+
+[project.scripts]
+aimoon = "aimoon.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]

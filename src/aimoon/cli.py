@@ -1,0 +1,106 @@
+""" CLI entry point """
+from __future__ import annotations
+
+import argparse, logging, sys, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from aimoon.config import CONFIG
+from aimoon.data import (filter_by_spot, filter_stock_list, get_history_kline, get_spot_data, get_stock_list)
+from aimoon.output.formatter import OutputFormatter
+from aimoon.strategies.screener import StockScreener
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--top", type=int, default=CONFIG.top_n)
+    p.add_argument("--workers", type=int, default=5)
+    p.add_argument("--no-csv", action="store_true")
+    p.add_argument("--demo", action="store_true")
+    return p.parse_args()
+
+def generate_demo():
+    import numpy as np, pandas as pd
+    np.random.seed(42)
+    stocks = [("000001","PA"),("000002","VK"),("000858","WL"),("000725","BO"),("002415","HK"),("002594","BY"),("300750","CA"),("600036","CM"),("600519","MT"),("600887","YL"),("601318","PA2"),("601398","IC"),("000333","MD"),("002475","LX"),("300059","EM"),("002714","MY"),("600276","HR"),("601888","CT"),("000568","LZ"),("002304","YH"),("600309","WH"),("601166","CI"),("600030","CS"),("000651","GR"),("002049","UG"),("300124","IV"),("002230","IF"),("600585","CC"),("601012","LO"),("000100","TC")]
+    rows = []
+    for code, name in stocks:
+        price = float(np.random.uniform(10, 200))
+        rows.append({"stock_code":code,"stock_name":name,"price":price,"pct_change":float(np.random.uniform(-5,5)),"turnover":float(np.random.uniform(1,15)),"volume":float(np.random.randint(100000,10000000)),"amount":float(np.random.randint(10000000,1000000000)),"amplitude":float(np.random.uniform(1,8)),"high":price*1.02,"low":price*0.98,"open":price*1.001,"prev_close":price*0.99,"volume_ratio":float(np.random.uniform(0.5,3)),"pe":float(np.random.uniform(5,50)),"pb":float(np.random.uniform(0.5,10)),"total_market_cap":float(np.random.uniform(5e9,3e12)),"float_market_cap":float(np.random.uniform(1e9,2e12)),"pct_60d":float(np.random.uniform(-30,30)),"pct_ytd":float(np.random.uniform(-20,50))})
+    spot_df = pd.DataFrame(rows)
+    klines = {}
+    for code, name in stocks:
+        n = 120
+        dates = pd.date_range(end=pd.Timestamp.today(), periods=n, freq="B")
+        c = np.random.uniform(10, 200)
+        close = np.maximum(c + np.cumsum(np.random.randn(n) * c * 0.02), 1.0)
+        high = close + np.abs(np.random.randn(n) * close * 0.02)
+        low = close - np.abs(np.random.randn(n) * close * 0.02)
+        open_ = close + np.random.randn(n) * close * 0.01
+        vol = np.random.randint(100000, 10000000, n).astype(float)
+        df = pd.DataFrame({"open":open_,"close":close,"high":high,"low":low,"volume":vol,"turnover":np.random.uniform(0.5,15,n),"pct_change":np.random.randn(n)*3}, index=dates)
+        df.index.name = "date"
+        klines[code] = df
+    return spot_df, klines
+
+def process_stock(code, name, spot_row, screener, klines=None):
+    if klines and code in klines:
+        kdf = klines[code]
+    else:
+        r = get_history_kline(code, days=CONFIG.history_days)
+        if r.is_err(): return
+        kdf = r.unwrap()
+    s = screener.screen_stock(code, name, kdf, spot_row)
+    if s: screener.results.append(s)
+
+def main():
+    args = parse_args()
+    fmt = OutputFormatter()
+    scr = StockScreener()
+    fmt.console.print("[bold blue]=== A-Share Quant Screener ===[/bold blue]")
+    if args.demo:
+        fmt.console.print("[dim]DEMO mode - using simulated data[/dim]")
+        spot_df, klines = generate_demo()
+        for _, row in spot_df.iterrows():
+            process_stock(row["stock_code"], row["stock_name"], row, scr, klines)
+    else:
+        fmt.console.print("[dim]Fetching real-time data...[/dim]")
+        sr = get_spot_data()
+        if sr.is_err():
+            fmt.console.print("[red]Failed: ${sr.error}[/red]")
+            fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
+            sys.exit(1)
+        spot_df = sr.unwrap()
+        filtered = filter_by_spot(spot_df)
+        fmt.console.print("[dim]Filtered: ${len(filtered)} stocks[/dim]")
+        sl = get_stock_list()
+        if sl.is_ok():
+            vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
+            filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
+        fmt.console.print("[dim]Analyzing ${len(filtered)} stocks...[/dim]")
+        t0 = time.time()
+        done, total = 0, len(filtered)
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            fs = {}
+            for _, row in filtered.iterrows():
+                sr2 = row if "pe" in row.index else None
+                f = ex.submit(process_stock, row["stock_code"], row["stock_name"], sr2, scr, None)
+                fs[f] = row["stock_code"]
+            for fut in as_completed(fs):
+                done += 1
+                if done % 50 == 0 or done == total:
+                    el = time.time() - t0
+                    r2 = done / el if el > 0 else 0
+                    print(f"\r  {done}/{total} ({r2:.1f}/s)", end="", flush=True)
+                try: fut.result()
+                except Exception: pass
+        el = time.time() - t0
+        print(f"\n[dim]Done in {el:.1f}s[/dim]")
+    picks = scr.get_top_picks(args.top)
+    fmt.console.print("")
+    fmt.display_results(picks)
+    if not args.no_csv and picks:
+        fp2 = fmt.export_csv(picks)
+        fmt.console.print("[dim]Exported: ${fp2}[/dim]")
+
+if __name__ == "__main__":
+    main()
