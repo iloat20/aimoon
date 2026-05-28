@@ -1,7 +1,6 @@
 """Technical indicators calculation module"""
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.config import CONFIG
@@ -69,7 +68,7 @@ class TechnicalIndicators:
             return "overbought"
         return "neutral"
 
-    def macd(self):
+    def macd(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         ema_fast = self.ema(CONFIG.macd_fast)
         ema_slow = self.ema(CONFIG.macd_slow)
         dif = ema_fast - ema_slow
@@ -92,7 +91,7 @@ class TechnicalIndicators:
     def macd_above_zero(self) -> bool:
         dif, _, _ = self.macd()
         return not pd.isna(dif.iloc[-1]) and dif.iloc[-1] > 0
-    def kdj(self):
+    def kdj(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         period = CONFIG.kdj_period
         low_min = self._low.rolling(window=period).min()
         high_max = self._high.rolling(window=period).max()
@@ -115,7 +114,7 @@ class TechnicalIndicators:
     def kdj_overbought(self) -> bool:
         _, _, j = self.kdj()
         return not pd.isna(j.iloc[-1]) and j.iloc[-1] > 100
-    def bollinger(self):
+    def bollinger(self) -> tuple[pd.Series, pd.Series, pd.Series]:
         period = CONFIG.boll_period
         mid = self.ma(period)
         std = self._close.rolling(window=period).std()
@@ -145,6 +144,58 @@ class TechnicalIndicators:
 
     def volume_shrinking(self) -> bool:
         return self.volume_ratio() < 0.5
+
+    def roc(self, period: int = 10) -> pd.Series:
+        """Rate of Change - 价格变化率（%）。"""
+        return self._close.pct_change(periods=period) * 100
+
+    def roc_signal(self, period: int = 10) -> float:
+        """最新ROC值。"""
+        r = self.roc(period)
+        return float(r.iloc[-1]) if not pd.isna(r.iloc[-1]) else 0.0
+
+    def momentum_acceleration(self, short: int = 5, long: int = 20) -> float:
+        """短周期ROC - 长周期ROC，正值表示动量加速。"""
+        s = self.roc(short)
+        l = self.roc(long)
+        if pd.isna(s.iloc[-1]) or pd.isna(l.iloc[-1]):
+            return 0.0
+        return float(s.iloc[-1] - l.iloc[-1])
+
+    def new_high(self, days: int = 20) -> bool:
+        """价格是否创N日新高。"""
+        if len(self._close) < days:
+            return False
+        return float(self._close.iloc[-1]) >= float(self._close.iloc[-days:].max())
+
+    def new_low(self, days: int = 20) -> bool:
+        """价格是否创N日新低。"""
+        if len(self._close) < days:
+            return False
+        return float(self._close.iloc[-1]) <= float(self._close.iloc[-days:].min())
+
+    def adx(self, period: int = 14) -> float:
+        """ADX 趋势强度指标。ADX > 25 表示强趋势。"""
+        if len(self._close) < period * 2:
+            return 0.0
+        high = self._high
+        low = self._low
+        close = self._close
+        plus_dm = high.diff()
+        minus_dm = -low.diff()
+        plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0.0)
+        minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0.0)
+        tr = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+        atr = tr.ewm(span=period, adjust=False).mean()
+        plus_di = 100 * plus_dm.ewm(span=period, adjust=False).mean() / atr
+        minus_di = 100 * minus_dm.ewm(span=period, adjust=False).mean() / atr
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-10)
+        adx_val = dx.ewm(span=period, adjust=False).mean()
+        return float(adx_val.iloc[-1]) if not pd.isna(adx_val.iloc[-1]) else 0.0
 
     def add_all_indicators(self) -> pd.DataFrame:
         df = self.df

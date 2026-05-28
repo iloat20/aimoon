@@ -1,5 +1,6 @@
 ﻿__pycache__/
 *.pyc
 *.egg-info/
-output/
+/output/
 .pytest_cache/
+.aimoon_cache/

@@ -65,6 +65,7 @@ class OutputFormatter:
                 "trend_score": r.trend_score, "rsi_score": r.rsi_score,
                 "macd_score": r.macd_score, "kdj_score": r.kdj_score,
                 "volume_score": r.volume_score, "boll_score": r.boll_score,
+                "momentum_score": r.momentum_score,
                 "total_score": r.total_score,
                 "signals": " | ".join(r.signals),
                 "suggestion": r.suggestion, "confidence": r.confidence,

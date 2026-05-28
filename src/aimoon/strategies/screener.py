@@ -33,6 +33,7 @@ class SignalScore:
     kdj_score: int = 0
     volume_score: int = 0
     boll_score: int = 0
+    momentum_score: int = 0
     total_score: int = 0
     signals: list[str] = field(default_factory=list)
     suggestion: str = "观望"

@@ -58,9 +58,11 @@ class TechnicalStrategy(Strategy):
         self._score_kdj(ti, result)
         self._score_volume(ti, result)
         self._score_bollinger(ti, result)
+        self._score_momentum(ti, result)
         result.total_score = (
             result.trend_score + result.rsi_score + result.macd_score +
-            result.kdj_score + result.volume_score + result.boll_score
+            result.kdj_score + result.volume_score + result.boll_score +
+            result.momentum_score
         )
         result.suggestion, result.confidence = self._generate_suggestion(result)
         return result
@@ -107,13 +109,23 @@ class TechnicalStrategy(Strategy):
 
     @staticmethod
     def _score_rsi(ti: TechnicalIndicators, score: SignalScore) -> None:
-        sig = ti.rsi_signal()
-        if sig == "oversold":
+        rsi_val = ti.rsi()
+        if pd.isna(rsi_val.iloc[-1]):
+            return
+        rsi_now = float(rsi_val.iloc[-1])
+        # RSI > 50 表示多头动量
+        if rsi_now > 60:
             score.rsi_score = 2
-            score.signals.append("RSI超卖")
-        elif sig == "overbought":
+            score.signals.append("RSI强势(>60)")
+        elif rsi_now > 50:
+            score.rsi_score = 1
+            score.signals.append("RSI偏多(>50)")
+        elif rsi_now < 40:
             score.rsi_score = -2
-            score.signals.append("RSI超买")
+            score.signals.append("RSI弱势(<40)")
+        elif rsi_now < 50:
+            score.rsi_score = -1
+            score.signals.append("RSI偏空(<50)")
 
     @staticmethod
     def _score_macd(ti: TechnicalIndicators, score: SignalScore) -> None:
@@ -132,11 +144,8 @@ class TechnicalStrategy(Strategy):
     @staticmethod
     def _score_kdj(ti: TechnicalIndicators, score: SignalScore) -> None:
         if ti.kdj_golden_cross():
-            score.kdj_score = 2
+            score.kdj_score = 1
             score.signals.append("KDJ金叉")
-        if ti.kdj_oversold():
-            score.kdj_score += 1
-            score.signals.append("KDJ超卖")
         if ti.kdj_overbought():
             score.kdj_score -= 1
             score.signals.append("KDJ超买")
@@ -165,19 +174,65 @@ class TechnicalStrategy(Strategy):
             score.signals.append("触及布林上轨")
 
     @staticmethod
+    def _score_momentum(ti: TechnicalIndicators, score: SignalScore) -> None:
+        # ROC 10日变化率
+        roc10 = ti.roc_signal(10)
+        if roc10 > 5:
+            score.momentum_score += 2
+            score.signals.append("ROC强势(+5%+)")
+        elif roc10 > 2:
+            score.momentum_score += 1
+            score.signals.append("ROC上升(+2%+)")
+        elif roc10 < -5:
+            score.momentum_score -= 2
+            score.signals.append("ROC弱势(-5%-)")
+        elif roc10 < -2:
+            score.momentum_score -= 1
+            score.signals.append("ROC下降(-2%-)")
+
+        # 动量加速度（短周期ROC - 长周期ROC）
+        accel = ti.momentum_acceleration(5, 20)
+        if accel > 3:
+            score.momentum_score += 2
+            score.signals.append("动量加速")
+        elif accel > 0:
+            score.momentum_score += 1
+            score.signals.append("动量偏强")
+        elif accel < -3:
+            score.momentum_score -= 2
+            score.signals.append("动量减速")
+        elif accel < 0:
+            score.momentum_score -= 1
+            score.signals.append("动量偏弱")
+
+        # 20日新高/新低
+        if ti.new_high(20):
+            score.momentum_score += 2
+            score.signals.append("20日新高")
+        elif ti.new_low(20):
+            score.momentum_score -= 2
+            score.signals.append("20日新低")
+
+        # ADX 趋势强度（动量需要趋势确认）
+        adx_val = ti.adx(14)
+        if adx_val > 25:
+            score.momentum_score += 1
+            score.signals.append("ADX强趋势")
+
+    @staticmethod
     def _generate_suggestion(score: SignalScore) -> tuple[str, str]:
         total = score.total_score
-        if total >= 6:
+        if total >= 8:
             return "强烈买入", "高"
-        elif total >= 4:
+        elif total >= 5:
             return "买入", "中高"
         elif total >= 2:
             return "建议买入", "中"
         elif total >= 0:
             return "观望", "低"
-        elif total >= -2:
+        elif total >= -3:
             return "谨慎", "中"
-        elif total >= -4:
+        elif total >= -6:
             return "建议卖出", "中高"
         else:
             return "强烈卖出", "高"
