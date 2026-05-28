@@ -1,4 +1,4 @@
-""" CLI entry point """
+"""CLI entry point for aimoon"""
 from __future__ import annotations
 
 import argparse, logging, sys, time
@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def parse_args():
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(description="A-share quant screener")
     p.add_argument("--top", type=int, default=CONFIG.top_n)
     p.add_argument("--workers", type=int, default=5)
     p.add_argument("--no-csv", action="store_true")
@@ -21,7 +21,23 @@ def parse_args():
 def generate_demo():
     import numpy as np, pandas as pd
     np.random.seed(42)
-    stocks = [("000001","PA"),("000002","VK"),("000858","WL"),("000725","BO"),("002415","HK"),("002594","BY"),("300750","CA"),("600036","CM"),("600519","MT"),("600887","YL"),("601318","PA2"),("601398","IC"),("000333","MD"),("002475","LX"),("300059","EM"),("002714","MY"),("600276","HR"),("601888","CT"),("000568","LZ"),("002304","YH"),("600309","WH"),("601166","CI"),("600030","CS"),("000651","GR"),("002049","UG"),("300124","IV"),("002230","IF"),("600585","CC"),("601012","LO"),("000100","TC")]
+    stocks = [
+        ("000001", "PingAnBank"), ("000002", "VankeA"),
+        ("000858", "Wuliangye"), ("000725", "BOE"),
+        ("002415", "Hikvision"), ("002594", "BYD"),
+        ("300750", "CATL"), ("600036", "CMB"),
+        ("600519", "Moutai"), ("600887", "Yili"),
+        ("601318", "PingAn"), ("601398", "ICBC"),
+        ("000333", "Midea"), ("002475", "Luxshare"),
+        ("300059", "EastMoney"), ("002714", "Muyuan"),
+        ("600276", "Hengrui"), ("601888", "ChinaTour"),
+        ("000568", "Luzhou"), ("002304", "Yanghe"),
+        ("600309", "Wanhua"), ("601166", "CIB"),
+        ("600030", "CITIC"), ("000651", "Gree"),
+        ("002049", "Unigroup"), ("300124", "Inovance"),
+        ("002230", "iFlytek"), ("600585", "Conch"),
+        ("601012", "LONGi"), ("000100", "TCL"),
+    ]
     rows = []
     for code, name in stocks:
         price = float(np.random.uniform(10, 200))
@@ -66,17 +82,17 @@ def main():
         fmt.console.print("[dim]Fetching real-time data...[/dim]")
         sr = get_spot_data()
         if sr.is_err():
-            fmt.console.print("[red]Failed: ${sr.error}[/red]")
+            fmt.console.print("[red]Failed: {sr.error}[/red]")
             fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
             sys.exit(1)
         spot_df = sr.unwrap()
         filtered = filter_by_spot(spot_df)
-        fmt.console.print("[dim]Filtered: ${len(filtered)} stocks[/dim]")
+        fmt.console.print("[dim]Filtered: {len(filtered)} stocks[/dim]")
         sl = get_stock_list()
         if sl.is_ok():
             vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
             filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
-        fmt.console.print("[dim]Analyzing ${len(filtered)} stocks...[/dim]")
+        fmt.console.print("[dim]Analyzing {len(filtered)} stocks...[/dim]")
         t0 = time.time()
         done, total = 0, len(filtered)
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
@@ -100,7 +116,7 @@ def main():
     fmt.display_results(picks)
     if not args.no_csv and picks:
         fp2 = fmt.export_csv(picks)
-        fmt.console.print("[dim]Exported: ${fp2}[/dim]")
+        fmt.console.print("[dim]Exported: {fp2}[/dim]")
 
 if __name__ == "__main__":
     main()
