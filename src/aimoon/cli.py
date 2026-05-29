@@ -1,258 +1,123 @@
-"""CLI entry point for aimoon"""
+"""CLI 入口 — 薄管道"""
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
-import aimoon.config as _config_mod
-from aimoon.data import (
-    filter_by_spot,
-    filter_stock_list,
-    get_history_kline,
-    get_spot_data,
-    get_stock_list,
-)
-from aimoon.output.formatter import OutputFormatter
-from aimoon.strategies.backtester import BacktestEngine
-from aimoon.strategies.screener import StockScreener
-from aimoon.strategies.technical import TechnicalStrategy
+from aimoon.cache import DataCache
+from aimoon.config import Config, load_config
+from aimoon.data import get_spot_for_codes, filter_universe, get_sector_context
+from aimoon.data.filters import get_holdings_pool
+from aimoon.output import OutputFormatter
+from aimoon.scoring.rps import compute_rps
+from aimoon.screener import screen_universe
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-def parse_args():
+
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="A-share quant screener")
-    p.add_argument("--config", type=str, default=None, help="YAML config file path")
-    p.add_argument("--top", type=int, default=_config_mod.CONFIG.top_n)
+    p.add_argument("--config", type=str, default=None)
+    p.add_argument("--top", type=int, default=30)
     p.add_argument("--workers", type=int, default=5)
     p.add_argument("--no-csv", action="store_true")
     p.add_argument("--demo", action="store_true")
+    p.add_argument("--refresh", action="store_true")
     sub = p.add_subparsers(dest="command")
-    bt_p = sub.add_parser("backtest", help="Backtest strategies on historical data")
-    bt_p.add_argument("--stocks", type=str, default="000001", help="Comma-separated stock codes")
-    bt_p.add_argument("--hold-days", type=int, default=5, help="Hold period in days")
-    cache_p = sub.add_parser("cache", help="Cache management")
-    cache_sub = cache_p.add_subparsers(dest="cache_action")
-    cache_sub.add_parser("clear", help="Clear all cached data")
+    bt = sub.add_parser("backtest")
+    bt.add_argument("--stocks", type=str, default="000001")
+    bt.add_argument("--hold-days", type=int, default=5)
+    cp = sub.add_parser("cache")
+    cs = cp.add_subparsers(dest="cache_action")
+    cs.add_parser("clear")
+    sub.add_parser("update", help="Clear all caches and re-fetch data")
     return p.parse_args()
 
-def generate_demo():
-    import numpy as np
-    import pandas as pd
-    np.random.seed(42)
-    stocks = [
-        ("000001", "PingAnBank"), ("000002", "VankeA"),
-        ("000858", "Wuliangye"), ("000725", "BOE"),
-        ("002415", "Hikvision"), ("002594", "BYD"),
-        ("300750", "CATL"), ("600036", "CMB"),
-        ("600519", "Moutai"), ("600887", "Yili"),
-        ("601318", "PingAn"), ("601398", "ICBC"),
-        ("000333", "Midea"), ("002475", "Luxshare"),
-        ("300059", "EastMoney"), ("002714", "Muyuan"),
-        ("600276", "Hengrui"), ("601888", "ChinaTour"),
-        ("000568", "Luzhou"), ("002304", "Yanghe"),
-        ("600309", "Wanhua"), ("601166", "CIB"),
-        ("600030", "CITIC"), ("000651", "Gree"),
-        ("002049", "Unigroup"), ("300124", "Inovance"),
-        ("002230", "iFlytek"), ("600585", "Conch"),
-        ("601012", "LONGi"), ("000100", "TCL"),
-    ]
-    rows = []
-    for code, name in stocks:
-        price = float(np.random.uniform(10, 200))
-        rows.append({
-            "stock_code": code,
-            "stock_name": name,
-            "price": price,
-            "pct_change": float(np.random.uniform(-5, 5)),
-            "turnover": float(np.random.uniform(1, 15)),
-            "volume": float(np.random.randint(100000, 10000000)),
-            "amount": float(np.random.randint(10000000, 1000000000)),
-            "amplitude": float(np.random.uniform(1, 8)),
-            "high": price * 1.02,
-            "low": price * 0.98,
-            "open": price * 1.001,
-            "prev_close": price * 0.99,
-            "volume_ratio": float(np.random.uniform(0.5, 3)),
-            "pe": float(np.random.uniform(5, 50)),
-            "pb": float(np.random.uniform(0.5, 10)),
-            "total_market_cap": float(np.random.uniform(5e9, 3e12)),
-            "float_market_cap": float(np.random.uniform(1e9, 2e12)),
-            "pct_60d": float(np.random.uniform(-30, 30)),
-            "pct_ytd": float(np.random.uniform(-20, 50)),
-        })
-    spot_df = pd.DataFrame(rows)
-    klines = {}
-    for code, name in stocks:
-        n = 120
-        dates = pd.date_range(end=pd.Timestamp.today(), periods=n, freq="B")
-        c = np.random.uniform(10, 200)
-        close = np.maximum(c + np.cumsum(np.random.randn(n) * c * 0.02), 1.0)
-        high = close + np.abs(np.random.randn(n) * close * 0.02)
-        low = close - np.abs(np.random.randn(n) * close * 0.02)
-        open_ = close + np.random.randn(n) * close * 0.01
-        vol = np.random.randint(100000, 10000000, n).astype(float)
-        df = pd.DataFrame({
-            "open": open_,
-            "close": close,
-            "high": high,
-            "low": low,
-            "volume": vol,
-            "turnover": np.random.uniform(0.5, 15, n),
-            "pct_change": np.random.randn(n) * 3,
-        }, index=dates)
-        df.index.name = "date"
-        klines[code] = df
-    return spot_df, klines
 
-def process_stock(code, name, spot_row, screener, klines=None):
-    if klines and code in klines:
-        kdf = klines[code]
-    else:
-        r = get_history_kline(code, days=_config_mod.CONFIG.history_days)
-        if r.is_err():
-            return
-        kdf = r.unwrap()
-    s = screener.screen_stock(code, name, kdf, spot_row)
-
-def main():
+def main() -> None:
     args = parse_args()
+    cfg = load_config(args, path=getattr(args, "config", None))
+    fmt = OutputFormatter(cfg)
 
-    if hasattr(args, "config") and args.config:
-        from aimoon.config import load_config
-
-        _config_mod.CONFIG = load_config(args.config)
-
-    if args.command == "cache":
-        if args.cache_action == "clear":
-            from aimoon.cache.provider import DataCache
-            cache = DataCache()
-            removed = cache.clear()
-            print(f"Cleared {removed} cached files")
-            return
+    # 缓存管理
+    if cfg.command == "cache":
+        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        print(f"Cleared {cache.clear()} cached files")
         return
 
-    if args.command == "backtest":
-        strategy = TechnicalStrategy()
-        engine = BacktestEngine(strategy, hold_days=args.hold_days)
-        fmt = OutputFormatter()
-        fmt.console.print(f"[bold blue]=== Backtest: {strategy.name} (hold {args.hold_days}d) ===[/bold blue]")
+    # update：清除所有缓存后重新运行
+    if cfg.command == "update":
+        import shutil
+        cache_dir = Path(cfg.cache_dir)
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            print(f"Cleared cache dir: {cache_dir}")
+        # 继续执行正常管道（会重新获取所有数据）
 
-        if args.stocks:
-            codes = [c.strip() for c in args.stocks.split(",")]
-            fmt.console.print(f"[dim]Backtesting {len(codes)} stocks...[/dim]")
-            for code in codes:
-                r = get_history_kline(code, days=_config_mod.CONFIG.history_days)
-                if r.is_ok():
-                    result = engine.run(code, code, r.unwrap())
-                    color = "green" if result.total_return > 0 else "red"
-                    fmt.console.print(
-                        f"  {result.stock_code}: [{color}]{result.total_return:+.2f}%[/{color}] "
-                        f"胜率={result.win_rate:.0%} 交易={result.trade_count}次 "
-                        f"最大回撤={result.max_drawdown:.2%}"
-                    )
+    # 回测
+    if cfg.command == "backtest":
+        from aimoon.backtest import BacktestEngine
+        from aimoon.data.history import get_kline
+        engine = BacktestEngine(cfg, hold_days=cfg.hold_days)
+        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        fmt.console.print(f"[bold blue]=== Backtest (hold {cfg.hold_days}d) ===[/bold blue]")
+        for code in cfg.stocks.split(","):
+            code = code.strip()
+            r = get_kline(code, cfg.history_days, cache)
+            if r.is_ok():
+                result = engine.run(code, code, r.unwrap())
+                color = "green" if result.total_return > 0 else "red"
+                fmt.console.print(
+                    f"  {result.code}: [{color}]{result.total_return:+.2f}%[/{color}] "
+                    f"胜率={result.win_rate:.0%} 交易={result.trade_count}次 "
+                    f"最大回撤={result.max_drawdown:.2%}"
+                )
         return
 
-    fmt = OutputFormatter()
-    scr = StockScreener()
-    fmt.console.print("[bold blue]=== A-Share Quant Screener ===[/bold blue]")
-    if args.demo:
-        fmt.console.print("[dim]DEMO mode - using simulated data[/dim]")
+    # Demo 模式
+    if cfg.demo:
+        from aimoon.demo import generate_demo
         spot_df, klines = generate_demo()
-        for _, row in spot_df.iterrows():
-            process_stock(row["stock_code"], row["stock_name"], row, scr, klines)
+        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        results, tails = screen_universe(spot_df, cfg, cache, klines=klines)
     else:
-        from aimoon.data import get_top_sectors, get_sector_stocks, compute_market_rankings
+        # 实时筛选管道 — 持仓池先行，减少行情请求量
+        fmt.console.print("[dim]Loading holdings pool (cached)...[/dim]")
+        pool = get_holdings_pool(cfg)
+        fmt.console.print(f"[dim]Holdings pool: {len(pool)} stocks[/dim]")
 
-        # 第一步：获取全市场行情
-        fmt.console.print("[dim]Fetching real-time data...[/dim]")
-        sr = get_spot_data()
+        sr = get_spot_for_codes(pool, cfg)
         if sr.is_err():
             fmt.console.print(f"[red]Failed: {sr.error}[/red]")
             fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
             sys.exit(1)
-        spot_df = sr.unwrap()
+        spot = sr.unwrap()
+        fmt.console.print(f"[dim]Spot data for {len(spot)} stocks[/dim]")
 
-        # 第二步：先找强势板块
-        fmt.console.print("[dim]Finding top sectors...[/dim]")
-        ts = get_top_sectors(top_pct=5.0)
-        if ts.is_err():
-            fmt.console.print(f"[yellow]Sector data unavailable: {ts.error}, falling back to full scan[/yellow]")
-            sector_map = {}
-            top_sector_names = []
-        else:
-            top_sector_list = ts.unwrap()
-            top_sector_names = [name for name, _ in top_sector_list]
-            fmt.console.print(f"[dim]Top sectors: {', '.join(top_sector_names[:8])}{'...' if len(top_sector_names) > 8 else ''}[/dim]")
+        fmt.console.print("[dim]Filtering universe...[/dim]")
+        universe = filter_universe(spot, cfg)
 
-            # 第三步：只取强势板块的成分股
-            fmt.console.print(f"[dim]Fetching stocks from {len(top_sector_names)} sectors...[/dim]")
-            sector_map = get_sector_stocks(top_sector_names)
-            fmt.console.print(f"[dim]Found {len(sector_map)} stocks in top sectors[/dim]")
+        fmt.console.print("[dim]Building sector context...[/dim]")
+        ctx = get_sector_context(spot)
 
-        # 第四步：在强势板块中筛选个股
-        if sector_map:
-            filtered = spot_df[spot_df["stock_code"].isin(set(sector_map.keys()))].reset_index(drop=True)
-            filtered = filter_by_spot(filtered)
-        else:
-            filtered = filter_by_spot(spot_df)
-        sl = get_stock_list()
-        if sl.is_ok():
-            vc = set(filter_stock_list(sl.unwrap())["stock_code"].tolist())
-            filtered = filtered[filtered["stock_code"].isin(vc)].reset_index(drop=True)
-
-        # 第五步：机构持仓过滤
-        from aimoon.data import get_northbound_holdings, get_social_security_holdings
-        cfg = _config_mod.CONFIG
-        fmt.console.print("[dim]Checking institutional holdings...[/dim]")
-        nb = get_northbound_holdings(min_shares=cfg.min_northbound_shares)
-        if nb:
-            filtered = filtered[filtered["stock_code"].isin(nb)].reset_index(drop=True)
-            fmt.console.print(f"[dim]Northbound >= {cfg.min_northbound_shares // 10000}万股: {len(filtered)} stocks[/dim]")
-        else:
-            fmt.console.print("[dim]Northbound data unavailable, skipping filter[/dim]")
-        ss = get_social_security_holdings(min_pct=cfg.min_social_security_pct, spot_df=spot_df)
-        if ss:
-            filtered = filtered[filtered["stock_code"].isin(ss)].reset_index(drop=True)
-            fmt.console.print(f"[dim]Social security >= {cfg.min_social_security_pct}%: {len(filtered)} stocks[/dim]")
-        else:
-            fmt.console.print("[dim]Social security data unavailable, skipping filter[/dim]")
-
-        # 第五步：计算市场排名上下文
-        if sector_map:
-            ctx = compute_market_rankings(spot_df, sector_map)
-            scr.set_market_context(ctx)
-
-        fmt.console.print(f"[dim]Analyzing {len(filtered)} stocks from top sectors...[/dim]")
+        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        fmt.console.print(f"[dim]Analyzing {len(universe)} stocks...[/dim]")
         t0 = time.time()
-        done, total = 0, len(filtered)
-        with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            fs = {}
-            for _, row in filtered.iterrows():
-                sr2 = row if "pe" in row.index else None
-                f = ex.submit(process_stock, row["stock_code"], row["stock_name"], sr2, scr, None)
-                fs[f] = row["stock_code"]
-            for fut in as_completed(fs):
-                done += 1
-                if done % 50 == 0 or done == total:
-                    el = time.time() - t0
-                    r2 = done / el if el > 0 else 0
-                    print(f"\r  {done}/{total} ({r2:.1f}/s)", end="", flush=True)
-                try:
-                    fut.result()
-                except Exception as e:
-                    logger.warning("Stock processing failed: %s", e)
-        el = time.time() - t0
-        print(f"\n[dim]Done in {el:.1f}s[/dim]")
-    picks = scr.get_top_picks(args.top)
-    fmt.console.print("")
-    fmt.display_results(picks)
-    if not args.no_csv and picks:
-        fp2 = fmt.export_csv(picks)
-        fmt.console.print(f"[dim]Exported: {fp2}[/dim]")
+        results, tails = screen_universe(universe, cfg, cache, ctx)
+        fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
+
+    # RPS + 排序 + 输出
+    results = compute_rps(results, tails)
+    top = sorted(results, key=lambda s: s.total_score, reverse=True)[:cfg.top_n]
+    fmt.display(top)
+    if not cfg.no_csv and top:
+        fmt.console.print(f"[dim]Exported: {fmt.export_csv(top)}[/dim]")
+        fmt.console.print(f"[dim]Exported: {fmt.export_markdown(top)}[/dim]")
+
 
 if __name__ == "__main__":
     main()

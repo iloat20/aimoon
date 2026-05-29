@@ -1,3 +1,3 @@
-from aimoon.indicators.technical import TechnicalIndicators
+from aimoon.indicators.technical import TechnicalIndicators, TechInd
 
-__all__ = ["TechnicalIndicators"]
+__all__ = ["TechnicalIndicators", "TechInd"]

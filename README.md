@@ -9,21 +9,16 @@ A股量化筛选与交易建议系统 — 基于技术指标的多因子打分�
 ### 安装
 
 ```bash
-# 克隆项目
 git clone <repo-url>
 cd aimoon
-
-# 安装（推荐 editable 模式）
 pip install -e .
 ```
 
 ### 30秒体验
 
 ```bash
-# 使用模拟数据体验（无需网络）
 aimoon --demo
-
-# 或直接运行模块
+# 或
 python -m aimoon --demo
 ```
 
@@ -36,26 +31,24 @@ python -m aimoon --demo
 ### 实时筛选（默认模式）
 
 ```bash
-# 使用默认参数筛选
-aimoon
-
-# 显示前10名
-aimoon --top 10
-
-# 使用10个线程加速
-aimoon --workers 10
-
-# 不导出CSV
-aimoon --no-csv
+aimoon                  # 默认参数筛选
+aimoon --top 10         # 显示前10名
+aimoon --workers 10     # 10个线程加速
+aimoon --no-csv         # 不导出文件
 ```
 
-筛选流程：
-1. 从东方财富获取A股实时行情
-2. 按市值、换手率、价格过滤
-3. 排除ST、退市、北交所、8/4开头股票
-4. 多线程并行获取历史K线数据（带缓存）
-5. 计算技术指标并打分
-6. 输出排名表格和CSV文件
+### 筛选流程
+
+1. 从东方财富获取全市场实时行情（含上市日期字段 f26）
+2. **上市时间过滤** — 排除上市不满1年的股票
+3. **基本面过滤** — 按市值、换手率、价格区间筛选
+4. **排除规则** — ST、退市、北交所、8/4开头股票
+5. **北向资金过滤** — 北向持股市值 >= 1亿元
+6. **基金持仓过滤** — 基金持股占流通股 >= 5%
+7. 多线程并行获取历史K线数据（带缓存，AKShare + 腾讯备用）
+8. 计算技术指标并打分
+9. **RPS 计算** — 从K线数据计算 5/10/15/20 日涨幅排名
+10. 输出排名表格、CSV 和 Markdown 文件
 
 ### 输出说明
 
@@ -68,120 +61,143 @@ aimoon --no-csv
 | Chg% | 涨跌幅 |
 | Turnover% | 换手率 |
 | Score | 综合评分（越高越看多） |
+| RPS5/10/15/20 | 相对价格强度（0-100，>90为强势） |
 | Suggestion | 操作建议 |
 | Conf. | 置信度 |
 | Signals | 触发的信号列表 |
 
-**评分体系（总分 = 各指标之和）：**
+---
+
+## 评分体系
+
+总分 = 各指标之和（动量为主，RPS 权重5，技术指标为辅）
+
+### 技术指标（动量为主）
 
 | 指标 | 看多信号 | 看空信号 |
 |------|---------|---------|
+| **动量 ROC5** | 强势(+5%+)+4, 上升(+2%+)+2 | 弱势(-5%-)-4, 下降(-2%-)-2 |
+| **动量 ROC10** | 强势(+5%+)+2, 上升(+2%+)+1 | 弱势(-5%-)-2, 下降(-2%-)-1 |
+| **动量 ROC20** | 强势(+5%+)+1, 上升+1 | 弱势(-5%-)-1, 下降-1 |
+| **动量加速** | 加速+3, 偏强+1 | 减速-3, 偏弱-1 |
+| **新高/新低** | 5日新高+3, 10日+2, 20日+1 | 5日新低-3, 10日-2, 20日-1 |
+| **ADX** | 强趋势(>25)+2 | — |
 | 趋势 (MA) | 均线多头+2, 金叉+2 | 空头-2, 死叉-2 |
-| RSI | 超卖+2 | 超买-2 |
 | MACD | 金叉+2, 零轴上方+1 | 死叉-2, 零轴下方-1 |
-| KDJ | 金叉+2, 超卖+1 | 超买-1 |
-| 成交量 | 放量+2/+1 | 缩量-1 |
+| RSI | 强势(>60)+2, 偏多+1 | 弱势(<40)-2, 偏空-1 |
+| KDJ | 金叉+1, 超卖+1 | 死叉-1, 超买-1 |
+| 成交量 | 放量(2x+)+2, 温和放量+1 | 缩量-1 |
 | 布林带 | 触及下轨+1 | 触及上轨-1 |
+| 板块动量 | 强势板块+3, 全市场Top%+3 | — |
 
-**建议对照：**
+### RPS（相对价格强度）— 权重5
+
+RPS 衡量股票近 N 日涨幅在全部股票中的排名百分位（0-100）。
+
+| RPS 值 | 含义 |
+|--------|------|
+| > 90 | 涨幅超过 90% 的股票，极度强势 |
+| > 80 | 涨幅超过 80% 的股票，强势 |
+| < 20 | 涨幅低于 80% 的股票，弱势 |
+
+**RPS 加分：**
+
+| 条件 | 加分 | 信号 |
+|------|------|------|
+| 3-4个周期 RPS > 90 | +5 | RPS三线翻红(3/4 或 4/4) |
+| 2个周期 RPS > 90 | +3 | RPS双线红(2/4) |
+
+### 建议对照
 
 | 总分 | 建议 | 置信度 |
 |------|------|--------|
-| >= 6 | 强烈买入 | 高 |
-| >= 4 | 买入 | 中高 |
+| >= 8 | 强烈买入 | 高 |
+| >= 5 | 买入 | 中高 |
 | >= 2 | 建议买入 | 中 |
 | >= 0 | 观望 | 低 |
-| >= -2 | 谨慎 | 中 |
-| >= -4 | 建议卖出 | 中高 |
-| < -4 | 强烈卖出 | 高 |
+| >= -3 | 谨慎 | 中 |
+| >= -6 | 建议卖出 | 中高 |
+| < -6 | 强烈卖出 | 高 |
+
+---
+
+## 输出文件
+
+每次运行自动生成两个文件到 `output/` 目录：
+
+- `screen_YYYYMMDD_HHMMSS.csv` — CSV 格式，可用 Excel 打开
+- `screen_YYYYMMDD_HHMMSS.md` — Markdown 格式，包含完整 RPS 数据和信号
 
 ---
 
 ## 回测
 
-在历史数据上模拟策略表现，计算收益率、胜率和最大回撤。
-
 ```bash
-# 回测单只股票（默认持仓5天）
-aimoon backtest --stocks 000001
-
-# 回测多只股票
-aimoon backtest --stocks 000001,600519,300750
-
-# 指定持仓天数
-aimoon backtest --stocks 000001 --hold-days 10
-```
-
-输出示例：
-```
-=== Backtest: technical (hold 5d) ===
-Backtesting 3 stocks...
-  000001: +3.21% 胜率=60% 交易=5次 最大回撤=4.53%
-  600519: -1.05% 胜率=40% 交易=5次 最大回撤=6.21%
-  300750: +5.67% 胜率=71% 交易=7次 最大回撤=3.89%
+aimoon backtest --stocks 000001                   # 回测单只股票
+aimoon backtest --stocks 000001,600519,300750     # 回测多只
+aimoon backtest --stocks 000001 --hold-days 10    # 指定持仓天数
 ```
 
 回测逻辑：
 - 从第60天开始逐日运行策略
-- 当策略给出买入信号（总分>=2）时模拟买入
+- 买入信号：总分 >= 2
 - 持有指定天数后卖出
-- 计算总收益率、胜率（盈利交易占比）、最大回撤
+- 输出：总收益率、胜率、最大回撤
 
 ---
 
 ## 缓存管理
 
-K线数据缓存到 `.aimoon_cache/` 目录，默认4小时过期（同一交易日内不重复请求）。
+K线数据缓存到 `.aimoon_cache/` 目录，默认4小时过期。
 
 ```bash
-# 清除所有缓存
-aimoon cache clear
+aimoon cache clear    # 清除所有缓存
 ```
 
 ---
 
 ## 配置文件
 
-支持 YAML 格式配置文件，覆盖默认参数。
-
 ```bash
-# 使用指定配置文件
 aimoon --config my_config.yaml
 ```
 
 ### 配置示例
 
-创建 `my_config.yaml`：
-
 ```yaml
 # 筛选参数
-history_days: 250          # 历史数据天数
-min_market_cap_yi: 50.0    # 最小市值（亿元）
-max_market_cap_yi: 2000.0  # 最大市值（亿元）
-min_turnover_pct: 3.0      # 最小换手率（%）
-max_turnover_pct: 30.0     # 最大换手率（%）
-min_price: 5.0             # 最低股价
-max_price: 100.0           # 最高股价
-top_n: 30                  # 输出前N名
+history_days: 250
+min_market_cap_yi: 50.0
+max_market_cap_yi: 2000.0
+min_turnover_pct: 3.0
+max_turnover_pct: 30.0
+min_price: 5.0
+max_price: 100.0
+top_n: 30
+min_list_days: 250            # 上市天数（约1年）
+
+# 机构持仓
+min_northbound_cap: 1.0       # 北向持股市值（亿元）
+min_fund_pct: 5.0             # 基金持股占比（%）
 
 # 缓存
-cache_ttl_hours: 4         # 缓存过期时间（小时）
+cache_ttl_hours: 4
 
 # 输出
-output_dir: output         # CSV输出目录
+output_dir: output
 
 # 技术指标参数
-ma_short: 5                # 短期均线
-ma_mid: 20                 # 中期均线
-ma_long: 60                # 长期均线
-rsi_period: 14             # RSI周期
-macd_fast: 12              # MACD快线
-macd_slow: 26              # MACD慢线
-macd_signal: 9             # MACD信号线
-kdj_period: 9              # KDJ周期
-boll_period: 20            # 布林带周期
-boll_std: 2.0              # 布林带标准差倍数
-volume_ma_period: 20       # 成交量均线周期
+ma_short: 5
+ma_mid: 20
+ma_long: 60
+rsi_period: 14
+macd_fast: 12
+macd_slow: 26
+macd_signal: 9
+kdj_period: 9
+boll_period: 20
+boll_std: 2.0
+volume_ma_period: 20
 
 # 排除规则
 exclude_boards:
@@ -193,97 +209,57 @@ exclude_prefixes:
   - "4"
 ```
 
-### 参数优先级
-
-```
-命令行参数 > 配置文件 > 默认值
-```
+参数优先级：`命令行参数 > 配置文件 > 默认值`
 
 ---
 
-## 策略系统
+## 评分系统
 
-aimoon 支持可插拔的策略系统。内置 `TechnicalStrategy`（技术指标多因子策略），也可以自定义。
-
-### 自定义策略
+评分采用函数注册表模式，每个评分器是一个独立函数，返回 `Signal` 或 `None`。
 
 ```python
-from aimoon.strategies.base import Strategy
-from aimoon.strategies.screener import SignalScore
-import pandas as pd
+from aimoon.indicators.technical import TechInd
+from aimoon.models import Signal
+from aimoon.scoring import SCORERS, collect_signals
 
+# 内置评分器列表
+# score_momentum, score_rps, score_trend, score_macd,
+# score_rsi, score_kdj, score_bollinger, score_volume, score_sector
 
-class MyStrategy(Strategy):
-    """自定义策略示例"""
+# 自定义评分器
+def my_scorer(ti: TechInd, code: str = "", ctx: dict | None = None) -> Signal | None:
+    close = ti.kline["close"]
+    if close.iloc[-1] > close.rolling(60).mean().iloc[-1]:
+        return Signal(label="MA60上方", weight=2, direction=1)
+    return None
 
-    @property
-    def name(self) -> str:
-        return "my_strategy"
-
-    def score(self, code, name, kline, spot=None):
-        # 你的打分逻辑
-        if len(kline) < 60:
-            return None
-        last_close = float(kline["close"].iloc[-1])
-        ma60 = float(kline["close"].rolling(60).mean().iloc[-1])
-
-        total = 0
-        signals = []
-        if last_close > ma60:
-            total += 2
-            signals.append("价格在60日均线上方")
-        else:
-            total -= 2
-            signals.append("价格在60日均线下方")
-
-        return SignalScore(
-            stock_code=code,
-            stock_name=name,
-            price=last_close,
-            pct_change=0.0,
-            turnover=0.0,
-            total_score=total,
-            signals=signals,
-            suggestion="买入" if total >= 2 else "观望",
-            confidence="中" if total >= 2 else "低",
-        )
-```
-
-### 使用自定义策略
-
-```python
-from aimoon.strategies.screener import StockScreener
-
-screener = StockScreener(strategies=[MyStrategy()])
-# ... 正常使用 screener.screen_stock()
+# 注册并运行
+SCORERS.append(my_scorer)
+signals = collect_signals(ti, code="000001")
 ```
 
 ---
 
 ## Python API
 
-除了命令行，也可以在 Python 中使用：
-
 ```python
-from aimoon.data import get_spot_data, get_history_kline, filter_by_spot
-from aimoon.strategies.screener import StockScreener
-from aimoon.strategies.technical import TechnicalStrategy
-from aimoon.strategies.backtester import BacktestEngine
+from aimoon.data.spot import get_spot
+from aimoon.data.history import get_kline
+from aimoon.data.filters import filter_universe
+from aimoon.screener import screen_stock
+from aimoon.scoring.rps import compute_rps
+from aimoon.backtest import BacktestEngine
 
 # 获取数据
-spot = get_spot_data().unwrap()
-filtered = filter_by_spot(spot)
+spot = get_spot()
+filtered = filter_universe(spot)
 
-# 筛选
-screener = StockScreener()
-kline = get_history_kline("000001").unwrap()
-result = screener.screen_stock("000001", "平安银行", kline)
-if result:
-    print(f"{result.stock_name}: {result.total_score}分, {result.suggestion}")
+# 筛选单只股票
+kline = get_kline("000001").unwrap()
+result = screen_stock("000001", "平安银行", kline)
 
 # 回测
-strategy = TechnicalStrategy()
-engine = BacktestEngine(strategy, hold_days=5)
+engine = BacktestEngine(hold_days=5)
 bt = engine.run("000001", "平安银行", kline)
 print(f"收益率: {bt.total_return:+.2f}%, 胜率: {bt.win_rate:.0%}")
 ```
@@ -293,48 +269,50 @@ print(f"收益率: {bt.total_return:+.2f}%, 胜率: {bt.win_rate:.0%}")
 ## 项目结构
 
 ```
-aimoon/
-├── src/aimoon/
-│   ├── cli.py               # CLI入口
-│   ├── config.py             # 配置管理
-│   ├── data.py               # 数据获取（AKShare + 缓存）
-│   ├── result.py             # Ok/Err结果类型
-│   ├── cache/
-│   │   └── provider.py       # 文件缓存（pickle + TTL）
-│   ├── indicators/
-│   │   └── technical.py      # 技术指标计算
-│   ├── strategies/
-│   │   ├── base.py           # Strategy ABC
-│   │   ├── technical.py      # 技术指标打分策略
-│   │   ├── screener.py       # 策略编排器
-│   │   └── backtester.py     # 回测引擎
-│   └── output/
-│       └── formatter.py      # Rich表格 + CSV导出
-├── tests/                    # 测试（39个）
-├── pyproject.toml
-└── README.md
+src/aimoon/
+├── cli.py               # CLI 入口
+├── config.py             # 配置管理（AppConfig + YAML 加载）
+├── result.py             # Ok/Err 结果类型
+├── models.py             # 数据模型
+├── cache.py              # 文件缓存（pickle + TTL）
+├── screener.py           # 筛选编排器
+├── backtest.py           # 回测引擎
+├── demo.py               # 模拟数据演示
+├── output.py             # Rich 表格 + CSV/Markdown 导出
+├── data/
+│   ├── spot.py           # 实时行情（东方财富）
+│   ├── history.py        # 历史 K 线（AKShare + 腾讯备用）
+│   └── filters.py        # 基本面 / 北向 / 基金过滤
+├── indicators/
+│   └── technical.py      # 技术指标计算（MA/RSI/MACD/KDJ/BOLL/ROC/ADX）
+└── scoring/
+    ├── momentum.py       # 动量评分（ROC/新高新低/加速）
+    ├── rps.py            # 相对价格强度
+    ├── trend.py          # 趋势评分（MA/ADX）
+    ├── macd.py           # MACD 评分
+    ├── rsi.py            # RSI 评分
+    ├── kdj.py            # KDJ 评分
+    ├── bollinger.py      # 布林带评分
+    ├── volume.py         # 成交量评分
+    └── sector.py         # 板块动量评分
 ```
 
 ---
 
 ## 常见问题
 
-**Q: 运行时提示网络错误？**
+**Q: 网络错误？**
 
-检查网络连接。AKShare 依赖东方财富接口，需要能访问 `eastmoney.com`。
+AKShare 可能不稳定，系统会自动切换到腾讯 K 线接口。确保能访问 `eastmoney.com` 和 `gtimg.cn`。
 
-**Q: 如何只筛选特定板块？**
+**Q: 北向/基金数据获取失败？**
 
-编辑配置文件中的 `exclude_prefixes` 和 `exclude_boards`，移除不需要排除的项目。
+这些数据来自东方财富 datacenter，不影响核心筛选，获取失败时自动跳过。
 
-**Q: 缓存在哪里？**
+**Q: RPS 值全是 0？**
 
-默认在项目根目录的 `.aimoon_cache/` 文件夹，已加入 `.gitignore`。
+RPS 从 K 线数据计算，需要至少 21 天数据。缓存可能导致数据不足，运行 `aimoon cache clear` 后重试。
 
-**Q: 如何添加新的技术指标？**
+**Q: CSV/Markdown 输出到哪里？**
 
-在 `src/aimoon/indicators/technical.py` 的 `TechnicalIndicators` 类中添加方法，然后在 `src/aimoon/strategies/technical.py` 的 `TechnicalStrategy` 中使用它。
-
-**Q: CSV文件输出到哪里？**
-
-默认输出到 `output/` 目录，文件名格式 `screen_YYYYMMDD_HHMMSS.csv`。可通过配置文件的 `output_dir` 修改。
+默认 `output/` 目录，文件名格式 `screen_YYYYMMDD_HHMMSS.csv/.md`。可通过 `output_dir` 配置修改。

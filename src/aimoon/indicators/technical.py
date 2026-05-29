@@ -1,4 +1,4 @@
-"""Technical indicators calculation module"""
+"""Technical indicators calculation module with lazy caching"""
 from __future__ import annotations
 
 import pandas as pd
@@ -7,20 +7,48 @@ from aimoon.config import CONFIG
 
 
 class TechnicalIndicators:
-    """Calculate technical indicators for K-line data"""
+    """Calculate technical indicators for K-line data with lazy caching.
 
-    def __init__(self, df: pd.DataFrame) -> None:
-        self.df = df.copy()
-        self._close = pd.to_numeric(df["close"], errors="coerce")
-        self._high = pd.to_numeric(df["high"], errors="coerce")
-        self._low = pd.to_numeric(df["low"], errors="coerce")
-        self._volume = pd.to_numeric(df["volume"], errors="coerce")
+    Parameters
+    ----------
+    df : pd.DataFrame
+        K-line data with columns: close, high, low, volume.
+    start_idx : int, optional
+        If given, only rows from ``start_idx`` onward are used for indicator
+        calculations.  ``add_all_indicators()`` always operates on the full
+        DataFrame regardless of this parameter.
+    """
+
+    def __init__(self, df: pd.DataFrame, start_idx: int = 0) -> None:
+        self._df_original = df
+        self._start_idx = start_idx
+
+        sliced = df.iloc[start_idx:]
+        self._close = pd.to_numeric(sliced["close"], errors="coerce")
+        self._high = pd.to_numeric(sliced["high"], errors="coerce")
+        self._low = pd.to_numeric(sliced["low"], errors="coerce")
+        self._volume = pd.to_numeric(sliced["volume"], errors="coerce")
+
+        # Lazy caches
+        self._ma_cache: dict[int, pd.Series] = {}
+        self._ema_cache: dict[int, pd.Series] = {}
+        self._macd_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
+        self._kdj_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
+        self._boll_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
+
+    # ------------------------------------------------------------------
+    # Moving averages
+    # ------------------------------------------------------------------
 
     def ma(self, period: int) -> pd.Series:
-        return self._close.rolling(window=period).mean()
+        if period not in self._ma_cache:
+            self._ma_cache[period] = self._close.rolling(window=period).mean()
+        return self._ma_cache[period]
 
     def ema(self, period: int) -> pd.Series:
-        return self._close.ewm(span=period, adjust=False).mean()
+        if period not in self._ema_cache:
+            self._ema_cache[period] = self._close.ewm(span=period, adjust=False).mean()
+        return self._ema_cache[period]
 
     def ma_trend(self) -> str:
         ma_s = self.ma(CONFIG.ma_short)
@@ -48,6 +76,10 @@ class TechnicalIndicators:
             return False
         return ma_s.iloc[-2] >= ma_m.iloc[-2] and ma_s.iloc[-1] < ma_m.iloc[-1]
 
+    # ------------------------------------------------------------------
+    # RSI
+    # ------------------------------------------------------------------
+
     def rsi(self, period: int | None = None) -> pd.Series:
         period = period or CONFIG.rsi_period
         delta = self._close.diff()
@@ -55,7 +87,7 @@ class TechnicalIndicators:
         loss = (-delta).where(delta < 0, 0.0)
         avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
         avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
-        rs = avg_gain / avg_loss
+        rs = avg_gain / avg_loss.replace(0, 1e-10)
         return 100.0 - (100.0 / (1.0 + rs))
 
     def rsi_signal(self) -> str:
@@ -68,13 +100,19 @@ class TechnicalIndicators:
             return "overbought"
         return "neutral"
 
+    # ------------------------------------------------------------------
+    # MACD (cached)
+    # ------------------------------------------------------------------
+
     def macd(self) -> tuple[pd.Series, pd.Series, pd.Series]:
-        ema_fast = self.ema(CONFIG.macd_fast)
-        ema_slow = self.ema(CONFIG.macd_slow)
-        dif = ema_fast - ema_slow
-        dea = dif.ewm(span=CONFIG.macd_signal, adjust=False).mean()
-        macd_hist = 2 * (dif - dea)
-        return dif, dea, macd_hist
+        if self._macd_cache is None:
+            ema_fast = self.ema(CONFIG.macd_fast)
+            ema_slow = self.ema(CONFIG.macd_slow)
+            dif = ema_fast - ema_slow
+            dea = dif.ewm(span=CONFIG.macd_signal, adjust=False).mean()
+            macd_hist = 2 * (dif - dea)
+            self._macd_cache = (dif, dea, macd_hist)
+        return self._macd_cache
 
     def macd_golden_cross(self) -> bool:
         dif, dea, _ = self.macd()
@@ -91,21 +129,35 @@ class TechnicalIndicators:
     def macd_above_zero(self) -> bool:
         dif, _, _ = self.macd()
         return not pd.isna(dif.iloc[-1]) and dif.iloc[-1] > 0
+
+    # ------------------------------------------------------------------
+    # KDJ (cached)
+    # ------------------------------------------------------------------
+
     def kdj(self) -> tuple[pd.Series, pd.Series, pd.Series]:
-        period = CONFIG.kdj_period
-        low_min = self._low.rolling(window=period).min()
-        high_max = self._high.rolling(window=period).max()
-        rsv = (self._close - low_min) / (high_max - low_min) * 100
-        k = rsv.ewm(com=2, adjust=False).mean()
-        d = k.ewm(com=2, adjust=False).mean()
-        j = 3 * k - 2 * d
-        return k, d, j
+        if self._kdj_cache is None:
+            period = CONFIG.kdj_period
+            low_min = self._low.rolling(window=period).min()
+            high_max = self._high.rolling(window=period).max()
+            denom = (high_max - low_min).replace(0, 1e-10)
+            rsv = (self._close - low_min) / denom * 100
+            k = rsv.ewm(com=2, adjust=False).mean()
+            d = k.ewm(com=2, adjust=False).mean()
+            j = 3 * k - 2 * d
+            self._kdj_cache = (k, d, j)
+        return self._kdj_cache
 
     def kdj_golden_cross(self) -> bool:
         k, d, _ = self.kdj()
         if len(k) < 2 or pd.isna(k.iloc[-1]):
             return False
         return k.iloc[-2] <= d.iloc[-2] and k.iloc[-1] > d.iloc[-1]
+
+    def kdj_death_cross(self) -> bool:
+        k, d, _ = self.kdj()
+        if len(k) < 2 or pd.isna(k.iloc[-1]):
+            return False
+        return k.iloc[-2] >= d.iloc[-2] and k.iloc[-1] < d.iloc[-1]
 
     def kdj_oversold(self) -> bool:
         _, _, j = self.kdj()
@@ -114,13 +166,20 @@ class TechnicalIndicators:
     def kdj_overbought(self) -> bool:
         _, _, j = self.kdj()
         return not pd.isna(j.iloc[-1]) and j.iloc[-1] > 100
+
+    # ------------------------------------------------------------------
+    # Bollinger (cached)
+    # ------------------------------------------------------------------
+
     def bollinger(self) -> tuple[pd.Series, pd.Series, pd.Series]:
-        period = CONFIG.boll_period
-        mid = self.ma(period)
-        std = self._close.rolling(window=period).std()
-        upper = mid + CONFIG.boll_std * std
-        lower = mid - CONFIG.boll_std * std
-        return upper, mid, lower
+        if self._boll_cache is None:
+            period = CONFIG.boll_period
+            mid = self.ma(period)
+            std = self._close.rolling(window=period).std()
+            upper = mid + CONFIG.boll_std * std
+            lower = mid - CONFIG.boll_std * std
+            self._boll_cache = (upper, mid, lower)
+        return self._boll_cache
 
     def bollinger_position(self) -> str:
         upper, mid, lower = self.bollinger()
@@ -133,6 +192,10 @@ class TechnicalIndicators:
             return "below"
         return "middle"
 
+    # ------------------------------------------------------------------
+    # Volume
+    # ------------------------------------------------------------------
+
     def volume_ratio(self) -> float:
         vol_ma = self._volume.rolling(window=CONFIG.volume_ma_period).mean()
         if pd.isna(vol_ma.iloc[-1]) or vol_ma.iloc[-1] == 0:
@@ -144,6 +207,10 @@ class TechnicalIndicators:
 
     def volume_shrinking(self) -> bool:
         return self.volume_ratio() < 0.5
+
+    # ------------------------------------------------------------------
+    # Momentum
+    # ------------------------------------------------------------------
 
     def roc(self, period: int = 10) -> pd.Series:
         """Rate of Change - 价格变化率（%）。"""
@@ -197,24 +264,50 @@ class TechnicalIndicators:
         adx_val = dx.ewm(span=period, adjust=False).mean()
         return float(adx_val.iloc[-1]) if not pd.isna(adx_val.iloc[-1]) else 0.0
 
+    # ------------------------------------------------------------------
+    # Full indicator DataFrame (always uses the original, unsliced data)
+    # ------------------------------------------------------------------
+
     def add_all_indicators(self) -> pd.DataFrame:
-        df = self.df
-        df["ma5"] = self.ma(5)
-        df["ma10"] = self.ma(10)
-        df["ma20"] = self.ma(20)
-        df["ma60"] = self.ma(60)
-        df["rsi14"] = self.rsi(14)
-        dif, dea, hist = self.macd()
+        df = self._df_original.copy()
+        close = pd.to_numeric(df["close"], errors="coerce")
+        high = pd.to_numeric(df["high"], errors="coerce")
+        low = pd.to_numeric(df["low"], errors="coerce")
+        volume = pd.to_numeric(df["volume"], errors="coerce")
+
+        df["ma5"] = close.rolling(window=5).mean()
+        df["ma10"] = close.rolling(window=10).mean()
+        df["ma20"] = close.rolling(window=20).mean()
+        df["ma60"] = close.rolling(window=60).mean()
+        df["rsi14"] = close.diff().pipe(
+            lambda d: 100.0 - 100.0 / (1.0 + d.where(d > 0, 0.0).ewm(com=13, min_periods=14).mean()
+                                        / (-d).where(d < 0, 0.0).ewm(com=13, min_periods=14).mean().replace(0, 1e-10))
+        )
+        ema_fast = close.ewm(span=CONFIG.macd_fast, adjust=False).mean()
+        ema_slow = close.ewm(span=CONFIG.macd_slow, adjust=False).mean()
+        dif = ema_fast - ema_slow
+        dea = dif.ewm(span=CONFIG.macd_signal, adjust=False).mean()
         df["macd_dif"] = dif
         df["macd_dea"] = dea
-        df["macd_hist"] = hist
-        k, d, j = self.kdj()
+        df["macd_hist"] = 2 * (dif - dea)
+
+        period = CONFIG.kdj_period
+        low_min = low.rolling(window=period).min()
+        high_max = high.rolling(window=period).max()
+        rsv = (close - low_min) / (high_max - low_min).replace(0, 1e-10) * 100
+        k = rsv.ewm(com=2, adjust=False).mean()
+        d = k.ewm(com=2, adjust=False).mean()
         df["kdj_k"] = k
         df["kdj_d"] = d
-        df["kdj_j"] = j
-        upper, mid, lower = self.bollinger()
-        df["boll_upper"] = upper
-        df["boll_mid"] = mid
-        df["boll_lower"] = lower
-        df["vol_ratio"] = self._volume / self._volume.rolling(window=CONFIG.volume_ma_period).mean()
+        df["kdj_j"] = 3 * k - 2 * d
+
+        boll_mid = close.rolling(window=CONFIG.boll_period).mean()
+        boll_std = close.rolling(window=CONFIG.boll_period).std()
+        df["boll_upper"] = boll_mid + CONFIG.boll_std * boll_std
+        df["boll_mid"] = boll_mid
+        df["boll_lower"] = boll_mid - CONFIG.boll_std * boll_std
+        df["vol_ratio"] = volume / volume.rolling(window=CONFIG.volume_ma_period).mean()
         return df
+
+
+TechInd = TechnicalIndicators
