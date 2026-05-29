@@ -4,3 +4,5 @@
 /output/
 .pytest_cache/
 .aimoon_cache/
+dist/
+build/
