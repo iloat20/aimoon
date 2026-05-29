@@ -24,7 +24,9 @@ class TestComputeRps:
         a = next(r for r in results if r.code == "A")
         assert a.rps.get("rps5", 0) > 90
 
-    def test_short_tail_skipped(self) -> None:
+    def test_short_tail_passed_through(self) -> None:
         s = ScoredStock(code="A", name="A", price=10, pct_change=0, turnover=5)
         results = compute_rps([s], {"A": _tail([10] * 10)})
-        assert results[0].rps.get("rps_score", 0) == 0
+        assert len(results) == 1
+        assert results[0].code == "A"
+        assert results[0].signals == ()

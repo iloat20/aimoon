@@ -53,26 +53,30 @@ def screen_universe(
     results: list[ScoredStock] = []
     tails: dict[str, pd.DataFrame] = {}
 
-    def _process(row: pd.Series) -> None:
+    def _process(row: pd.Series) -> tuple[ScoredStock | None, str, pd.DataFrame | None]:
         code = row["stock_code"]
         name = row["stock_name"]
         kdf = (klines or {}).get(code)
         if kdf is None:
             r = get_kline(code, cfg.history_days, cache)
             if r.is_err():
-                return
+                return None, code, None
             kdf = r.unwrap()
         spot_row = row if "pe" in row.index else None
         scored = screen_stock(code, name, kdf, spot_row, ctx)
         if scored:
-            results.append(scored)
-            tails[code] = kdf.tail(25).copy()
+            return scored, code, kdf.tail(25).copy()
+        return None, code, None
 
     with ThreadPoolExecutor(max_workers=cfg.workers) as ex:
         futures = {ex.submit(_process, row): row["stock_code"] for _, row in universe.iterrows()}
         for fut in as_completed(futures):
             try:
-                fut.result()
+                scored, code, tail = fut.result()
+                if scored:
+                    results.append(scored)
+                    if tail is not None:
+                        tails[code] = tail
             except Exception as e:
                 logger.warning("Screen failed: %s", e)
     return results, tails

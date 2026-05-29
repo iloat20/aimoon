@@ -28,14 +28,15 @@ class TestScoredStock:
         s = self._stock([Signal("a", "A", 3), Signal("b", "B", -1)])
         assert s.total_score == 2
 
-    def test_total_score_includes_rps(self) -> None:
+    def test_total_score_ignores_rps_score_field(self) -> None:
+        """RPS score is carried via Signal objects, not the rps dict."""
         s = ScoredStock(
             code="000001", name="T", price=10.0,
             pct_change=0, turnover=0,
             signals=(Signal("a", "A", 2),),
             rps={"rps_score": 5},
         )
-        assert s.total_score == 7
+        assert s.total_score == 2
 
     def test_suggestion_thresholds(self) -> None:
         def stock_with_score(n: int) -> ScoredStock:

@@ -29,7 +29,7 @@ def _cached(key: str, ttl: int, fetcher):
         except Exception:
             pass
     result = fetcher()
-    if result:  # 不缓存空结果
+    if result is not None:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         path.write_bytes(pickle.dumps(result))
     return result
@@ -208,34 +208,6 @@ def _get_northbound(min_cap_yi: float) -> set[str]:
     return codes
 
 
-def _get_fund_holdings_codes(min_pct: float) -> set[str]:
-    """获取基金持股的股票代码（取持股数量前 500 名作为粗筛）。
-    精确的百分比过滤需要流通股数据，在行情获取后执行。
-    """
-    try:
-        today = date.today()
-        quarters = [(12, 31), (9, 30), (6, 30), (3, 31)]
-        report_date = next(
-            (date(today.year, m, d).strftime("%Y%m%d")
-             for m, d in quarters if date(today.year, m, d) <= today),
-            f"{today.year - 1}1231",
-        )
-        df = ak.stock_report_fund_hold(symbol="基金持仓", date=report_date)
-        if df is None or df.empty:
-            return set()
-        cols = df.columns.tolist()
-        code_col = next((c for c in cols if "代码" in str(c)), None)
-        shares_col = next((c for c in cols if "持股总数" in str(c) or "数量" in str(c)), None)
-        if code_col is None or shares_col is None:
-            logger.warning("Fund holdings: unexpected columns %s", cols)
-            return set()
-        df[shares_col] = pd.to_numeric(df[shares_col], errors="coerce").fillna(0)
-        return set(df.nlargest(500, shares_col)[code_col].astype(str).tolist())
-    except Exception as e:
-        logger.warning("Fund holdings fetch failed: %s", e)
-        return set()
-
-
 # ---------------------------------------------------------------------------
 # 基础过滤
 # ---------------------------------------------------------------------------
@@ -369,7 +341,7 @@ def _fetch_all_sectors(top_pct: float) -> dict[str, str]:
 def get_sector_context(df: pd.DataFrame, top_pct: float = 5.0) -> dict:
     """构建板块市场上下文（用于评分）。板块数据缓存 30 分钟。"""
     try:
-        sector_map: dict[str, str] = _cached("sectors", 86400, lambda: _fetch_all_sectors(top_pct))
+        sector_map: dict[str, str] = _cached(f"sectors_{top_pct}", 30 * 60, lambda: _fetch_all_sectors(top_pct))
     except Exception as e:
         logger.warning("Sector context fetch failed: %s", e)
         return {}

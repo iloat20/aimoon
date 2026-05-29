@@ -28,9 +28,7 @@ class ScoredStock:
 
     @property
     def total_score(self) -> int:
-        signal_sum = sum(s.score for s in self.signals)
-        rps_score = self.rps.get("rps_score", 0)
-        return signal_sum + rps_score
+        return sum(s.score for s in self.signals)
 
     @property
     def suggestion(self) -> tuple[str, str]:

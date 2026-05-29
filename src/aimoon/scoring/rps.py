@@ -30,12 +30,6 @@ def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> l
     for r in results:
         rps = {key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]}
         rps_red = sum(1 for v in rps.values() if v > 90)
-        if rps_red >= 3:
-            rps["rps_score"] = 5
-        elif rps_red >= 2:
-            rps["rps_score"] = 3
-        else:
-            rps["rps_score"] = 0
         rps_signals = list(r.signals)
         if rps_red >= 3:
             rps_signals.append(Signal("rps_triple", f"RPS三线翻红({rps_red}/4)", +5))
