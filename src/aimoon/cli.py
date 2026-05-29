@@ -32,8 +32,8 @@ def parse_args() -> argparse.Namespace:
     # backtest
     bt = sub.add_parser("backtest")
     bt.add_argument("--stocks", type=str, default="000001")
-    bt.add_argument("--hold-days", type=int, default=5)
-    bt.add_argument("--max-positions", type=int, default=10)
+    bt.add_argument("--hold-days", type=int, default=20)
+    bt.add_argument("--max-positions", type=int, default=2)
     bt.add_argument("--commission", type=float, default=0.0003)
     bt.add_argument("--slippage", type=float, default=0.001)
     bt.add_argument("--stamp-tax", type=float, default=0.0005)

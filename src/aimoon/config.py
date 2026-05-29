@@ -48,7 +48,8 @@ class Config:
     refresh: bool = False
     command: str | None = None
     stocks: str = "000001"
-    hold_days: int = 5
+    hold_days: int = 20
+    max_positions: int = 2
     # 排除规则
     exclude_boards: tuple[str, ...] = ("ST", "退", "北交所")
     exclude_prefixes: tuple[str, ...] = ("8", "4")
