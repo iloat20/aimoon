@@ -11,6 +11,12 @@ from rich.table import Table
 from aimoon.config import Config
 from aimoon.models import ScoredStock
 
+# 类型标注用（避免循环导入）
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from aimoon.backtest import PortfolioBacktest
+    from aimoon.factor_eval import FactorEval
+
 
 class OutputFormatter:
     def __init__(self, cfg: Config | None = None) -> None:
@@ -81,3 +87,66 @@ class OutputFormatter:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         return filepath
+
+    def display_factor_eval(self, evals: list[FactorEval]) -> None:
+        """显示因子评估报告。"""
+        if not evals:
+            self.console.print("[yellow]No factor evaluations to display[/yellow]")
+            return
+        table = Table(title="Factor Evaluation (IC/ICIR)")
+        table.add_column("Factor", style="cyan", width=25)
+        table.add_column("Mean IC", justify="right", width=10)
+        table.add_column("ICIR", justify="right", width=8)
+        table.add_column("IC>0%", justify="right", width=8)
+        table.add_column("L-S", justify="right", width=8)
+        table.add_column("Tier1", justify="right", width=8)
+        table.add_column("Tier2", justify="right", width=8)
+        table.add_column("Tier3", justify="right", width=8)
+        table.add_column("Tier4", justify="right", width=8)
+        table.add_column("Tier5", justify="right", width=8)
+        table.add_column("Significance", width=12)
+        for e in evals:
+            ic_color = "green" if e.mean_ic > 0.03 else ("yellow" if e.mean_ic > 0 else "red")
+            icir_color = "green" if abs(e.icir) > 0.5 else "dim"
+            sig = "***" if abs(e.mean_ic) > 0.05 and abs(e.icir) > 0.5 else ("**" if abs(e.mean_ic) > 0.03 else ("*" if abs(e.mean_ic) > 0.02 else ""))
+            tiers = []
+            for t in e.tier_returns:
+                color = "green" if t > 0 else "red"
+                tiers.append(f"[{color}]{t:+.2f}[/{color}]")
+            while len(tiers) < 5:
+                tiers.append("-")
+            table.add_row(
+                e.name,
+                f"[{ic_color}]{e.mean_ic:+.4f}[/{ic_color}]",
+                f"[{icir_color}]{e.icir:+.2f}[/{icir_color}]",
+                f"{e.ic_positive_ratio:.0%}",
+                f"[{'green' if e.long_short > 0 else 'red'}]{e.long_short:+.2f}[/{'green' if e.long_short > 0 else 'red'}]",
+                *tiers[:5],
+                sig,
+            )
+        self.console.print(table)
+
+    def display_portfolio_backtest(self, result: PortfolioBacktest) -> None:
+        """显示组合回测报告。"""
+        table = Table(title="Portfolio Backtest Results")
+        table.add_column("Metric", style="cyan", width=20)
+        table.add_column("Value", justify="right", width=12)
+
+        def _color(v: float, invert: bool = False) -> str:
+            if invert:
+                return "green" if v < 0 else "red"
+            return "green" if v > 0 else "red"
+
+        table.add_row("Total Return", f"[{_color(result.total_return)}]{result.total_return:+.2f}%[/{_color(result.total_return)}]")
+        table.add_row("Annual Return", f"[{_color(result.annual_return)}]{result.annual_return:+.2f}%[/{_color(result.annual_return)}]")
+        table.add_row("Sharpe Ratio", f"[{_color(result.sharpe_ratio)}]{result.sharpe_ratio:+.2f}[/{_color(result.sharpe_ratio)}]")
+        table.add_row("Max Drawdown", f"[{_color(result.max_drawdown, True)}]{result.max_drawdown:.2f}%[/{_color(result.max_drawdown, True)}]")
+        table.add_row("Calmar Ratio", f"{result.calmar_ratio:+.2f}")
+        table.add_row("Win Rate", f"{result.win_rate:.1%}")
+        table.add_row("Trade Count", str(result.trade_count))
+        table.add_row("Avg Hold Days", f"{result.avg_hold_days:.0f}")
+        table.add_row("Turnover Rate", f"{result.turnover_rate:.2f}")
+        if result.benchmark_return != 0.0:
+            table.add_row("Benchmark Return", f"{result.benchmark_return:+.2f}%")
+            table.add_row("Excess Return", f"[{_color(result.excess_return)}]{result.excess_return:+.2f}%[/{_color(result.excess_return)}]")
+        self.console.print(table)

@@ -2,7 +2,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-from aimoon.config import Config
 from aimoon.backtest import BacktestEngine, BacktestResult
 
 
@@ -25,12 +24,12 @@ def trending_kline() -> pd.DataFrame:
 
 class TestBacktestEngine:
     def test_returns_result(self, trending_kline: pd.DataFrame) -> None:
-        engine = BacktestEngine(Config(), hold_days=5)
-        result = engine.run("000001", "Test", trending_kline)
+        engine = BacktestEngine(hold_days=5)
+        result = engine.run_single("000001", "Test", trending_kline)
         assert isinstance(result, BacktestResult)
 
     def test_short_data_no_trades(self) -> None:
-        engine = BacktestEngine(Config(), hold_days=5)
+        engine = BacktestEngine(hold_days=5)
         df = pd.DataFrame({"close": [10.0] * 30}, index=pd.date_range("2025-01-01", periods=30))
-        result = engine.run("000001", "Test", df)
+        result = engine.run_single("000001", "Test", df)
         assert result.trade_count == 0

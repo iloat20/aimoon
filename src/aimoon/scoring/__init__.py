@@ -3,20 +3,24 @@ from __future__ import annotations
 from typing import Callable, Union
 from aimoon.indicators.technical import TechInd
 from aimoon.models import Signal
+from aimoon.scoring.momentum import score_momentum
+from aimoon.scoring.momentum_ext import score_momentum_ext
 from aimoon.scoring.trend import score_trend
+from aimoon.scoring.trend_ext import score_trend_ext
 from aimoon.scoring.rsi import score_rsi
 from aimoon.scoring.macd import score_macd
 from aimoon.scoring.kdj import score_kdj
 from aimoon.scoring.volume import score_volume
 from aimoon.scoring.bollinger import score_bollinger
-from aimoon.scoring.momentum import score_momentum
 from aimoon.scoring.sector import score_sector
 
 Scorer = Callable[..., Union[Signal, list[Signal], None]]
 
 SCORERS: list[Scorer] = [
-    score_trend, score_rsi, score_macd, score_kdj,
-    score_volume, score_bollinger, score_momentum, score_sector,
+    score_momentum, score_momentum_ext,  # 动量为主
+    score_trend, score_trend_ext,         # 趋势辅助
+    score_rsi, score_macd, score_kdj,
+    score_volume, score_bollinger, score_sector,
 ]
 
 

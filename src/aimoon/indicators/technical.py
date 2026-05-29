@@ -265,6 +265,141 @@ class TechnicalIndicators:
         return float(adx_val.iloc[-1]) if not pd.isna(adx_val.iloc[-1]) else 0.0
 
     # ------------------------------------------------------------------
+    # ATR (Average True Range)
+    # ------------------------------------------------------------------
+
+    def atr(self, period: int = 14) -> pd.Series:
+        """ATR — 平均真实波幅。"""
+        tr = pd.concat([
+            self._high - self._low,
+            (self._high - self._close.shift(1)).abs(),
+            (self._low - self._close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+        return tr.ewm(span=period, adjust=False).mean()
+
+    def atr_pct(self, period: int = 14) -> float:
+        """ATR 占收盘价百分比（波动率代理）。"""
+        a = self.atr(period)
+        if pd.isna(a.iloc[-1]) or self._close.iloc[-1] == 0:
+            return 0.0
+        return float(a.iloc[-1] / self._close.iloc[-1] * 100)
+
+    # ------------------------------------------------------------------
+    # OBV (On-Balance Volume)
+    # ------------------------------------------------------------------
+
+    def obv(self) -> pd.Series:
+        """OBV — 能量潮指标。"""
+        direction = self._close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+        return (self._volume * direction).cumsum()
+
+    def obv_slope(self, n: int = 10) -> float:
+        """OBV 的 N 日线性回归斜率（归一化）。"""
+        o = self.obv()
+        if len(o) < n:
+            return 0.0
+        recent = o.iloc[-n:].values
+        x = range(n)
+        slope = (n * sum(i * v for i, v in enumerate(recent)) - sum(x) * sum(recent)) / (n * sum(i**2 for i in x) - sum(x)**2)
+        mean_vol = float(self._volume.iloc[-n:].mean())
+        if mean_vol == 0:
+            return 0.0
+        return slope / mean_vol * 100
+
+    # ------------------------------------------------------------------
+    # VWAP (Volume-Weighted Average Price)
+    # ------------------------------------------------------------------
+
+    def vwap(self, n: int = 20) -> pd.Series:
+        """N 日滚动 VWAP。"""
+        typical = (self._high + self._low + self._close) / 3
+        tv = typical * self._volume
+        return tv.rolling(n).sum() / self._volume.rolling(n).sum().replace(0, 1e-10)
+
+    def vwap_deviation(self, n: int = 20) -> float:
+        """收盘价相对 VWAP 的偏离百分比。"""
+        v = self.vwap(n)
+        if pd.isna(v.iloc[-1]) or v.iloc[-1] == 0:
+            return 0.0
+        return float((self._close.iloc[-1] - v.iloc[-1]) / v.iloc[-1] * 100)
+
+    # ------------------------------------------------------------------
+    # 收益偏度
+    # ------------------------------------------------------------------
+
+    def return_skew(self, n: int = 20) -> float:
+        """N 日收益序列的偏度。正偏 = 右尾厚。"""
+        ret = self._close.pct_change().iloc[-n:]
+        if len(ret) < 3 or ret.std() == 0:
+            return 0.0
+        return float(ret.skew())
+
+    # ------------------------------------------------------------------
+    # 动量持久度
+    # ------------------------------------------------------------------
+
+    def momentum_persistence(self, n: int = 20) -> float:
+        """近 N 日中正收益天数占比（0-1）。"""
+        ret = self._close.pct_change().iloc[-n:]
+        if len(ret) == 0:
+            return 0.5
+        return float((ret > 0).sum() / len(ret))
+
+    # ------------------------------------------------------------------
+    # 上涨/下跌成交量比
+    # ------------------------------------------------------------------
+
+    def up_down_volume_ratio(self, n: int = 20) -> float:
+        """上涨日均成交量 / 下跌日均成交量。>1 = 上涨时量大。"""
+        ret = self._close.pct_change().iloc[-n:]
+        vol = self._volume.iloc[-n:]
+        up_vol = vol[ret > 0].mean() if (ret > 0).any() else 0
+        down_vol = vol[ret < 0].mean() if (ret < 0).any() else 0
+        if down_vol == 0:
+            return 2.0 if up_vol > 0 else 1.0
+        return float(up_vol / down_vol)
+
+    # ------------------------------------------------------------------
+    # 最大回撤及恢复
+    # ------------------------------------------------------------------
+
+    def max_drawdown(self, n: int = 60) -> float:
+        """近 N 日最大回撤百分比（0-100）。"""
+        c = self._close.iloc[-n:]
+        if len(c) < 2:
+            return 0.0
+        peak = c.cummax()
+        dd = (c - peak) / peak * 100
+        return float(dd.min())
+
+    def drawdown_recovery(self, n: int = 60) -> float:
+        """从 N 日内最大回撤低点的反弹幅度（%）。"""
+        c = self._close.iloc[-n:]
+        if len(c) < 2:
+            return 0.0
+        peak = c.cummax()
+        dd = (c - peak) / peak
+        min_idx = dd.idxmin()
+        min_val = c.loc[min_idx]
+        current = c.iloc[-1]
+        if min_val == 0:
+            return 0.0
+        return float((current - min_val) / min_val * 100)
+
+    # ------------------------------------------------------------------
+    # 新高新低计数
+    # ------------------------------------------------------------------
+
+    def high_low_count(self, n: int = 60) -> tuple[int, int]:
+        """近 N 日新高/新低次数。"""
+        c = self._close.iloc[-n:]
+        if len(c) < 2:
+            return 0, 0
+        highs = sum(1 for i in range(1, len(c)) if c.iloc[i] >= c.iloc[:i].max())
+        lows = sum(1 for i in range(1, len(c)) if c.iloc[i] <= c.iloc[:i].min())
+        return highs, lows
+
+    # ------------------------------------------------------------------
     # Full indicator DataFrame (always uses the original, unsliced data)
     # ------------------------------------------------------------------
 
