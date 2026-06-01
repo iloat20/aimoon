@@ -8,6 +8,32 @@ from aimoon.models import ScoredStock, Signal
 
 logger = logging.getLogger(__name__)
 
+# Signal name prefix -> scorer name mapping for IC weight lookup.
+_SIGNAL_TO_SCORER: dict[str, str] = {
+    "roc5_": "score_momentum", "roc10_": "score_momentum", "roc20_": "score_momentum",
+    "accel_": "score_momentum", "decel_": "score_momentum",
+    "high_": "score_momentum", "low_": "score_momentum", "adx_strong": "score_momentum",
+    "roc3_": "score_momentum_ext", "roc40_": "score_momentum_ext",
+    "roc60_": "score_momentum_ext", "roc120_": "score_momentum_ext",
+    "rps_ext_": "score_momentum_ext",
+    "vol_adj_": "score_momentum_ext", "persist_": "score_momentum_ext",
+    "skew_": "score_momentum_ext", "ud_vol_": "score_momentum_ext",
+    "obv_": "score_momentum_ext", "vwap_": "score_momentum_ext",
+    "recovery_": "score_momentum_ext", "hl_net_": "score_momentum_ext",
+    "crash_filter": "score_momentum_ext",
+    "ma_golden": "score_trend", "ma_death": "score_trend",
+    "ma_align_": "score_trend_ext", "above_ma20_60": "score_trend_ext",
+    "above_ma20": "score_trend_ext", "below_ma20_60": "score_trend_ext",
+    "adx_bull_": "score_trend_ext", "adx_bear_": "score_trend_ext",
+    "macd_red_": "score_trend_ext", "macd_green_": "score_trend_ext",
+    "ema_slope_": "score_trend_ext",
+    "rps_": "score_rps", "rsi_": "score_rsi", "macd_": "score_macd",
+    "kdj_": "score_kdj", "volume_": "score_volume",
+    "boll_": "score_bollinger", "sector_": "score_sector",
+    "reversal_": "score_reversal",
+    "alpha_": "score_alpha",  # Alpha Zoo 截面因子
+}
+
 
 def ic_weighted_score(
     scored: ScoredStock,
@@ -17,27 +43,23 @@ def ic_weighted_score(
     if not ic_weights:
         return scored
 
-    total = 0.0
+    weighted = 0.0
     for s in scored.signals:
-        # 信号名匹配权重：尝试 scorer 级别匹配
         weight = _find_weight(s.name, ic_weights)
-        total += s.score * weight
+        weighted += s.score * weight
 
-    # RPS 信号也参与加权
-    rps_score = sum(
-        s.score * _find_weight(s.name, ic_weights)
-        for s in scored.signals
-        if s.name.startswith("rps")
+    raw = scored.total_score
+    diff = weighted - raw
+    if abs(diff) < 0.01:
+        return scored
+
+    synthetic = Signal("ic_weight_adj", "IC权重调整", int(round(diff)))
+    return ScoredStock(
+        code=scored.code, name=scored.name, price=scored.price,
+        pct_change=scored.pct_change, turnover=scored.turnover,
+        pe=scored.pe, pb=scored.pb, market_cap_yi=scored.market_cap_yi,
+        signals=scored.signals + (synthetic,), rps=scored.rps,
     )
-
-    # 将加权后的总分通过一个内部信号表示
-    # 这里我们保留原始信号，但可以覆盖 total_score 的计算
-    # 实际上 ScoredStock.total_score 是 @property，无法直接修改
-    # 所以我们返回一个带额外信号的新 ScoredStock
-    adjusted_signals = list(scored.signals)
-    # 不修改原始信号，加权逻辑在外部使用
-
-    return scored
 
 
 def ic_weighted_combine(
@@ -103,18 +125,14 @@ def industry_neutralize(
 
 
 def _find_weight(signal_name: str, ic_weights: dict[str, float]) -> float:
-    """从 IC 权重字典中找到匹配的权重。
-
-    信号名格式: scorer_name + 描述（如 "roc5_strong"）
-    scorer 名: score_momentum, score_momentum_ext, score_trend, 等
-    """
-    # 精确匹配
+    """从 IC 权重字典中找到匹配的权重。"""
+    # Exact match
     if signal_name in ic_weights:
         return ic_weights[signal_name]
 
-    # 前缀匹配：信号名的前几段匹配 scorer 名
-    for key, weight in ic_weights.items():
-        if signal_name.startswith(key.removeprefix("score_")):
-            return weight
+    # Look up scorer via prefix mapping, then find weight by scorer key
+    for prefix, scorer in _SIGNAL_TO_SCORER.items():
+        if signal_name.startswith(prefix):
+            return ic_weights.get(scorer, 1.0)
 
-    return 1.0  # 默认权重
+    return 1.0

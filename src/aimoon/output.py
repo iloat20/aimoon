@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class OutputFormatter:
     def __init__(self, cfg: Config | None = None) -> None:
-        self.console = Console()
+        self.console = Console(force_terminal=True)
         self.cfg = cfg or Config()
 
     def display(self, results: list[ScoredStock]) -> None:
@@ -36,10 +36,9 @@ class OutputFormatter:
         table.add_column("Score", justify="right", width=6)
         table.add_column("Suggestion", width=10)
         table.add_column("Conf.", width=6)
-        table.add_column("Signals", width=30)
         for i, r in enumerate(results, 1):
             ps = "green" if r.pct_change >= 0 else "red"
-            ts = "bold green" if r.total_score >= 4 else ("yellow" if r.total_score >= 0 else "red")
+            ts = "bold green" if r.total_score >= 65 else ("yellow" if r.total_score >= 35 else "red")
             sug, conf = r.suggestion
             ss = "bold green" if "买" in sug else ("red" if "卖" in sug else "dim")
             table.add_row(
@@ -47,7 +46,6 @@ class OutputFormatter:
                 f"[{ps}]{r.pct_change:+.2f}[/{ps}]",
                 f"[{ts}]{r.total_score}[/{ts}]",
                 f"[{ss}]{sug}[/{ss}]", conf,
-                " | ".join(s.label for s in r.signals) if r.signals else "-",
             )
         self.console.print(table)
         self.console.print(f"\n[dim]Total: {len(results)} stocks[/dim]")
@@ -65,25 +63,66 @@ class OutputFormatter:
                 "pct_change": r.pct_change, "turnover": r.turnover,
                 "pe": r.pe, "pb": r.pb, "market_cap_yi": r.market_cap_yi,
                 "total_score": r.total_score, "suggestion": sug, "confidence": conf,
-                "signals": " | ".join(s.label for s in r.signals),
                 **r.rps,
             })
         pd.DataFrame(rows).to_csv(filepath, index=False, encoding="utf-8-sig")
         return filepath
 
-    def export_markdown(self, results: list[ScoredStock], filename: str | None = None) -> str:
+    def export_markdown(self, results: list[ScoredStock], filename: str | None = None,
+                        regime: str | None = None) -> str:
+        from aimoon.scoring import category_capped_score
         if not filename:
             filename = f"aimoon_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         os.makedirs(self.cfg.output_dir, exist_ok=True)
         filepath = os.path.join(self.cfg.output_dir, filename)
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
-        lines = [f"# A股量化筛选结果 {now}", "", f"共筛选 {len(results)} 只股票", ""]
-        lines += ["| No. | Code | Name | Price | Score | Suggestion | Conf. | Signals |",
-                  "|-----|------|------|-------|-------|------------|-------|---------|"]
-        for i, r in enumerate(results, 1):
+        lines = [f"# A股量化筛选报告 {now}", ""]
+
+        # Market regime
+        if regime:
+            lines += [f"**市场状态：{regime}**", ""]
+
+        # Scored with capped score for ranking
+        ranked = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)
+
+        # Trading advice sections
+        top1 = ranked[0] if ranked else None
+        if top1:
+            top1_score = category_capped_score(list(top1.signals))
+            risk_sigs = [s for s in top1.signals if any(k in s.name for k in
+                         ["overbought", "overextended", "exhaustion", "crash", "weak", "bearish", "death", "below_ma"])]
+            lines += [
+                "## 交易建议", "",
+                "### 首选买入", "",
+                f"**{top1.code} {top1.name}** — 价格 {top1.price:.2f}，分类评分 {top1_score}",
+                "",
+                f"- 止损：{self.cfg.stop_loss_pct:.0%}  止盈：{self.cfg.take_profit_pct:.0%}  持仓上限：{self.cfg.hold_days}天",
+                "",
+            ]
+
+        # Strong buy candidates (top 5)
+        strong_buy = [s for s in ranked if category_capped_score(list(s.signals)) >= 15][:5]
+        if len(strong_buy) > 1:
+            lines += ["### 强势候选（前5）", "",
+                       "| 代码 | 名称 | 价格 | 分类评分 | 建议 |",
+                       "|------|------|------|----------|------|"]
+            for s in strong_buy:
+                cs = category_capped_score(list(s.signals))
+                sug, conf = s.suggestion
+                lines.append(f"| {s.code} | {s.name} | {s.price:.2f} | {cs} | {sug} |")
+            lines.append("")
+
+        # Full ranked table
+        lines += ["## 完整筛选结果", "",
+                  f"共筛选 {len(ranked)} 只股票（按分类评分排序）", "",
+                  "| No. | Code | Name | Price | CapScore | RawScore | Suggestion |",
+                  "|-----|------|------|-------|----------|----------|------------|"]
+        for i, r in enumerate(ranked, 1):
             sug, conf = r.suggestion
-            sigs = " / ".join(s.label for s in r.signals).replace("|", "\\|") if r.signals else "-"
-            lines.append(f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {r.total_score} | {sug} | {conf} | {sigs} |")
+            cs = category_capped_score(list(r.signals))
+            lines.append(f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |")
+
+        lines += ["", f"---\n\n*报告生成时间: {now}*"]
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         return filepath
@@ -141,7 +180,7 @@ class OutputFormatter:
         table.add_row("Annual Return", f"[{_color(result.annual_return)}]{result.annual_return:+.2f}%[/{_color(result.annual_return)}]")
         table.add_row("Sharpe Ratio", f"[{_color(result.sharpe_ratio)}]{result.sharpe_ratio:+.2f}[/{_color(result.sharpe_ratio)}]")
         table.add_row("Max Drawdown", f"[{_color(result.max_drawdown, True)}]{result.max_drawdown:.2f}%[/{_color(result.max_drawdown, True)}]")
-        table.add_row("Calmar Ratio", f"{result.calmar_ratio:+.2f}")
+        table.add_row("Calmar Ratio", f"[{_color(result.calmar_ratio)}]{result.calmar_ratio:+.2f}[/{_color(result.calmar_ratio)}]")
         table.add_row("Win Rate", f"{result.win_rate:.1%}")
         table.add_row("Trade Count", str(result.trade_count))
         table.add_row("Avg Hold Days", f"{result.avg_hold_days:.0f}")
@@ -150,3 +189,237 @@ class OutputFormatter:
             table.add_row("Benchmark Return", f"{result.benchmark_return:+.2f}%")
             table.add_row("Excess Return", f"[{_color(result.excess_return)}]{result.excess_return:+.2f}%[/{_color(result.excess_return)}]")
         self.console.print(table)
+
+    def display_enhanced_backtest(self, result) -> None:
+        """显示增强回测报告（Sortino/盈亏比/基准对比）。"""
+        table = Table(title="Enhanced Portfolio Backtest")
+        table.add_column("Metric", style="cyan", width=20)
+        table.add_column("Value", justify="right", width=12)
+
+        def _c(v: float, invert: bool = False) -> str:
+            if invert:
+                return "green" if v < 0 else "red"
+            return "green" if v > 0 else "red"
+
+        table.add_row("Total Return", f"[{_c(result.total_return)}]{result.total_return:+.2f}%[/{_c(result.total_return)}]")
+        table.add_row("Annual Return", f"[{_c(result.annual_return)}]{result.annual_return:+.2f}%[/{_c(result.annual_return)}]")
+        table.add_row("Sharpe Ratio", f"[{_c(result.sharpe_ratio)}]{result.sharpe_ratio:+.2f}[/{_c(result.sharpe_ratio)}]")
+        table.add_row("Sortino Ratio", f"[{_c(result.sortino_ratio)}]{result.sortino_ratio:+.2f}[/{_c(result.sortino_ratio)}]")
+        table.add_row("Max Drawdown", f"[{_c(result.max_drawdown, True)}]{result.max_drawdown:.2f}%[/{_c(result.max_drawdown, True)}]")
+        table.add_row("Calmar Ratio", f"[{_c(result.calmar_ratio)}]{result.calmar_ratio:+.2f}[/{_c(result.calmar_ratio)}]")
+        table.add_row("Win Rate", f"{result.win_rate:.1%}")
+        table.add_row("Profit Factor", f"{result.profit_factor:.2f}")
+        table.add_row("Avg Win", f"[green]{result.avg_win:+.2f}%[/green]")
+        table.add_row("Avg Loss", f"[red]{result.avg_loss:+.2f}%[/red]")
+        table.add_row("Trade Count", str(result.trade_count))
+        table.add_row("Avg Hold Days", f"{result.avg_hold_days:.0f}")
+        if result.benchmark_return != 0.0:
+            table.add_row("Benchmark", f"{result.benchmark_return:+.2f}%")
+            table.add_row("Excess Return", f"[{_c(result.excess_return)}]{result.excess_return:+.2f}%[/{_c(result.excess_return)}]")
+        self.console.print(table)
+
+    def display_optimize(self, results) -> None:
+        """显示参数优化结果。"""
+        if not results:
+            self.console.print("[yellow]No optimization results.[/yellow]")
+            return
+        table = Table(title="Parameter Optimization Results")
+        table.add_column("Rank", style="dim", width=4)
+        table.add_column("Params", style="cyan", width=30)
+        table.add_column("Sharpe", justify="right", width=8)
+        table.add_column("Sortino", justify="right", width=8)
+        table.add_column("Return%", justify="right", width=8)
+        table.add_column("MaxDD%", justify="right", width=8)
+        table.add_column("Trades", justify="right", width=6)
+
+        for i, r in enumerate(results[:20], 1):
+            params_str = ", ".join(f"{k}={v}" for k, v in sorted(r.params.items()))
+            sc = "green" if r.sharpe > 0 else "red"
+            rc = "green" if r.total_return > 0 else "red"
+            table.add_row(
+                str(i), params_str,
+                f"[{sc}]{r.sharpe:+.2f}[/{sc}]",
+                f"{r.sortino:+.2f}",
+                f"[{rc}]{r.total_return:+.2f}[/{rc}]",
+                f"{r.max_drawdown:.2f}",
+                str(r.trade_count),
+            )
+        self.console.print(table)
+
+    def display_walk_forward(self, result) -> None:
+        """显示 Walk-Forward 验证结果。"""
+        if not result.splits:
+            self.console.print("[yellow]Not enough data for walk-forward validation.[/yellow]")
+            return
+        table = Table(title="Walk-Forward Validation")
+        table.add_column("Split", style="dim", width=5)
+        table.add_column("Train Period", style="cyan", width=22)
+        table.add_column("Test Period", style="cyan", width=22)
+        table.add_column("Train Sharpe", justify="right", width=10)
+        table.add_column("Test Sharpe", justify="right", width=10)
+        table.add_column("Test Return%", justify="right", width=10)
+        table.add_column("Test MaxDD%", justify="right", width=10)
+
+        for s in result.splits:
+            sc = "green" if s.test_sharpe > 0 else "red"
+            rc = "green" if s.test_return > 0 else "red"
+            table.add_row(
+                str(s.split_idx + 1),
+                f"{s.train_start[:10]} ~ {s.train_end[:10]}",
+                f"{s.test_start[:10]} ~ {s.test_end[:10]}",
+                f"{s.train_sharpe:+.2f}",
+                f"[{sc}]{s.test_sharpe:+.2f}[/{sc}]",
+                f"[{rc}]{s.test_return:+.2f}[/{rc}]",
+                f"{s.test_max_dd:.2f}",
+            )
+        self.console.print(table)
+
+        # Summary
+        summary = Table(title="Walk-Forward Summary", show_header=False)
+        summary.add_column("Metric", style="cyan", width=20)
+        summary.add_column("Value", justify="right", width=12)
+        sc = "green" if result.avg_test_sharpe > 0 else "red"
+        summary.add_row("Stability Score", f"[{sc}]{result.stability_score:+.2f}[/{sc}]")
+        summary.add_row("Avg Test Sharpe", f"[{sc}]{result.avg_test_sharpe:+.2f}[/{sc}]")
+        rc = "green" if result.avg_test_return > 0 else "red"
+        summary.add_row("Avg Test Return", f"[{rc}]{result.avg_test_return:+.2f}%[/{rc}]")
+        self.console.print(summary)
+
+    def export_backtest_report(
+        self,
+        result,
+        top_stocks: list,
+        cfg,
+        filename: str | None = None,
+    ) -> str:
+        """生成完整回测报告 Markdown 文档，用于参数调优。"""
+        if not filename:
+            filename = f"backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        os.makedirs(self.cfg.output_dir, exist_ok=True)
+        filepath = os.path.join(self.cfg.output_dir, filename)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        lines = [
+            f"# A股量化回测报告 {now}",
+            "",
+            "---",
+            "",
+            "## 一、回测参数",
+            "",
+            "| 参数 | 值 | 说明 |",
+            "|------|----|------|",
+            f"| history_days | {cfg.history_days} | 历史数据天数 |",
+            f"| hold_days | {cfg.hold_days} | 持仓天数 |",
+            f"| max_positions | {cfg.max_positions} | 最大持仓数 |",
+            f"| top_n | {cfg.top_n} | 筛选候选数 |",
+            f"| stop_loss_pct | {cfg.stop_loss_pct:.0%} | 止损比例 |",
+            f"| take_profit_pct | {cfg.take_profit_pct:.0%} | 止盈比例 |",
+            f"| rsi_period | {cfg.rsi_period} | RSI 周期 |",
+            f"| macd_fast/slow/signal | {cfg.macd_fast}/{cfg.macd_slow}/{cfg.macd_signal} | MACD 参数 |",
+            f"| kdj_period | {cfg.kdj_period} | KDJ 周期 |",
+            f"| boll_period/std | {cfg.boll_period}/{cfg.boll_std} | 布林带参数 |",
+            f"| ma_short/mid/long | {cfg.ma_short}/{cfg.ma_mid}/{cfg.ma_long} | 均线参数 |",
+            f"| min_market_cap_yi | {cfg.min_market_cap_yi} | 最小市值(亿) |",
+            f"| max_market_cap_yi | {cfg.max_market_cap_yi} | 最大市值(亿) |",
+            f"| max_pb | {cfg.max_pb} | 最大市净率 |",
+            f"| benchmark_code | {cfg.benchmark_code} | 基准指数 |",
+            "",
+            "## 二、筛选股票",
+            "",
+            "| 排名 | 代码 | 名称 | 价格 | 涨跌% | 总分 | 信号 |",
+            "|------|------|------|------|-------|------|------|",
+        ]
+        for i, s in enumerate(top_stocks, 1):
+            sigs = " / ".join(sig.label for sig in s.signals) if s.signals else "-"
+            lines.append(
+                f"| {i} | {s.code} | {s.name} | {s.price:.2f} | {s.pct_change:+.2f} | {s.total_score} | {sigs} |"
+            )
+
+        lines += [
+            "",
+            "## 三、回测结果",
+            "",
+            "| 指标 | 数值 |",
+            "|------|------|",
+            f"| 总收益 | {result.total_return:+.2f}% |",
+            f"| 年化收益 | {result.annual_return:+.2f}% |",
+            f"| 夏普比率 | {result.sharpe_ratio:+.2f} |",
+            f"| Sortino 比率 | {result.sortino_ratio:+.2f} |",
+            f"| 最大回撤 | {result.max_drawdown:.2f}% |",
+            f"| Calmar 比率 | {result.calmar_ratio:+.2f} |",
+            f"| 胜率 | {result.win_rate:.1%} |",
+            f"| 盈亏比 | {result.profit_factor:.2f} |",
+            f"| 平均盈利 | {result.avg_win:+.2f}% |",
+            f"| 平均亏损 | {result.avg_loss:+.2f}% |",
+            f"| 交易次数 | {result.trade_count} |",
+            f"| 平均持仓天数 | {result.avg_hold_days:.0f} |",
+        ]
+        if result.benchmark_return != 0.0:
+            lines += [
+                f"| 基准收益 | {result.benchmark_return:+.2f}% |",
+                f"| 超额收益 | {result.excess_return:+.2f}% |",
+            ]
+
+        lines += [
+            "",
+            "## 四、交易明细",
+            "",
+            "| 代码 | 名称 | 买入日 | 卖出日 | 买入价 | 卖出价 | 收益% | 退出原因 | 持仓天数 |",
+            "|------|------|--------|--------|--------|--------|-------|----------|----------|",
+        ]
+        for t in result.trades:
+            rc = "+" if t.return_pct >= 0 else ""
+            lines.append(
+                f"| {t.code} | {t.name} | {t.entry_date} | {t.exit_date} | "
+                f"{t.entry_price:.2f} | {t.exit_price:.2f} | {rc}{t.return_pct:.2f} | "
+                f"{t.exit_reason} | {t.hold_days} |"
+            )
+
+        # 按退出原因统计
+        reasons: dict[str, list] = {}
+        for t in result.trades:
+            reasons.setdefault(t.exit_reason, []).append(t.return_pct)
+        lines += [
+            "",
+            "## 五、退出原因统计",
+            "",
+            "| 退出原因 | 次数 | 平均收益% | 胜率 |",
+            "|----------|------|-----------|------|",
+        ]
+        for reason, rets in sorted(reasons.items()):
+            avg = sum(rets) / len(rets)
+            wr = sum(1 for r in rets if r > 0) / len(rets)
+            lines.append(f"| {reason} | {len(rets)} | {avg:+.2f} | {wr:.0%} |")
+
+        # 参数调优建议
+        lines += [
+            "",
+            "## 六、参数调优建议",
+            "",
+            "| 当前值 | 建议方向 | 原因 |",
+            "|--------|----------|------|",
+        ]
+        if result.win_rate < 0.45:
+            lines.append(f"| 胜率 {result.win_rate:.0%} | 提高入场阈值 | 胜率偏低，考虑提高 entry_threshold |")
+        if result.max_drawdown > 15:
+            lines.append(f"| 回撤 {result.max_drawdown:.1f}% | 收紧止损 | 回撤偏大，考虑降低 stop_loss_pct |")
+        if result.profit_factor < 1.5:
+            lines.append(f"| 盈亏比 {result.profit_factor:.2f} | 调整止盈/止损 | 盈亏比偏低，考虑扩大 take_profit 或收紧 stop_loss |")
+        if result.sortino_ratio < 1.0:
+            lines.append(f"| Sortino {result.sortino_ratio:.2f} | 减少下行风险 | Sortino 偏低，下行波动较大 |")
+        if result.win_rate >= 0.55 and result.profit_factor >= 2.0:
+            lines.append("| - | 参数较优 | 胜率>55%且盈亏比>2.0，当前参数组合表现良好 |")
+
+        lines += [
+            "",
+            "## 七、图表",
+            "",
+            "- 权益曲线: `output/equity_curve.png`",
+            "- 回撤图: `output/drawdown.png`",
+            "- 月度收益: `output/monthly_returns.png`",
+            "",
+            f"---\n\n*报告生成时间: {now}*",
+        ]
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return filepath

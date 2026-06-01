@@ -31,7 +31,10 @@ class TestFilterUniverse:
             "price": [2.0], "turnover": [5.0],
             "total_market_cap": [1e10], "float_market_cap": [5e9],
         })
-        assert len(filter_universe(df, cfg)) == 0
+        # min_price=0.0 means no price filter applied; price=2.0 survives
+        result = filter_universe(df, cfg)
+        assert len(result) == 1
+        assert float(result.iloc[0]["price"]) == 2.0
 
     def test_excludes_st(self, spot_df: pd.DataFrame) -> None:
         cfg = Config()

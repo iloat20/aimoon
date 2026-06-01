@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-import os
 import pickle
 import random
 import time
@@ -40,18 +39,23 @@ def _em_get(url: str, params: dict, timeout: int = 15, max_retries: int = 3) -> 
 def _em_fetch_all_pages(base_url: str, base_params: dict, timeout: int = 15) -> pd.DataFrame:
     r = _em_get(base_url, base_params, timeout=timeout)
     data = r.json()
-    diff = data["data"]["diff"]
+    inner = data.get("data")
+    if not inner:
+        return pd.DataFrame()
+    diff = inner.get("diff", [])
     if not diff:
         return pd.DataFrame()
     per_page = len(diff)
-    total = data["data"]["total"]
+    total = inner.get("total", 0)
     frames = [pd.DataFrame(diff)]
     for page in range(2, math.ceil(total / per_page) + 1):
         p = {**base_params, "pn": str(page)}
         time.sleep(random.uniform(0.1, 0.3))
         r = _em_get(base_url, p, timeout=timeout)
-        frames.append(pd.DataFrame(r.json()["data"]["diff"]))
-    return pd.concat(frames, ignore_index=True)
+        page_inner = r.json().get("data")
+        if page_inner:
+            frames.append(pd.DataFrame(page_inner.get("diff", [])))
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def get_spot(cfg: Config) -> Result[pd.DataFrame, str]:

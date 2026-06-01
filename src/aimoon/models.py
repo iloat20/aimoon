@@ -28,16 +28,17 @@ class ScoredStock:
 
     @property
     def total_score(self) -> int:
-        return sum(s.score for s in self.signals)
+        from aimoon.scoring import category_capped_score
+        return category_capped_score(list(self.signals))
 
     @property
     def suggestion(self) -> tuple[str, str]:
-        """返回 (建议, 置信度)。"""
+        """返回 (建议, 置信度)。100 分制。"""
         t = self.total_score
-        if t >= 8:   return "强烈买入", "高"
-        if t >= 5:   return "买入", "中高"
-        if t >= 2:   return "建议买入", "中"
-        if t >= 0:   return "观望", "低"
-        if t >= -3:  return "谨慎", "中"
-        if t >= -6:  return "建议卖出", "中高"
+        if t >= 80:  return "强烈买入", "高"
+        if t >= 65:  return "买入", "中高"
+        if t >= 50:  return "建议买入", "中"
+        if t >= 35:  return "观望", "低"
+        if t >= 20:  return "谨慎", "中"
+        if t >= 10:  return "建议卖出", "中高"
         return "强烈卖出", "高"

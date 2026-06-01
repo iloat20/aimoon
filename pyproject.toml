@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aimoon"
-version = "0.1.1"
+version = "0.1.2"
 description = "A股量化筛选与交易建议系统 — 基于技术指标的多因子打分筛选、回测与分析工具"
 readme = "README.md"
 license = "MIT"
@@ -14,12 +14,15 @@ authors = [
 ]
 dependencies = [
     "akshare>=1.14",
+    "mootdx>=0.9",
     "pandas>=2.0",
     "numpy>=1.26",
     "tabulate>=0.9",
     "colorama>=0.4",
     "rich>=13.0",
     "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "scipy>=1.11",
 ]
 
 [project.scripts]

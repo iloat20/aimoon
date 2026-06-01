@@ -64,7 +64,7 @@ def evaluate_factor(
         mean_ic=float(ic),
         ic_std=0.0,
         icir=0.0,
-        ic_positive_ratio=1.0 if ic > 0 else 0.0,
+        ic_positive_ratio=0.5,
         tier_returns=tier_returns,
         long_short=tier_returns[4] - tier_returns[0] if len(tier_returns) == 5 else 0.0,
     )

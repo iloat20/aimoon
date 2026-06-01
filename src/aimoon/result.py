@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NoReturn
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,10 +32,10 @@ class Err[E]:
     def is_err(self) -> bool:
         return True
 
-    def unwrap(self) -> T:
+    def unwrap(self) -> NoReturn:
         raise RuntimeError(f"Called unwrap on Err: {self.error}")
 
-    def unwrap_or_exit(self, msg: str = "") -> T:
+    def unwrap_or_exit(self, msg: str = "") -> NoReturn:
         import sys
         print(f"[red]{msg or self.error}[/red]")
         sys.exit(1)

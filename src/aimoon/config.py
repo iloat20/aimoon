@@ -1,4 +1,4 @@
-"""配置模块 — frozen dataclass，显式传递，无全局单例"""
+﻿"""Config module -- frozen dataclass, explicit passing, no global singleton."""
 from __future__ import annotations
 
 import argparse
@@ -11,55 +11,74 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Config:
-    # 筛选参数
+    # Screening parameters
     history_days: int = 250
-    min_market_cap_yi: float = 50.0
-    max_market_cap_yi: float = 2000.0
-    min_turnover_pct: float = 3.0
-    max_turnover_pct: float = 30.0
-    min_price: float = 5.0
-    max_price: float = 100.0
+    min_market_cap_yi: float = 10.0
+    max_market_cap_yi: float = 10000.0
+    min_turnover_pct: float = 0.0
+    max_turnover_pct: float = 100.0
+    min_price: float = 0.0
+    max_price: float = 99999.0
     min_list_days: int = 250
-    top_n: int = 30
-    # 机构持仓
+    top_n: int = 20
+    # Institutional holdings
     min_northbound_cap: float = 1.0
     min_fund_pct: float = 5.0
-    # 技术指标参数
+    # Valuation filters
+    max_pb: float = 10.0
+    max_pe_ttm: float = 26.0
+    min_dividend_yield: float = 1.5
+    # Technical indicator params
     ma_short: int = 5
     ma_mid: int = 20
     ma_long: int = 60
-    rsi_period: int = 14
-    macd_fast: int = 12
-    macd_slow: int = 26
-    macd_signal: int = 9
-    kdj_period: int = 9
+    rsi_period: int = 10
+    macd_fast: int = 10
+    macd_slow: int = 20
+    macd_signal: int = 6
+    kdj_period: int = 10
     boll_period: int = 20
     boll_std: float = 2.0
     volume_ma_period: int = 20
-    # 缓存
+    # Cache
     cache_dir: str = ".aimoon_cache"
     cache_ttl_hours: int = 24
-    # 输出
+    # Output
     output_dir: str = "output"
-    # CLI 参数
+    # CLI parameters
     no_csv: bool = False
-    workers: int = 5
+    workers: int = 20
     demo: bool = False
     refresh: bool = False
+    use_reversal: bool = False
+    use_alpha: bool = True
     command: str | None = None
     stocks: str = "000001"
-    hold_days: int = 20
-    max_positions: int = 2
-    # 排除规则
-    exclude_boards: tuple[str, ...] = ("ST", "退", "北交所")
+    hold_days: int = 10
+    max_positions: int = 5
+    # Exclusion rules
+    exclude_boards: tuple[str, ...] = ("ST", "\u9000", "\u5317\u4ea4\u6240")
     exclude_prefixes: tuple[str, ...] = ("8", "4")
+    # Risk limits
+    max_position_pct: float = 0.10
+    max_sector_pct: float = 0.30
+    max_drawdown_limit: float = 0.15
+    target_volatility: float = 0.15
+    # Enhanced backtest defaults
+    stop_loss_pct: float = 0.05
+    take_profit_pct: float = 0.20
+    entry_threshold: float = 50.0
+    benchmark_code: str = "000300"
+    # Walk-forward
+    train_pct: float = 0.7
+    n_splits: int = 3
 
 
 def load_config(args: argparse.Namespace | None = None, path: str | None = None) -> Config:
-    """合并配置：CLI 参数 > YAML 文件 > 默认值。"""
+    """Merge config: CLI args > YAML file > defaults."""
     overrides: dict = {}
 
-    # YAML 文件
+    # YAML file
     if path:
         p = Path(path)
         if p.exists():
@@ -75,12 +94,14 @@ def load_config(args: argparse.Namespace | None = None, path: str | None = None)
             except Exception as e:
                 logger.warning("Failed to load config %s: %s", path, e)
 
-    # CLI 参数覆盖
+    # CLI overrides
     if args:
         cli_map = {
             "top": "top_n", "workers": "workers", "no_csv": "no_csv",
             "demo": "demo", "refresh": "refresh",
             "hold_days": "hold_days", "stocks": "stocks",
+            "stop_loss": "stop_loss_pct", "take_profit": "take_profit_pct",
+            "benchmark": "benchmark_code", "reversal": "use_reversal",
         }
         for cli_key, cfg_key in cli_map.items():
             val = getattr(args, cli_key, None)
@@ -88,9 +109,13 @@ def load_config(args: argparse.Namespace | None = None, path: str | None = None)
                 overrides[cfg_key] = val
         if hasattr(args, "command") and args.command:
             overrides["command"] = args.command
+        # --no-alpha: 显式反转（default=None，仅在用户传入时生效）
+        if getattr(args, "no_alpha", None) is True:
+            overrides["use_alpha"] = False
 
     return Config(**overrides)
 
 
-# 向后兼容别名 — 旧代码使用 CONFIG 全局变量，Task 11 清理时移除
-CONFIG = Config()
+# Backward-compat alias -- legacy code uses CONFIG global, remove in cleanup
+
+DEFAULT_CONFIG = Config()

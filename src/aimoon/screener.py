@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def screen_stock(
     code: str, name: str, kline: pd.DataFrame,
     spot_row: pd.Series | None = None, ctx: dict | None = None,
+    use_reversal: bool = False,
 ) -> ScoredStock | None:
     """对单只股票评分。数据不足返回 None。"""
     if kline is None or len(kline) < 60:
@@ -27,7 +28,8 @@ def screen_stock(
         ti = TechInd(kline)
     except Exception:
         return None
-    signals = collect_signals(ti, code=code, ctx=ctx)
+    signals = collect_signals(ti, code=code, ctx={**(ctx or {}), "spot_row": spot_row},
+                              use_reversal=use_reversal)
     if not signals:
         return None
     price = float(kline["close"].iloc[-1])
@@ -48,38 +50,84 @@ def screen_universe(
     universe: pd.DataFrame, cfg: Config,
     cache: DataCache, ctx: dict | None = None,
     klines: dict[str, pd.DataFrame] | None = None,
+    use_reversal: bool = False,
+    use_alpha: bool = False,
 ) -> tuple[list[ScoredStock], dict[str, pd.DataFrame]]:
     """并发评分候选池。返回 (results, kline_tails)。"""
     results: list[ScoredStock] = []
     tails: dict[str, pd.DataFrame] = {}
+    all_klines: dict[str, pd.DataFrame] = {}
 
-    def _process(row: pd.Series) -> tuple[ScoredStock | None, str, pd.DataFrame | None]:
+    def _process(row: pd.Series) -> tuple[ScoredStock | None, str, pd.DataFrame | None, pd.DataFrame | None]:
         code = row["stock_code"]
         name = row["stock_name"]
         kdf = (klines or {}).get(code)
         if kdf is None:
             r = get_kline(code, cfg.history_days, cache)
             if r.is_err():
-                return None, code, None
+                return None, code, None, None
             kdf = r.unwrap()
         spot_row = row if "pe" in row.index else None
-        scored = screen_stock(code, name, kdf, spot_row, ctx)
+        scored = screen_stock(code, name, kdf, spot_row, ctx, use_reversal=use_reversal)
         if scored:
-            return scored, code, kdf.tail(25).copy()
-        return None, code, None
+            return scored, code, kdf.tail(25).copy(), kdf
+        return None, code, None, None
 
     with ThreadPoolExecutor(max_workers=cfg.workers) as ex:
         futures = {ex.submit(_process, row): row["stock_code"] for _, row in universe.iterrows()}
         for fut in as_completed(futures):
             try:
-                scored, code, tail = fut.result()
+                scored, code, tail, full_kdf = fut.result()
                 if scored:
                     results.append(scored)
                     if tail is not None:
                         tails[code] = tail
+                    if full_kdf is not None:
+                        all_klines[code] = full_kdf
             except Exception as e:
                 logger.warning("Screen failed: %s", e)
+
+    # Alpha Zoo 截面因子评分（可选）
+    if use_alpha and all_klines:
+        results = _inject_alpha_signals(results, all_klines)
+
     return results, tails
+
+
+def _inject_alpha_signals(
+    results: list[ScoredStock],
+    all_klines: dict[str, pd.DataFrame],
+) -> list[ScoredStock]:
+    """构建宽表，运行 Alpha Zoo 因子，注入信号到每只股票。"""
+    from aimoon.factors.panel import build_panel
+    from aimoon.factors.registry import get_default_registry
+    from aimoon.factors.scorer import compute_alpha_signals
+
+    panel = build_panel(all_klines)
+    if panel is None:
+        return results
+
+    registry = get_default_registry()
+    alpha_signals = compute_alpha_signals(registry, panel)
+    if not alpha_signals:
+        return results
+
+    enhanced: list[ScoredStock] = []
+    for scored in results:
+        extra = alpha_signals.get(scored.code, [])
+        if extra:
+            new_signals = tuple(list(scored.signals) + extra)
+            scored = ScoredStock(
+                code=scored.code, name=scored.name, price=scored.price,
+                pct_change=scored.pct_change, turnover=scored.turnover,
+                pe=scored.pe, pb=scored.pb, market_cap_yi=scored.market_cap_yi,
+                signals=new_signals, rps=scored.rps,
+            )
+        enhanced.append(scored)
+
+    n_with = sum(1 for s in enhanced if any(sig.name.startswith("alpha_") for sig in s.signals))
+    logger.info("Alpha Zoo: %d 只股票获得 alpha 信号", n_with)
+    return enhanced
 
 
 def _safe_float(row: pd.Series | None, key: str) -> float:

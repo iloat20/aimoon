@@ -1,6 +1,8 @@
 # aimoon
 
-A股量化筛选与交易建议系统 — 动量为主、趋势为辅的多因子打分筛选、回测与分析工具。
+A股量化筛选与交易建议系统 — 100分制加权评分，动量驱动调仓，Alpha Zoo 截面因子为核心引擎。
+
+部分模块整合自 [HKUDS/Vibe-Trading](https://github.com/HKUDS/Vibe-Trading)（MIT License, 香港大学数据科学实验室），详见[致谢](#致谢)。
 
 ---
 
@@ -26,7 +28,7 @@ pip install -e .
 aimoon --demo
 ```
 
-运行后将看到30只模拟股票的筛选结果，包含评分、建议和触发的信号列表。
+运行后将看到30只模拟股票的筛选结果，包含评分、建议。
 
 ### 实时筛选
 
@@ -34,6 +36,7 @@ aimoon --demo
 aimoon                  # 默认筛选全市场（机构持仓池）
 aimoon --top 10         # 显示前10名
 aimoon --workers 10     # 10线程加速
+aimoon --no-alpha       # 禁用 Alpha Zoo 因子
 ```
 
 ---
@@ -48,47 +51,49 @@ aimoon --workers 10     # 10线程加速
 aimoon                      # 默认筛选
 aimoon --config my.yaml     # 使用自定义配置
 aimoon --demo               # 模拟数据体验
+aimoon --no-alpha           # 禁用 Alpha Zoo 因子
 ```
 
 筛选流程：
 1. 机构持仓池过滤（北向资金 + 基金持仓 + ROE + 上市时间）
 2. 基本面过滤（市值、换手率、价格区间）
 3. 排除规则（ST、退市、北交所）
-4. 多线程获取历史 K 线（AKShare + 腾讯备用，带缓存）
+4. 多线程获取历史 K 线（mootdx TCP → 腾讯 → AKShare，带缓存）
 5. 10 个评分器计算 40+ 个信号
-6. RPS 多周期排名（3/5/10/15/20/40/60日）
-7. 输出排名表格 + CSV + Markdown
+6. Alpha Zoo 452 个截面因子计算（默认启用）
+7. RPS 多周期排名（3/5/10/15/20/40/60日）
+8. **100分制加权评分**（Alpha Zoo 60分 / 动量 20分 / 趋势量价 20分）
+9. 输出排名表格 + CSV + Markdown
 
 ### 2. 回测 — `aimoon backtest`
 
-组合级回测，自动对比沪深300基准。
+动量驱动回测，自动对比沪深300基准。
 
 ```bash
-# 单股回测
-aimoon backtest --stocks 000001
-
-# 多股组合回测（推荐）
-aimoon backtest --stocks 000333,000568,000651,000858,600519
-
-# 自定义参数
-aimoon backtest --stocks 000333,000568 --hold-days 20 --max-positions 2
+aimoon backtest                     # 默认回测
+aimoon backtest --stocks 000333,000568,000651,000858,600519  # 指定股票
 ```
 
-默认参数（经回测优化）：
+回测引擎特性：
+- **动量驱动调仓**：持仓动量衰减时主动退出，新强势股出现时替换入场
+- **止损黑名单**：被止损1次的股票永久排除
+- **动态ATR止损**：基于14日ATR计算每只股票的止损线（3%-5%）
+- **Regime检测**：熊市/高波动自动减仓
+- **RPS截面排名**：每轮调仓计算跨股票相对强度
+
+默认参数：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| hold_days | 20 | 持仓天数 |
-| max_positions | 2 | 最大同时持仓数 |
+| hold_days | 5 | 调仓周期 |
+| max_positions | 5 | 最大同时持仓数 |
+| entry_threshold | 50 | 入场阈值（百分制） |
+| exit_ratio | 0.5 | 退出阈值 = entry × 0.5 |
+| stop_loss_pct | 0.05 | 止损比例 |
+| take_profit_pct | 0.20 | 止盈比例 |
 | commission | 0.0003 | 佣金（万三） |
 | slippage | 0.001 | 滑点 |
 | stamp_tax | 0.0005 | 印花税 |
-
-回测输出：
-- 总收益率 / 年化收益率
-- 夏普比率 / Calmar 比率
-- 最大回撤 / 胜率
-- 沪深300基准对比 / 超额收益
 
 ### 3. 因子评估 — `aimoon evaluate`
 
@@ -98,88 +103,89 @@ aimoon backtest --stocks 000333,000568 --hold-days 20 --max-positions 2
 aimoon evaluate --stocks 000333,000568,000651,000858 --forward-days 5
 ```
 
-输出每个因子的：
-- **Mean IC** — 因子值与未来收益的秩相关（>0.03 为有效）
-- **ICIR** — IC/标准差，衡量稳定性（>0.5 为稳定）
-- **IC>0%** — IC 为正的比例
-- **L-S** — 多空收益差（top组 - bottom组）
-- **五分位收益** — 按因子值分5组的平均收益
-
 ---
 
-## 评分体系
+## 100分制评分体系
 
-总分 = 各信号分数之和。动量因子权重最高，趋势因子辅助，其他因子补充。
+总分 = Alpha Zoo(60分) + 动量(20分) + 趋势量价(20分) = 0~100分
 
-### 动量因子（核心）— 2 个评分器，18 类信号
+### 权重分配
 
-| 因子 | 看多 | 看空 |
+| 类别 | 权重 | 说明 |
 |------|------|------|
-| ROC 3/5/10/20/40/60/120日 | 强势(+5%+): +1~4 | 弱势(-5%-): -1~4 |
-| RPS 多周期 (3/5/10/15/20/40/60日) | 3-4周期翻红: +5, 双线红: +3 | — |
-| 长周期动量确认 (3/40/60/120日) | >=3周期强势: +3 | — |
-| 波动率调整动量 (ROC/ATR) | 高性价比: +2 | 下跌波动大: -2 |
-| 动量持久度 (20日正收益占比) | >70%: +2 | <30%: -2 |
-| 上涨/下跌成交量比 | >1.5: +2 | <0.7: -2 |
-| OBV 趋势 (10日斜率) | 上升: +2 | 下降: -2 |
-| VWAP 偏离 (20日) | 强于VWAP: +2 | 弱于VWAP: -2 |
-| 收益偏度 (20日) | 正偏: +1 | 负偏: -1 |
-| 新高新低比 (60日) | 净新高: +2 | 净新低: -2 |
-| 最大回撤恢复 (60日) | 深跌后反弹: +2 | — |
-| 动量加速 | 加速: +3 | 减速: -3 |
-| 5/10/20日新高 | 新高: +1~3 | 5/10/20日新低: -1~3 |
-| ADX (>25) | 强趋势: +2 | — |
-| 超跌保护 (5日<-10%) | — | 暴跌风险: -3 |
+| **Alpha Zoo** | **60分** | 452个截面因子（gtja191/alpha101/qlib158/academic） |
+| **动量** | 20分 | ROC多周期、RPS排名、加速度、新高新低、ADX |
+| **趋势量价** | 20分 | 均线排列、MACD、KDJ、成交量（反向）、布林带、估值 |
 
-### 趋势因子（辅助）— 2 个评分器，9 类信号
-
-| 因子 | 看多 | 看空 |
-|------|------|------|
-| MA5/10/20/60 排列 | 完美多头: +3 | 空头: -2 |
-| MA 金叉/死叉 | 金叉: +2 | 死叉: -2 |
-| 价格 vs MA20+MA60 | 均在上方: +2 | 均在下方: -2 |
-| ADX 方向 (+DI/-DI) | 强多头: +2 | 强空头: -2 |
-| MACD 连续柱体 | 连续红柱: +2 | 连续绿柱: -2 |
-| EMA20 斜率 | 上升: +1 | 下降: -1 |
-| MACD 金叉/死叉 | 金叉: +2 | 死叉: -2 |
-| MACD 零轴 | 零轴上方: +1 | 零轴下方: -1 |
-
-### 其他因子 — 6 个评分器
-
-| 评分器 | 看多 | 看空 |
-|--------|------|------|
-| RSI (14日) | 强势(>60): +2 | 弱势(<40): -2 |
-| KDJ | 金叉: +1, 超卖: +1 | 死叉: -1, 超买: -1 |
-| 成交量 | 放量(2x+): +2 | 缩量: -1 |
-| 布林带 | 触及下轨: +1 | 触及上轨: -1 |
-| 板块动量 | 强势板块(Top N%): +3 | — |
-
-### 建议对照
+### 评分规则
 
 | 总分 | 建议 | 置信度 |
 |------|------|--------|
-| >= 8 | 强烈买入 | 高 |
-| >= 5 | 买入 | 中高 |
-| >= 2 | 建议买入 | 中 |
-| >= 0 | 观望 | 低 |
-| >= -3 | 谨慎 | 中 |
-| >= -6 | 建议卖出 | 中高 |
-| < -6 | 强烈卖出 | 高 |
+| >= 80 | 强烈买入 | 高 |
+| >= 65 | 买入 | 中高 |
+| >= 50 | 建议买入 | 中 |
+| >= 35 | 观望 | 低 |
+| >= 20 | 谨慎 | 中 |
+| >= 10 | 建议卖出 | 中高 |
+| < 10 | 强烈卖出 | 高 |
+
+### 因子有效性（IC分析）
+
+| 因子 | IC | 方向 | 说明 |
+|------|-----|------|------|
+| 成交量 | -0.16 | 反向 | 放量预测下跌，缩量预测上涨 |
+| Alpha Zoo | — | 正向 | 452因子聚合，核心驱动 |
+| 趋势 | +0.03 | 弱正向 | 均线排列有一定预测力 |
+
+成交量是唯一显著的传统技术指标信号（IC=-0.16），系统已将其设为**反向**评分（放量=减分，缩量=加分）。
 
 ---
 
-## 回测表现
+## Alpha Zoo 因子库
 
-以188只机构持仓池股票为标的，最近1年数据，对比沪深300（+8.17%）：
+整合自 [Vibe-Trading](https://github.com/HKUDS/Vibe-Trading) 的 452 个截面 alpha 因子，默认启用。
 
-| 参数 | 总收益 | 超额 | Sharpe | 最大回撤 | 胜率 |
-|------|--------|------|--------|---------|------|
-| **hold=20, top=2** | **+60.2%** | **+52.0%** | **+2.46** | **3.2%** | **56%** |
-| hold=10, top=5 | +84.6% | +76.5% | +2.60 | 16.9% | 59% |
-| hold=5, top=10 | +76.0% | +67.8% | +2.71 | 18.1% | 51% |
-| hold=10, top=10 | +53.6% | +45.4% | +2.39 | 14.2% | 56% |
+### 因子来源
 
-默认使用 `hold=20, top=2`（最优风险调整收益）。
+| 来源 | 数量 | 说明 |
+|------|------|------|
+| gtja191 | 191 | 国泰君安 2014 短周期交易型 alpha 因子研报 |
+| alpha101 | 101 | Kakushadze "101 Formulaic Alphas" (arXiv:1601.00991) |
+| qlib158 | 154 | Microsoft Qlib Alpha158 特征 (Apache-2.0) |
+| academic | 6 | Fama-French 5 因子 + Carhart 动量 |
+
+### 工作原理
+
+1. 筛选时收集所有候选股票的 K 线数据
+2. 构建宽表（index=日期, columns=股票代码）面板
+3. 并行计算所有因子的截面值
+4. 取最后一行做截面百分位排名
+5. 转换为 aimoon Signal（≥80% → +3, ≥65% → +2, ≤20% → -3, ≤35% → -2）
+
+Alpha 信号归入 `"alpha"` 类别，在100分制中占 **60分** 权重。
+
+---
+
+## 统计验证工具
+
+移植自 Vibe-Trading 的回测验证框架，评估策略稳健性：
+
+```python
+from aimoon.validation import run_validation
+
+result = run_validation(
+    equity_curve=portfolio.equity_curve,
+    trade_returns=[t.return_pct for t in portfolio.trades],
+    entry_dates=[t.entry_date for t in portfolio.trades],
+    exit_dates=[t.exit_date for t in portfolio.trades],
+)
+```
+
+| 工具 | 用途 | 输出 |
+|------|------|------|
+| Monte Carlo | 打乱交易顺序，检验 Sharpe/回撤 p 值 | p_value_sharpe, p_value_max_dd |
+| Bootstrap CI | 重采样收益，估计 Sharpe 置信区间 | ci_lower, ci_upper, prob_positive |
+| Walk-Forward | 分窗口检验收益一致性 | consistency_rate, 窗口统计 |
 
 ---
 
@@ -215,8 +221,9 @@ min_northbound_cap: 1.0       # 北向持股市值（亿元）
 min_fund_pct: 5.0             # 基金持股占比（%）
 
 # 回测参数
-hold_days: 20                 # 持仓天数
-max_positions: 2              # 最大持仓数
+hold_days: 5                  # 调仓周期
+max_positions: 5              # 最大持仓数
+entry_threshold: 50           # 入场阈值（百分制）
 
 # 缓存
 cache_ttl_hours: 24
@@ -225,11 +232,11 @@ cache_ttl_hours: 24
 ma_short: 5
 ma_mid: 20
 ma_long: 60
-rsi_period: 14
-macd_fast: 12
-macd_slow: 26
-macd_signal: 9
-kdj_period: 9
+rsi_period: 10
+macd_fast: 10
+macd_slow: 20
+macd_signal: 6
+kdj_period: 10
 boll_period: 20
 boll_std: 2.0
 volume_ma_period: 20
@@ -237,6 +244,9 @@ volume_ma_period: 20
 # 排除规则
 exclude_boards: ["ST", "退", "北交所"]
 exclude_prefixes: ["8", "4"]
+
+# Alpha Zoo
+use_alpha: true             # 是否启用 Alpha Zoo 截面因子（默认启用）
 ```
 
 参数优先级：`命令行参数 > 配置文件 > 默认值`
@@ -258,10 +268,22 @@ kline = get_kline("000001").unwrap()
 result = screen_stock("000001", "平安银行", kline)
 print(f"评分: {result.total_score}, 建议: {result.suggestion}")
 
-# 组合回测
-engine = BacktestEngine(hold_days=20, max_positions=2)
-bt = engine.run_portfolio(klines, names)
+# 组合回测（含新指标）
+engine = BacktestEngine(hold_days=5, max_positions=5)
+bt = engine.run_portfolio(klines, names, benchmark_kline=bench_kline)
 print(f"收益: {bt.total_return:+.2f}%, Sharpe: {bt.sharpe_ratio:+.2f}")
+```
+
+### Alpha Zoo 因子 API
+
+```python
+from aimoon.factors.registry import get_default_registry
+from aimoon.factors.panel import build_panel
+from aimoon.factors.scorer import compute_alpha_signals
+
+registry = get_default_registry()
+panel = build_panel(all_klines)
+signals = compute_alpha_signals(registry, panel)
 ```
 
 ---
@@ -283,9 +305,11 @@ aimoon update         # 清除缓存并重新获取数据
 src/aimoon/
 ├── cli.py               # CLI 入口（筛选/回测/评估/缓存）
 ├── config.py             # 配置管理（frozen dataclass + YAML）
-├── models.py             # Signal / ScoredStock 数据模型
-├── screener.py           # 并发筛选编排器
-├── backtest.py           # 回测引擎（单股 + 组合级）
+├── models.py             # Signal / ScoredStock 数据模型（100分制）
+├── screener.py           # 并发筛选编排器（支持 Alpha Zoo 注入）
+├── backtest.py           # 基础回测引擎（含 RPS、regime、分类上限评分）
+├── enhanced_backtest.py  # 增强回测（动量驱动调仓、动态止损、黑名单）
+├── validation.py         # 统计验证（Monte Carlo / Bootstrap CI / Walk-Forward）
 ├── factor_eval.py        # IC/ICIR 因子评估
 ├── cache.py              # 文件缓存（pickle + TTL）
 ├── demo.py               # 模拟数据演示
@@ -293,51 +317,45 @@ src/aimoon/
 ├── result.py             # Ok/Err 结果类型
 ├── data/
 │   ├── spot.py           # 实时行情（东方财富）
-│   ├── history.py        # 历史 K 线（AKShare + 腾讯备用）
+│   ├── history.py        # 历史 K 线（mootdx TCP → 腾讯 → AKShare）
+│   ├── mootdx_source.py  # mootdx TCP 数据源（通达信协议直连）
 │   └── filters.py        # 机构持仓 / 基本面 / 板块过滤
+├── factors/              # Alpha Zoo 因子系统（Vibe-Trading 移植）
+│   ├── base.py           # 16 个基础算子
+│   ├── registry.py       # AST 扫描 + 惰性计算注册表
+│   ├── panel.py          # 单股 DataFrame → 宽表面板转换
+│   ├── scorer.py         # 截面因子值 → 每股 Signal 转换
+│   └── zoo/              # 452 个因子文件
 ├── indicators/
-│   └── technical.py      # 技术指标（MA/RSI/MACD/KDJ/BOLL/ROC/ADX/ATR/OBV/VWAP）
+│   └── technical.py      # 技术指标（MA/MACD/KDJ/BOLL/ROC/ADX/ATR/OBV/VWAP）
 └── scoring/
+    ├── __init__.py       # 评分注册表 + 100分制加权评分
     ├── momentum.py       # 动量评分（ROC/新高新低/加速/ADX）
-    ├── momentum_ext.py   # 扩展动量（波动率调整/持久度/OBV/VWAP/偏度/回撤恢复）
-    ├── rps.py            # RPS 相对价格强度（7周期）
+    ├── momentum_ext.py   # 扩展动量（量价背离/均值回归/波动率调整）
+    ├── rps.py            # RPS 相对价格强度
     ├── trend.py          # 趋势评分（MA排列/金叉死叉）
-    ├── trend_ext.py      # 扩展趋势（均线排列度/ADX方向/MACD柱体/EMA斜率）
+    ├── trend_ext.py      # 扩展趋势（ADX方向/MACD柱体/EMA斜率）
     ├── combiner.py       # IC 加权 + 行业中性化
     ├── macd.py           # MACD 评分
-    ├── rsi.py            # RSI 评分
     ├── kdj.py            # KDJ 评分
     ├── bollinger.py      # 布林带评分
-    ├── volume.py         # 成交量评分
+    ├── volume.py         # 成交量评分（反向：放量=看空）
     └── sector.py         # 板块动量评分
 ```
 
 ---
 
-## 常见问题
+## 致谢
 
-**Q: 网络错误？**
+本项目整合了以下开源项目的代码：
 
-AKShare 可能不稳定，系统会自动切换到腾讯 K 线接口。确保能访问 `eastmoney.com` 和 `gtimg.cn`。
+### Vibe-Trading
 
-**Q: 北向/基金数据获取失败？**
-
-这些数据来自东方财富 datacenter，不影响核心筛选，获取失败时自动跳过。
-
-**Q: 回测结果和实盘不一样？**
-
-回测使用收盘价成交，无流动性限制。实盘需考虑：滑点更大、涨跌停无法成交、停牌等因素。
-
-**Q: 如何自定义评分器？**
-
-```python
-from aimoon.scoring import SCORERS
-from aimoon.models import Signal
-
-def my_scorer(ti, code="", ctx=None):
-    if ti.roc_signal(20) > 10:
-        return Signal("my_signal", "自定义信号", +3)
-    return None
-
-SCORERS.append(my_scorer)
-```
+- **项目**: [HKUDS/Vibe-Trading](https://github.com/HKUDS/Vibe-Trading)
+- **作者**: HKU Data Science Lab (HKUDS), 香港大学
+- **许可证**: MIT License
+- **整合内容**:
+  - **Alpha Zoo 因子库**（`src/aimoon/factors/`）— 452 个量化 alpha 因子
+  - **mootdx 数据源**（`src/aimoon/data/mootdx_source.py`）— 通达信 TCP 协议直连
+  - **统计验证工具**（`src/aimoon/validation.py`）— Monte Carlo / Bootstrap CI / Walk-Forward
+  - **增强回测指标**（`src/aimoon/backtest.py`）— 盈亏因子、最大连续亏损、信息比率

@@ -7,8 +7,8 @@ class TestParseArgs:
         with patch("sys.argv", ["aimoon"]):
             from aimoon.cli import parse_args
             args = parse_args()
-            assert args.top == 30
-            assert args.workers == 5
+            assert args.top == 20
+            assert args.workers == 20
 
     def test_demo_flag(self) -> None:
         with patch("sys.argv", ["aimoon", "--demo"]):

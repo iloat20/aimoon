@@ -90,9 +90,9 @@ def _adx_detail(ti: TechInd, period: int = 14) -> tuple[float, float, float]:
         (high - close.shift(1)).abs(),
         (low - close.shift(1)).abs(),
     ], axis=1).max(axis=1)
-    atr = tr.ewm(span=period, adjust=False).mean()
-    plus_di = 100 * plus_dm.ewm(span=period, adjust=False).mean() / atr.replace(0, 1e-10)
-    minus_di = 100 * minus_dm.ewm(span=period, adjust=False).mean() / atr.replace(0, 1e-10)
+    atr = tr.ewm(span=period, adjust=False).mean().replace(0, 1e-10)
+    plus_di = 100 * plus_dm.ewm(span=period, adjust=False).mean() / atr
+    minus_di = 100 * minus_dm.ewm(span=period, adjust=False).mean() / atr
     dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, 1e-10)
     adx_val = dx.ewm(span=period, adjust=False).mean()
     return (
