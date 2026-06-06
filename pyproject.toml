@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aimoon"
-version = "0.1.2"
-description = "A股量化筛选与交易建议系统 — 基于技术指标的多因子打分筛选、回测与分析工具"
+version = "0.2.0"
+description = "A股量化筛选与交易建议系统 — ML集成排名 + Alpha Zoo 452因子 + 统一回测评分 + 交易策略引擎"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
@@ -23,6 +23,9 @@ dependencies = [
     "pyyaml>=6.0",
     "matplotlib>=3.8",
     "scipy>=1.11",
+    "xgboost>=2.0",
+    "scikit-learn>=1.3",
+    "lightgbm>=4.0",
 ]
 
 [project.scripts]
