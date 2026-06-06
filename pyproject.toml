@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aimoon"
-version = "0.2.0"
+version = "0.2.2"
 description = "A股量化筛选与交易建议系统 — ML集成排名 + Alpha Zoo 452因子 + 统一回测评分 + 交易策略引擎"
 readme = "README.md"
 license = "MIT"
