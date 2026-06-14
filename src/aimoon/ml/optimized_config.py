@@ -1,53 +1,58 @@
 """优化后的机器学习训练配置
 
 此配置旨在解决过拟合问题，提供更好的泛化能力。
+支持通过 hyperopt.py 进行贝叶斯超参数优化，自动覆盖默认参数。
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-# XGBoost 优化配置 — 强正则化防过拟合
+logger = logging.getLogger(__name__)
+
+# ── 默认超参数（可通过 hyperopt 覆盖）──────────────────────────────────────────
+
+# XGBoost 优化配置 — 平衡正则化与表达能力
 XGB_OPTIMIZED_PARAMS: dict[str, Any] = {
-    # 树结构参数 - 严格限制复杂度
-    "max_depth": 3,
-    "min_child_weight": 50,
-    # 学习率和迭代 - 慢学配合多轮
-    "learning_rate": 0.01,
-    "n_estimators": 2000,
-    # 随机性和正则化 - 强防过拟合
+    # 树结构参数
+    "max_depth": 2,
+    "min_child_weight": 30,
+    # 学习率和迭代
+    "learning_rate": 0.003,
+    "n_estimators": 500,
+    # 随机性和正则化
     "subsample": 0.5,
     "colsample_bytree": 0.3,
-    "reg_lambda": 10.0,
-    "reg_alpha": 2.0,
-    "gamma": 1.0,
-    # 早停配置
-    "early_stopping_rounds": 50,
-    # 其他
-    "objective": "reg:squarederror",
+    "reg_lambda": 8.0,
+    "reg_alpha": 1.0,
+    "gamma": 0.5,
+    # 早停
+    "early_stopping_rounds": 30,
+    # 目标函数 — Huber 对极端值鲁棒
+    "objective": "reg:pseudohubererror",
+    "huber_slope": 1.0,
     "eval_metric": "rmse",
-    "random_state": 42,
-    "verbosity": 0,
 }
 
 # LightGBM 优化配置 — 强正则化防过拟合
+# M6: 移除 max_depth=2（与 num_leaves=7 矛盾，num_leaves 优先）
 LGBM_OPTIMIZED_PARAMS: dict[str, Any] = {
-    # 树结构参数 - 严格限制复杂度
-    "num_leaves": 15,
-    "max_depth": 3,
-    "min_child_samples": 50,
-    # 学习率和迭代 - 慢学配合多轮
-    "learning_rate": 0.01,
-    "n_estimators": 2000,
-    # 随机性和正则化 - 强防过拟合
-    "subsample": 0.5,
-    "colsample_bytree": 0.3,
-    "feature_fraction": 0.3,
-    "bagging_fraction": 0.5,
-    "reg_lambda": 10.0,
-    "reg_alpha": 2.0,
-    # 早停配置
-    "early_stopping_rounds": 50,
+    # 树结构参数 — num_leaves 控制复杂度，无需 max_depth
+    "num_leaves": 5,
+    "min_child_samples": 150,
+    # 学习率和迭代
+    "learning_rate": 0.003,
+    "n_estimators": 500,
+    # 随机性和正则化
+    "subsample": 0.3,
+    "colsample_bytree": 0.15,
+    "feature_fraction": 0.2,
+    "bagging_fraction": 0.4,
+    "reg_lambda": 30.0,
+    "reg_alpha": 5.0,
+    # 早停
+    "early_stopping_rounds": 30,
     # 其他
     "objective": "regression",
     "metric": "rmse",
@@ -56,20 +61,30 @@ LGBM_OPTIMIZED_PARAMS: dict[str, Any] = {
     "n_jobs": -1,
 }
 
-# 训练配置
+# 训练配置 — L5: 统一 n_dates=200（与 trainer.py 默认值一致）
 TRAINING_CONFIG: dict[str, Any] = {
-    # 数据收集 - 最大化数据多样性
-    "n_dates": 200,
+    # 数据收集
+    "n_dates": 300,
     "forward_days": 5,
     # 验证配置
-    "validation_split": 0.2,
-    "cv_folds": 5,
-    "purge_gap_multiplier": 2,
-    # 特征选择 - 严格筛选
+    "validation_split": 0.25,
+    "cv_folds": 3,
+    "purge_gap_multiplier": 3,
+    # 特征选择 — H3: min_ic 从 0.01 提高到 0.025
     "feature_selection": {
         "enabled": True,
-        "min_ic": 0.01,
-        "max_features": 40,
+        "min_ic": 0.015,
+        "max_features": 50,
+        "variance_threshold": 0.01,
+        "correlation_threshold": 0.85,
+        "use_l1": False,
+    },
+    # 超参数优化
+    "hyperopt": {
+        "enabled": False,  # 默认关闭，CLI --hyperopt 开启
+        "n_trials": 50,
+        "timeout": None,  # 秒，None = 无限制
+        "regime": "all",
     },
     # 过拟合检测
     "overfit_threshold": 5.0,
@@ -77,20 +92,17 @@ TRAINING_CONFIG: dict[str, Any] = {
 
 # 增量学习配置
 INCREMENTAL_CONFIG: dict[str, Any] = {
-    "warm_start": True,  # 启用增量学习
-    "max_incremental_rounds": 100,  # 增量学习最多迭代次数
-    "incremental_learning_rate_factor": 0.5,  # 增量学习降低学习率
+    "warm_start": True,
+    "max_incremental_rounds": 100,
+    "incremental_learning_rate_factor": 0.5,
 }
 
 # 特征工程配置
 FEATURE_CONFIG: dict[str, Any] = {
-    # Alpha360
     "use_alpha360": True,
     "alpha360_window": 60,
-    # 技术指标
     "use_technical_features": True,
-    "technical_windows": [5, 10, 20],  # 5天、10天、20天窗口
-    # 归一化
+    "technical_windows": [5, 10, 20],
     "normalize_features": True,
     "use_robust_zscore": True,
     "zscore_clip": 3.0,
@@ -104,18 +116,151 @@ OUTPUT_CONFIG: dict[str, Any] = {
     "save_feature_importance": True,
 }
 
+# Stacking Ensemble 配置
+STACKING_CONFIG: dict[str, Any] = {
+    "n_splits": 5,
+    "purge_days": 5,
+    "embargo_days": 10,
+    "xgb_params": {
+        "objective": "binary:logistic",
+        "eval_metric": "auc",
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "n_estimators": 200,
+        "verbosity": 0,
+    },
+    "lgbm_params": {
+        "objective": "binary",
+        "metric": "auc",
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "n_estimators": 200,
+        "verbose": -1,
+    },
+    "xgb_regression_params": {
+        "objective": "reg:squarederror",
+        "eval_metric": "rmse",
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "n_estimators": 200,
+        "verbosity": 0,
+    },
+    "lgbm_regression_params": {
+        "objective": "regression",
+        "metric": "rmse",
+        "max_depth": 5,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "n_estimators": 200,
+        "verbose": -1,
+    },
+    "meta_n_estimators": 50,
+}
 
-def get_xgb_params(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
-    """获取优化的XGBoost参数，支持覆盖特定参数。"""
+
+def get_stacking_params() -> dict[str, Any]:
+    """获取 Stacking Ensemble 配置。"""
+    return STACKING_CONFIG.copy()
+
+
+# ── 参数获取函数 ──────────────────────────────────────────────────────────────
+
+
+def get_xgb_params(
+    overrides: dict[str, Any] | None = None,
+    use_hyperopt: bool = False,
+    model_type: str = "xgb",
+    regime: str = "all",
+    n_trials: int = 50,
+) -> dict[str, Any]:
+    """获取优化的XGBoost参数，支持 hyperopt 覆盖。
+
+    Parameters
+    ----------
+    overrides : dict | None
+        手动覆盖参数。
+    use_hyperopt : bool
+        是否尝试使用 hyperopt 优化参数。
+    model_type : str
+        用于 hyperopt 缓存键。
+    regime : str
+        市场状态标签。
+    n_trials : int
+        hyperopt 搜索次数。
+
+    Returns
+    -------
+    dict[str, Any]
+        最终参数。
+    """
     params = XGB_OPTIMIZED_PARAMS.copy()
+
+    # 尝试 hyperopt 优化
+    if use_hyperopt:
+        try:
+            from aimoon.ml.hyperopt import get_best_params, is_optuna_available
+
+            if is_optuna_available():
+                best = get_best_params(model_type=model_type, regime=regime)
+                if best:
+                    params.update(best)
+                    logger.info("Using hyperopt params for %s/%s", model_type, regime)
+        except Exception as e:
+            logger.warning("Hyperopt lookup failed: %s", e)
+
     if overrides:
         params.update(overrides)
     return params
 
 
-def get_lgbm_params(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
-    """获取优化的LightGBM参数，支持覆盖特定参数。"""
+def get_lgbm_params(
+    overrides: dict[str, Any] | None = None,
+    use_hyperopt: bool = False,
+    model_type: str = "lgbm",
+    regime: str = "all",
+    n_trials: int = 50,
+) -> dict[str, Any]:
+    """获取优化的LightGBM参数，支持 hyperopt 覆盖。
+
+    Parameters
+    ----------
+    overrides : dict | None
+        手动覆盖参数。
+    use_hyperopt : bool
+        是否尝试使用 hyperopt 优化参数。
+    model_type : str
+        用于 hyperopt 缓存键。
+    regime : str
+        市场状态标签。
+    n_trials : int
+        hyperopt 搜索次数。
+
+    Returns
+    -------
+    dict[str, Any]
+        最终参数。
+    """
     params = LGBM_OPTIMIZED_PARAMS.copy()
+
+    if use_hyperopt:
+        try:
+            from aimoon.ml.hyperopt import get_best_params, is_optuna_available
+
+            if is_optuna_available():
+                best = get_best_params(model_type=model_type, regime=regime)
+                if best:
+                    params.update(best)
+                    logger.info("Using hyperopt params for %s/%s", model_type, regime)
+        except Exception as e:
+            logger.warning("Hyperopt lookup failed: %s", e)
+
     if overrides:
         params.update(overrides)
     return params
@@ -129,7 +274,8 @@ def get_training_config(overrides: dict[str, Any] | None = None) -> dict[str, An
     return config
 
 
-# 使用示例
+# ── 使用示例 ──────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     import json
 
@@ -148,3 +294,8 @@ if __name__ == "__main__":
 
     lgbm_params = get_lgbm_params({"n_estimators": 1000})
     print(f"LightGBM with custom n_estimators: {lgbm_params['n_estimators']}")
+
+    # 使用 hyperopt
+    xgb_hyperopt = get_xgb_params(use_hyperopt=True)
+    print(f"XGBoost with hyperopt: {xgb_hyperopt}")
+

@@ -1,10 +1,15 @@
 """RPS（相对价格强度）计算"""
+
 from __future__ import annotations
+
 import pandas as pd
-from aimoon.models import Signal, ScoredStock
+
+from aimoon.models import ScoredStock, Signal
 
 
-def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> list[ScoredStock]:
+def compute_rps(
+    results: list[ScoredStock], tails: dict[str, pd.DataFrame]
+) -> list[ScoredStock]:
     """计算 RPS 并返回新的 ScoredStock 列表（不可变更新）。"""
     if not results:
         return results
@@ -25,20 +30,38 @@ def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> l
             continue
         sorted_codes = sorted(ret_map, key=lambda c: ret_map[c])
         total = len(sorted_codes)
-        rank_maps[f"rps{n}"] = {code: (rank + 1) / total * 100 for rank, code in enumerate(sorted_codes)}
+        rank_maps[f"rps{n}"] = {
+            code: (rank + 1) / total * 100 for rank, code in enumerate(sorted_codes)
+        }
     updated: list[ScoredStock] = []
     for r in results:
-        rps = {key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]}
+        rps = {
+            key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]
+        }
         rps_red = sum(1 for v in rps.values() if v > 90)
         rps_signals = list(r.signals)
         if rps_red >= 3:
-            rps_signals.append(Signal("rps_triple", f"RPS三线翻红({rps_red}/4)", +5))
+            rps_signals.append(
+                Signal("rps_triple", f"RPS三线翻红({rps_red}/4)", +5, category="momentum")
+            )
         elif rps_red >= 2:
-            rps_signals.append(Signal("rps_double", f"RPS双线红({rps_red}/4)", +3))
-        updated.append(ScoredStock(
-            code=r.code, name=r.name, price=r.price,
-            pct_change=r.pct_change, turnover=r.turnover,
-            pe=r.pe, pb=r.pb, market_cap_yi=r.market_cap_yi,
-            signals=tuple(rps_signals), rps=rps,
-        ))
+            rps_signals.append(
+                Signal("rps_double", f"RPS双线红({rps_red}/4)", +3, category="momentum")
+            )
+        updated.append(
+            ScoredStock(
+                code=r.code,
+                name=r.name,
+                price=r.price,
+                pct_change=r.pct_change,
+                turnover=r.turnover,
+                pe=r.pe,
+                pb=r.pb,
+                market_cap_yi=r.market_cap_yi,
+                signals=tuple(rps_signals),
+                rps=rps,
+                ml_score=r.ml_score,
+                hybrid_score=r.hybrid_score,
+            )
+        )
     return updated

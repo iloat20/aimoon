@@ -1,4 +1,4 @@
-﻿"""data filters -- pure functions."""
+"""data filters -- pure functions."""
 from __future__ import annotations
 
 import logging
@@ -164,7 +164,7 @@ def filter_universe(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
 
-    result = df.copy()
+    result = df
 
     # Convert numeric columns
     for col in ("total_market_cap", "float_market_cap", "turnover", "price"):
@@ -237,7 +237,7 @@ def pre_sort_universe(df: pd.DataFrame, max_count: int = 300) -> pd.DataFrame:
     """
     if df.empty or len(df) <= max_count:
         return df
-    df = df.copy()
+    df = df
     df["pct_60d"] = pd.to_numeric(df.get("pct_60d", 0), errors="coerce").fillna(0)
     df["turnover"] = pd.to_numeric(df.get("turnover", 0), errors="coerce").fillna(0)
     # Composite rank: higher 60d return + moderate turnover preferred
@@ -529,7 +529,7 @@ def get_sector_context(df: pd.DataFrame, top_pct: float = 5.0) -> dict:
     if not sector_map:
         return {}
 
-    df_copy = df.copy()
+    df_copy = df
     if "pct_60d" not in df_copy.columns:
         df_copy["pct_60d"] = 0.0
     df_copy["pct_60d"] = pd.to_numeric(df_copy["pct_60d"], errors="coerce").fillna(0)

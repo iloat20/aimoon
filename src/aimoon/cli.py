@@ -1,5 +1,12 @@
-﻿"""CLI entry -- thin pipeline."""
+"""CLI entry -- thin pipeline."""
 from __future__ import annotations
+
+import warnings
+
+# Suppress pkg_resources deprecation warning from third-party libs (py_mini_racer etc.)
+# Must be set before any import that transitively imports pkg_resources
+warnings.filterwarnings("ignore", message=".*pkg_resources.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
 
 import argparse
 import logging
@@ -7,6 +14,8 @@ import os
 import sys
 import time
 from pathlib import Path
+
+import pandas as pd
 
 # Windows 终端 UTF-8 支持 — 必须在 Rich 导入之前设置
 if sys.platform == "win32":
@@ -20,17 +29,34 @@ if sys.platform == "win32":
 
 from aimoon.cache import DataCache
 from aimoon.config import Config, load_config
-from aimoon.data import get_spot_for_codes, filter_universe, get_sector_context
+from aimoon.data import get_spot_for_codes, filter_universe
 from aimoon.data.filters import get_holdings_pool
 from aimoon.data.spot import get_spot
 from aimoon.output import OutputFormatter
 from aimoon.scoring.rps import compute_rps
-from aimoon.scoring import category_capped_score
+from aimoon.scoring import hybrid_score
 from aimoon.screener import screen_universe
 
 logging.basicConfig(level=logging.WARNING)
+logging.getLogger("aimoon.factors.registry").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
+
+
+def _check_network(timeout: int = 5) -> bool:
+    """Quick network connectivity check. Returns True if reachable."""
+    import httpx
+    try:
+        r = httpx.get(
+            "https://push2delay.eastmoney.com/api/qt/ulist.np/get",
+            params={"fltt": "2", "invt": "2", "fields": "f2,f3,f12,f14", "secids": "0.399001"},
+            timeout=timeout,
+        )
+        data = r.json()
+        diff = data.get("data", {}).get("diff", [])
+        return len(diff) > 0
+    except Exception:
+        return False
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="A-share quant screener")
@@ -78,10 +104,20 @@ def parse_args() -> argparse.Namespace:
 
     # cache
     cp = sub.add_parser("cache")
-    cs = cp.add_subparsers(dest="cache_action")
+    cs = cp.add_subparsers(dest="cache_action", required=True)
     cs.add_parser("clear")
     sub.add_parser("update", help="Clear all caches and re-fetch data")
     sub.add_parser("refresh-pool", help="Force refresh institutional holdings pool")
+
+    # watchlist
+    wl = sub.add_parser("watchlist")
+    wl_sub = wl.add_subparsers(dest="watchlist_action", required=True)
+    wl_add = wl_sub.add_parser("add")
+    wl_add.add_argument("codes", type=str, help="逗号分隔的股票代码")
+    wl_rm = wl_sub.add_parser("remove")
+    wl_rm.add_argument("codes", type=str, help="逗号分隔的股票代码")
+    wl_sub.add_parser("list")
+    wl_sub.add_parser("clear")
     return p.parse_args()
 
 
@@ -90,7 +126,7 @@ def _run_evaluate(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     from aimoon.data.history import get_kline
     from aimoon.factor_eval import evaluate_all_scorers
 
-    cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
     codes = [c.strip() for c in args.stocks.split(",")]
     klines: dict = {}
 
@@ -118,9 +154,12 @@ def _run_evaluate(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
 def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
     """Backtest sub-command -- 先筛选 top 股票，再做增强组合回测。"""
-    import pandas as pd
     from aimoon.data.history import get_kline
     from aimoon.enhanced_backtest import EnhancedBacktestEngine
+
+    if not _check_network():
+        fmt.console.print("[red]Network required for backtest. Check connection or try --demo.[/red]")
+        sys.exit(1)
 
     max_pos = getattr(args, "max_positions", cfg.max_positions)
     commission = getattr(args, "commission", 0.0003)
@@ -133,14 +172,12 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
     # Step 1: Run screening pipeline to get top stocks
     fmt.console.print(f"[bold blue]=== Backtest: top {bt_top}, hold {cfg.hold_days}d, SL {stop_loss:.0%}, TP {take_profit:.0%} ===[/bold blue]")
-    universe, ctx = _load_screening_data(cfg, fmt)
-    cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+    universe = _load_screening_data(cfg, fmt)
+    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
 
     fmt.console.print(f"[dim]Scoring {len(universe)} stocks...[/dim]")
     t0 = time.time()
-    results, tails = screen_universe(universe, cfg, cache, ctx,
-                                      use_reversal=cfg.use_reversal,
-                                      use_alpha=cfg.use_alpha)
+    results, tails, all_klines = screen_universe(universe, cfg, cache)
     fmt.console.print(f"[dim]Scored in {time.time() - t0:.1f}s[/dim]")
 
     if not results:
@@ -149,7 +186,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
     from aimoon.scoring.rps import compute_rps
     results = compute_rps(results, tails)
-    top_stocks = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)[:bt_top]
+    top_stocks = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:bt_top]
     codes = [s.code for s in top_stocks]
     names = {s.code: s.name for s in top_stocks}
     stock_list = ", ".join(f"{s.code}({s.name})" for s in top_stocks)
@@ -175,7 +212,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     if getattr(args, "walk_forward", False):
         from aimoon.optimizer import walk_forward_validate
         wf = walk_forward_validate(klines, names, cfg, cache,
-                                   train_pct=cfg.train_pct, n_splits=cfg.n_splits, ctx=ctx)
+                                   train_pct=cfg.train_pct, n_splits=cfg.n_splits)
         fmt.display_walk_forward(wf)
         return
 
@@ -196,7 +233,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
         use_kelly=False,
         exit_ratio=0.5,
     )
-    result = engine.run_portfolio(klines, names, ctx=ctx)
+    result = engine.run_portfolio(klines, names)
     fmt.display_enhanced_backtest(result)
 
     # Charts (optional matplotlib)
@@ -220,8 +257,8 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
 def _load_screening_data(
     cfg: Config, fmt: OutputFormatter,
-) -> tuple:
-    """Load spot data for screening. Returns (spot_df, ctx).
+) -> pd.DataFrame:
+    """Load spot data for screening. Returns spot_df.
 
     Strategy:
     1. Try institutional holdings pool (northbound + fund + ROE).
@@ -239,8 +276,7 @@ def _load_screening_data(
             universe = filter_universe(spot, cfg)
             fmt.console.print(f"[dim]Universe after filter: {len(universe)} stocks[/dim]")
             if len(universe) >= 5:
-                ctx = get_sector_context(spot)
-                return universe, ctx
+                return universe
 
     # Fallback: full market
     fmt.console.print("[yellow]Holdings pool unavailable, loading full market...[/yellow]")
@@ -260,13 +296,11 @@ def _load_screening_data(
         fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
         sys.exit(1)
 
-    ctx = get_sector_context(spot)
-    return universe, ctx
+    return universe
 
 
 def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
     """Parameter optimization sub-command."""
-    import pandas as pd
     from aimoon.data.history import get_kline
     from aimoon.optimizer import grid_search, _PARAM_RANGES
 
@@ -278,19 +312,18 @@ def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
     fmt.console.print(f"[bold blue]=== Optimize: metric={metric}, trials={max_trials}, params={list(param_ranges.keys())} ===[/bold blue]")
 
-    universe, ctx = _load_screening_data(cfg, fmt)
-    cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+    universe = _load_screening_data(cfg, fmt)
+    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
 
     fmt.console.print(f"[dim]Scoring {len(universe)} stocks...[/dim]")
-    results, tails = screen_universe(universe, cfg, cache, ctx,
-                                      use_alpha=cfg.use_alpha)
+    results, tails, all_klines = screen_universe(universe, cfg, cache)
     if not results:
         fmt.console.print("[red]No stocks passed screening.[/red]")
         return
 
     from aimoon.scoring.rps import compute_rps
     results = compute_rps(results, tails)
-    top_stocks = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)[:bt_top]
+    top_stocks = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:bt_top]
     codes = [s.code for s in top_stocks]
     names = {s.code: s.name for s in top_stocks}
 
@@ -308,53 +341,40 @@ def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     t0 = time.time()
     opt_results = grid_search(klines, names, cfg, cache,
                               param_ranges=param_ranges, metric=metric,
-                              max_trials=max_trials, ctx=ctx)
+                              max_trials=max_trials)
     fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
     fmt.display_optimize(opt_results)
 
 
 def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
-    """Daily scheduled screening."""
+    """Daily scheduled screening using sched module."""
     import datetime as _dt
+    import sched
 
     target_time = getattr(args, "time", "09:30")
     output_dir = getattr(args, "output_dir", "daily_picks/")
     notify = getattr(args, "notify", False)
+    scheduler = sched.scheduler(time.time, time.sleep)
 
     fmt.console.print(f"[bold]Scheduling daily screen at {target_time}[/bold]")
     fmt.console.print("[dim]Press Ctrl+C to stop[/dim]")
 
-    while True:
-        now = _dt.datetime.now()
-        h, m = map(int, target_time.split(":"))
-        target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if now >= target:
-            target += _dt.timedelta(days=1)
-        wait_seconds = (target - now).total_seconds()
-        fmt.console.print(f"[dim]Next run: {target.strftime('%Y-%m-%d %H:%M')} (in {wait_seconds / 3600:.1f}h)[/dim]")
-
-        try:
-            time.sleep(wait_seconds)
-        except KeyboardInterrupt:
-            fmt.console.print("[yellow]Schedule stopped.[/yellow]")
-            return
-
-        # Run full screening pipeline
+    def _run_once() -> None:
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
             if cfg.demo:
                 from aimoon.demo import generate_demo
                 spot_df, klines = generate_demo()
-                cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
-                results, tails = screen_universe(spot_df, cfg, cache, klines=klines)
+                cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+                results, tails, all_klines = screen_universe(spot_df, cfg, cache, klines=klines)
             else:
-                universe, ctx = _load_screening_data(cfg, fmt)
-                cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
-                results, tails = screen_universe(universe, cfg, cache, ctx)
+                universe = _load_screening_data(cfg, fmt)
+                cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+                results, tails, all_klines = screen_universe(universe, cfg, cache)
 
             from aimoon.scoring.rps import compute_rps
             results = compute_rps(results, tails)
-            top = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)[:cfg.top_n]
+            top = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:cfg.top_n]
 
             os.makedirs(output_dir, exist_ok=True)
             saved = fmt.export_csv(top, filename=f"aimoon_{ts}.csv")
@@ -363,8 +383,29 @@ def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
             if notify:
                 summary = ", ".join(f"{s.name}({s.total_score})" for s in top[:5])
                 fmt.console.print(f"[dim]Top 5: {summary}[/dim]")
+
+            h, m = map(int, target_time.split(":"))
+            tomorrow = _dt.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
+            if _dt.datetime.now() >= tomorrow:
+                tomorrow += _dt.timedelta(days=1)
+            wait = (tomorrow - _dt.datetime.now()).total_seconds()
+            scheduler.enter(wait, 1, _run_once)
         except Exception as e:
-            fmt.console.print(f"[red]Schedule run failed: {e}[/red]")
+            logger.error("Scheduled screen failed: %s", e)
+            scheduler.enter(300, 1, _run_once)  # retry in 5 min
+
+    now = _dt.datetime.now()
+    h, m = map(int, target_time.split(":"))
+    first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if now >= first_run:
+        first_run += _dt.timedelta(days=1)
+    initial_wait = (first_run - now).total_seconds()
+    scheduler.enter(initial_wait, 1, _run_once)
+
+    try:
+        scheduler.run()
+    except KeyboardInterrupt:
+        fmt.console.print("[yellow]Schedule stopped.[/yellow]")
 
 
 def main() -> None:
@@ -374,7 +415,7 @@ def main() -> None:
 
     # Cache management
     if cfg.command == "cache":
-        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
         print(f"Cleared {cache.clear()} cached files")
         return
 
@@ -397,6 +438,39 @@ def main() -> None:
             fmt.console.print(f"[green]Holdings pool refreshed: {len(pool)} stocks[/green]")
         else:
             fmt.console.print("[red]Failed to refresh pool (network error?)[/red]")
+        return
+
+    # Watchlist management
+    if cfg.command == "watchlist":
+        from aimoon.watchlist import add_watchlist, remove_watchlist, list_watchlist, clear_watchlist
+        action = cfg.watchlist_action
+        if action == "add":
+            codes = [c.strip() for c in cfg.watchlist_codes.split(",") if c.strip()]
+            ok, msg = add_watchlist(codes)
+            print(msg)
+            if not ok:
+                sys.exit(1)
+        elif action == "remove":
+            codes = [c.strip() for c in cfg.watchlist_codes.split(",") if c.strip()]
+            ok, msg = remove_watchlist(codes)
+            print(msg)
+            if not ok:
+                sys.exit(1)
+        elif action == "list":
+            ok, result = list_watchlist()
+            if ok:
+                if result:
+                    print(f"Watchlist ({len(result)} stocks): {', '.join(result)}")
+                else:
+                    print("Watchlist is empty")
+            else:
+                print(result)
+                sys.exit(1)
+        elif action == "clear":
+            ok, msg = clear_watchlist()
+            print(msg)
+            if not ok:
+                sys.exit(1)
         return
 
     # Factor evaluation
@@ -423,34 +497,41 @@ def main() -> None:
     if cfg.demo:
         from aimoon.demo import generate_demo
         spot_df, klines = generate_demo()
-        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
-        ctx = {}
-        results, tails = screen_universe(spot_df, cfg, cache, klines=klines,
-                                          use_alpha=cfg.use_alpha)
+        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+        results, tails, all_klines = screen_universe(spot_df, cfg, cache, klines=klines)
     else:
         # Real screening pipeline with automatic fallback
-        universe, ctx = _load_screening_data(cfg, fmt)
-        cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        universe = _load_screening_data(cfg, fmt)
+        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
         fmt.console.print(f"[dim]Analyzing {len(universe)} stocks...[/dim]")
         t0 = time.time()
-        results, tails = screen_universe(universe, cfg, cache, ctx,
-                                          use_alpha=cfg.use_alpha)
+        results, tails, all_klines = screen_universe(universe, cfg, cache)
         fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
 
     # RPS + sort + output
     results = compute_rps(results, tails)
-    from aimoon.regime import detect_regime
-    from aimoon.scoring.adaptive_weight import apply_regime_to_list
     regime = None
     if cfg.command is None and not cfg.demo:
+        from aimoon.regime import detect_regime
+        from aimoon.scoring.adaptive_weight import apply_regime_to_list
         from aimoon.data.history import get_kline as _get_kline
-        _c = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
+        _c = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
         bench_code = '000001'
         br = _get_kline(bench_code, cfg.history_days, _c)
         if br.is_ok():
             regime = detect_regime(br.unwrap())
             fmt.console.print(f'[dim]Market regime: {regime}[/dim]')
             results = apply_regime_to_list(results, regime)
+
+    # ── Super Turtle 策略信号 ──
+    from aimoon.scoring.turtle import generate_turtle_plan
+    turtle_plans: dict = {}
+    for r in results:
+        kdf = all_klines.get(r.code)
+        if kdf is not None and len(kdf) >= 25:
+            plan = generate_turtle_plan(kdf, r.code, r.name)
+            if plan is not None:
+                turtle_plans[r.code] = plan
 
     # Risk warnings
     from aimoon.risk import RiskLimits, Position, PortfolioState, check_risk_limits
@@ -462,11 +543,10 @@ def main() -> None:
     )
     ps = PortfolioState()
     weight_each = 1.0 / max(len(results), 1)
-    sector_map = (ctx or {}).get("sector_map", {})
     for r in results[:cfg.top_n]:
         ps.positions[r.code] = Position(
             code=r.code, name=r.name, weight=weight_each,
-            entry_price=r.price, sector=sector_map.get(r.code, ""),
+            entry_price=r.price, sector="",
         )
     violations = check_risk_limits(ps, limits)
     if violations:
@@ -474,8 +554,10 @@ def main() -> None:
         for v in violations:
             fmt.console.print(f"  [dim]{v[0]}: {v[1:]}[/dim]")
 
-    top = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)[:cfg.top_n]
-    fmt.display(top)
+    top = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:cfg.top_n]
+    fmt.display(top, turtle_plans=turtle_plans)
+    if turtle_plans:
+        fmt.display_turtle_plans(turtle_plans)
     if not cfg.no_csv and top:
         fmt.console.print(f"[dim]Exported: {fmt.export_csv(top)}[/dim]")
         regime_str = str(regime) if regime else None

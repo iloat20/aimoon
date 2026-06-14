@@ -89,6 +89,7 @@ class XGBoostModel(BaseModel):
 
     def __init__(self, **kwargs: Any):
         import xgboost as xgb
+
         self.model: xgb.Booster | None = None
         self.params = kwargs
 
@@ -120,6 +121,7 @@ class XGBoostModel(BaseModel):
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
         import xgboost as xgb
+
         dmatrix = xgb.DMatrix(X)
         return self.model.predict(dmatrix)
 
@@ -134,6 +136,7 @@ class XGBoostModel(BaseModel):
     def load(cls, path: Path) -> XGBoostModel:
         """加载 XGBoost 模型。"""
         import xgboost as xgb
+
         model = cls()
         model.model = xgb.Booster()
         model.model.load_model(str(path))
@@ -145,6 +148,7 @@ class LightGBMModel(BaseModel):
 
     def __init__(self, **kwargs: Any):
         import lightgbm as lgb
+
         self.model: lgb.Booster | None = None
         self.params = kwargs
 
@@ -165,7 +169,8 @@ class LightGBMModel(BaseModel):
         """LightGBM 预测。"""
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
-        return self.model.predict(X)
+        result = self.model.predict(X)
+        return np.array(result)
 
     def save(self, path: Path) -> None:
         """保存 LightGBM 模型。"""
@@ -178,6 +183,7 @@ class LightGBMModel(BaseModel):
     def load(cls, path: Path) -> LightGBMModel:
         """加载 LightGBM 模型。"""
         import lightgbm as lgb
+
         model = cls()
         model.model = lgb.Booster(model_file=str(path))
         return model
@@ -227,6 +233,7 @@ class EnsembleModel(BaseModel):
 
         # 保存权重
         import json
+
         meta = {
             "weights": self.weights,
             "model_types": [m.model_type for m in self.models],
@@ -242,7 +249,7 @@ class EnsembleModel(BaseModel):
         with open(path / "ensemble_meta.json") as f:
             meta = json.load(f)
 
-        models = []
+        models: list[BaseModel] = []
         for i, model_type in enumerate(meta["model_types"]):
             model_path = path / f"model_{i}.json"
             if model_type == "XGBoostModel":

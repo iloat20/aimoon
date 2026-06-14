@@ -9,13 +9,12 @@ import pandas as pd
 
 from aimoon.factors.registry import Registry
 from aimoon.performance import (
-    batch_compute_factors,
     force_gc,
     optimize_factor_dtypes,
 )
 
 # Representative Alpha Zoo factors for training (speed vs coverage trade-off)
-_MAX_ALPHA_ZOO_FACTORS = 50
+_MAX_ALPHA_ZOO_FACTORS = 120
 
 logger = logging.getLogger(__name__)
 
@@ -35,28 +34,20 @@ def _neutralize_factor(
     sector_map: dict[str, str] | None = None,
     log_volume: pd.Series | None = None,
 ) -> pd.Series:
-    """Neutralize factor against industry dummies + log(size).
-
-    Barra-style neutralization: regress out industry and size effects,
-    return the residual as the neutralized factor value.
-    """
+    """Neutralize factor against industry dummies + log(size)."""
     valid = factor_row.dropna()
     if len(valid) < 10:
         return factor_row
 
-    # Build regressors
     regressors: list[pd.Series] = []
 
-    # Industry dummies (one-hot)
     if sector_map:
         sectors = pd.Series({code: sector_map.get(code, "unknown") for code in valid.index})
         dummies = pd.get_dummies(sectors, dtype=float)
-        # Drop one column to avoid perfect collinearity
         if len(dummies.columns) > 1:
             dummies = dummies.iloc[:, 1:]
         regressors.append(dummies)
 
-    # Log volume as size proxy
     if log_volume is not None:
         lv = log_volume.reindex(valid.index).fillna(0)
         regressors.append(lv.rename("log_vol"))
@@ -68,7 +59,6 @@ def _neutralize_factor(
     y = valid
 
     try:
-        # OLS: y = X @ beta + residual
         beta = np.linalg.lstsq(X.values, y.values, rcond=None)[0]
         residual = y - pd.Series(X.values @ beta, index=X.index)
         return _robust_zscore(residual)
@@ -78,32 +68,210 @@ def _neutralize_factor(
 
 
 def _select_factor_subset(registry: Registry, max_count: int) -> list[str]:
-    """Select a stratified subset of factors across groups for training speed."""
+    """Select a stratified subset of factors across groups for training speed.
+
+    Uses stable group detection via zoo directory prefix and deterministic
+    ordering (sorted), so repeated calls return the same subset.
+    """
     all_ids = registry.list()
     if len(all_ids) <= max_count:
         return all_ids
 
-    # Group factors by prefix (alpha101, gtja191, qlib158, academic, etc.)
     groups: dict[str, list[str]] = {}
     for fid in all_ids:
-        group = fid.rsplit("_", 1)[0] if "_" in fid else fid[:4]
+        parts = fid.split("_", 1)
+        if fid.startswith("alpha") and len(parts) > 1:
+            try:
+                int(parts[-1])
+                group = parts[0]
+            except ValueError:
+                group = parts[0]
+        elif fid.startswith("alpha") and len(fid) > 6:
+            group = fid[:6]
+        else:
+            group = parts[0]
         groups.setdefault(group, []).append(fid)
 
-    # Select evenly across groups
+    for group in groups:
+        groups[group].sort()
+
     per_group = max(1, max_count // max(len(groups), 1))
     selected: list[str] = []
-    for group_ids in groups.values():
+    sorted_groups = sorted(groups.items())
+    for group_name, group_ids in sorted_groups:
         selected.extend(group_ids[:per_group])
         if len(selected) >= max_count:
             break
 
+    result = sorted(set(selected))[:max_count]
     logger.debug(
-        "Factor subset: %d -> %d across %d groups",
+        "Factor subset: %d -> %d across %d groups (stable selection)",
         len(all_ids),
-        len(selected),
+        len(result),
         len(groups),
     )
-    return selected[:max_count]
+    return result
+
+
+def select_factors_by_icir(
+    panel: dict[str, pd.DataFrame],
+    registry: Registry,
+    max_count: int = 120,
+    icir_min: float = 0.02,
+    icir_threshold: float = 0.3,
+) -> list[str]:
+    """ICIR-based factor selection: keep only significant factors.
+
+    Computes Rank IC and ICIR for each factor using recent price data,
+    retaining only those with |IC| > icir_min and |ICIR| > icir_threshold.
+
+    Falls back to _select_factor_subset if ICIR computation fails.
+
+    Parameters
+    ----------
+    panel : dict[str, pd.DataFrame]
+        Price panel with at least "close".
+    registry : Registry
+        Factor registry.
+    max_count : int
+        Maximum number of factors to return.
+    icir_min : float
+        Minimum |IC| threshold.
+    icir_threshold : float
+        Minimum |ICIR| threshold.
+
+    Returns
+    -------
+    list[str]
+        Selected factor IDs.
+    """
+    import numpy as np
+
+    close = panel.get("close")
+    if close is None or len(close) < 60:
+        logger.debug("Panel too small for ICIR selection, using group subset")
+        return _select_factor_subset(registry, max_count)
+
+    try:
+        future_ret = close.pct_change(5).shift(-5)
+        n_days = min(90, len(close) - 10)
+        if n_days < 30:
+            return _select_factor_subset(registry, max_count)
+
+        selected: list[str] = []
+        all_ids = registry.list()
+
+        for alpha_id in all_ids:
+            try:
+                factor_df = registry.compute(alpha_id, panel)
+                if factor_df is None or factor_df.empty:
+                    continue
+
+                f_slice = factor_df.iloc[-n_days:]
+                ret_slice = future_ret.iloc[-n_days:]
+
+                ic_values = []
+                for date in f_slice.index:
+                    if date not in ret_slice.index:
+                        continue
+                    f_row = f_slice.loc[date]
+                    r_row = ret_slice.loc[date]
+                    common = f_row.dropna().index.intersection(r_row.dropna().index)
+                    if len(common) < 10:
+                        continue
+                    f_vals = f_row[common].values.astype(np.float64)
+                    r_vals = r_row[common].values.astype(np.float64)
+                    f_rank = np.argsort(np.argsort(f_vals))
+                    r_rank = np.argsort(np.argsort(r_vals))
+                    n = len(f_rank)
+                    if n < 3:
+                        continue
+                    ic = 1.0 - 6.0 * np.sum((f_rank - r_rank) ** 2) / (n * (n ** 2 - 1))
+                    ic_values.append(ic)
+
+                if len(ic_values) < 10:
+                    continue
+
+                ic_mean = float(np.mean(ic_values))
+                ic_std = float(np.std(ic_values, ddof=1))
+                icir = ic_mean / ic_std if ic_std > 1e-10 else 0.0
+
+                if abs(ic_mean) > icir_min and abs(icir) > icir_threshold:
+                    selected.append(alpha_id)
+            except Exception:
+                continue
+
+        if len(selected) < 5:
+            logger.debug("ICIR selection too strict (%d), falling back", len(selected))
+            return _select_factor_subset(registry, max_count)
+
+        result = sorted(selected)[:max_count]
+        logger.info(
+            "ICIR factor selection: %d -> %d (IC>%.3f, ICIR>%.3f)",
+            len(all_ids), len(result), icir_min, icir_threshold,
+        )
+        return result
+
+    except Exception as e:
+        logger.warning("ICIR selection failed: %s, using group subset", e)
+        return _select_factor_subset(registry, max_count)
+
+
+def _extract_zoo_factors_with_ids(
+    panel: dict[str, pd.DataFrame],
+    registry: Registry,
+    target_date: pd.Timestamp,
+    factor_ids: list[str],
+) -> pd.DataFrame:
+    """Extract specific Alpha Zoo factors by ID list (deterministic, train/backtest consistent)."""
+    close = panel.get("close")
+    if close is None:
+        return pd.DataFrame()
+
+    codes = list(close.columns)
+    if len(codes) < 5:
+        return pd.DataFrame()
+
+    factor_values: dict[str, dict[str, float]] = {code: {} for code in codes}
+    for alpha_id in factor_ids:
+        try:
+            factor_df = registry.compute(alpha_id, panel)
+            if factor_df.empty or target_date not in factor_df.index:
+                continue
+            row = factor_df.loc[target_date]
+            for code in codes:
+                if code in row.index:
+                    val = row[code]
+                    if pd.notna(val) and not (isinstance(val, float) and (val != val)):
+                        factor_values[code][alpha_id] = float(val)
+        except Exception:
+            continue
+
+    result = pd.DataFrame.from_dict(factor_values, orient="index")
+    if result.empty:
+        return result
+
+    result = result.apply(_robust_zscore, axis=1)
+    result = result.fillna(0.0)
+    return result
+
+
+def _extract_zoo_factors(
+    panel: dict[str, pd.DataFrame],
+    registry: Registry,
+    target_date: pd.Timestamp,
+    max_factors: int = 80,
+) -> pd.DataFrame:
+    """Extract top Alpha Zoo cross-sectional factors as features.
+
+    Uses ICIR-based selection when panel has sufficient data,
+    otherwise falls back to deterministic group subset.
+    """
+    if len(panel.get("close", pd.DataFrame())) > 60:
+        selected_ids = select_factors_by_icir(panel, registry, max_factors)
+    else:
+        selected_ids = _select_factor_subset(registry, max_factors)
+    return _extract_zoo_factors_with_ids(panel, registry, target_date, selected_ids)
 
 
 def _merge_feature_block(base: pd.DataFrame, addition: pd.DataFrame, label: str) -> pd.DataFrame:
@@ -132,7 +300,6 @@ def _neutralize_zoo_batch(
         return zoo_features
 
     log_vol = np.log1p(vol_panel.loc[target_date].clip(lower=1))
-    # Build regressor matrix once, then solve all factors as one matrix op
     common_codes = zoo_features.dropna(how="all").index
     if len(common_codes) < 10:
         return zoo_features
@@ -144,12 +311,10 @@ def _neutralize_zoo_batch(
     lv = log_vol.reindex(common_codes).fillna(0)
     X_reg = pd.concat([dummies, lv.rename("log_vol")], axis=1).fillna(0)
 
-    # Batch solve: pinv once, apply to all factor columns
     pinv = np.linalg.pinv(X_reg.values)
     zoo_vals = zoo_features.reindex(common_codes).fillna(0).values
     residuals = zoo_vals - X_reg.values @ (pinv @ zoo_vals)
     neutralized = pd.DataFrame(residuals, index=common_codes, columns=zoo_features.columns)
-    # Apply robust z-score column-wise
     for col in neutralized.columns:
         neutralized[col] = _robust_zscore(neutralized[col])
 
@@ -162,17 +327,20 @@ def extract_features(
     registry: Registry | None = None,
     target_date: pd.Timestamp | None = None,
     sector_map: dict[str, str] | None = None,
+    zoo_factor_ids: list[str] | None = None,
 ) -> pd.DataFrame:
     """Extract feature matrix for ML training/inference.
 
-    Only uses Alpha360 time-series features + basic technical features.
-    Alpha Zoo cross-sectional factors are handled separately by the scorer
-    to avoid double-counting.
+    Combines three feature blocks:
+    1. Basic technical features (volatility, returns at multiple windows)
+    2. Alpha360 time-series features
+    3. Alpha Zoo cross-sectional factors
 
-    Returns
-    -------
-    pd.DataFrame
-        index=stock codes, columns=feature names. Empty if no valid features.
+    Parameters
+    ----------
+    zoo_factor_ids : list[str] | None
+        If provided, use these exact factor IDs (deterministic).
+        If None, falls back to random subset selection.
     """
     if panel is None or "close" not in panel:
         return pd.DataFrame()
@@ -216,6 +384,18 @@ def extract_features(
     except Exception as e:
         logger.warning("Alpha360 feature extraction failed: %s", e)
 
+    # 3. Alpha Zoo cross-sectional factors
+    if registry is not None and target_date is not None:
+        try:
+            if zoo_factor_ids is not None:
+                zoo_features = _extract_zoo_factors_with_ids(panel, registry, target_date, zoo_factor_ids)
+            else:
+                zoo_features = _extract_zoo_factors(panel, registry, target_date)
+            if not zoo_features.empty:
+                result = _merge_feature_block(result, zoo_features, "ZooFactors")
+        except Exception as e:
+            logger.debug("Zoo factor extraction failed: %s", e)
+
     # Single dtype optimization pass at the end
     result = optimize_factor_dtypes(result)
     force_gc()
@@ -232,26 +412,9 @@ def select_features_by_ic(
     X: pd.DataFrame,
     y: pd.Series,
     top_k: int = 100,
-    min_ic: float = 0.003,  # 进一步降低阈值，保留更多潜在有效特征
+    min_ic: float = 0.003,
 ) -> list[str]:
-    """Select features by Information Coefficient (Spearman rank correlation).
-
-    Parameters
-    ----------
-    X : pd.DataFrame
-        Feature matrix.
-    y : pd.Series
-        Labels.
-    top_k : int
-        Maximum number of features to keep.
-    min_ic : float
-        Minimum absolute IC to keep a feature.
-
-    Returns
-    -------
-    list[str]
-        Selected feature names, sorted by |IC| descending.
-    """
+    """Select features by Information Coefficient (Spearman rank correlation)."""
     from scipy.stats import spearmanr
 
     common = X.index.intersection(y.index)
@@ -270,16 +433,13 @@ def select_features_by_ic(
         except Exception:
             continue
 
-    # Filter by minimum IC
     filtered = {k: v for k, v in ic_scores.items() if v >= min_ic}
     if not filtered:
-        # 如果没有特征达到阈值，降低阈值重试
         logger.warning("No features with IC >= %.4f, retrying with lower threshold", min_ic)
         filtered = {k: v for k, v in ic_scores.items() if v >= 0.001}
         if not filtered:
             return X.columns.tolist()[:top_k]
 
-    # Sort by |IC| descending, take top_k
     sorted_features = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
     selected = [name for name, _ in sorted_features[:top_k]]
     logger.info(
@@ -295,13 +455,7 @@ def compute_feature_importance(
     model: object,
     feature_names: list[str],
 ) -> dict[str, float]:
-    """Extract feature importance from trained XGBoost model.
-
-    Returns
-    -------
-    dict[str, float]
-        Feature name -> importance score (normalized to sum 1.0).
-    """
+    """Extract feature importance from trained XGBoost model."""
     import xgboost as xgb
 
     if isinstance(model, xgb.XGBModel):
@@ -320,3 +474,42 @@ def compute_feature_importance(
     for name, imp in zip(feature_names, importance):
         result[name] = float(imp) / total
     return dict(sorted(result.items(), key=lambda x: x[1], reverse=True))
+
+
+def apply_pca_to_alpha360(X, n_components=50):
+    """Apply PCA to reduce feature collinearity."""
+    from sklearn.decomposition import PCA
+
+    has_date = "_date" in X.columns
+    date_col = X["_date"] if has_date else None
+    feat = X.drop(columns=["_date"]) if has_date else X
+
+    n_components = min(n_components, feat.shape[1], feat.shape[0])
+    pca = PCA(n_components=n_components, random_state=42)
+    transformed = pca.fit_transform(feat.values)
+    cols = [f"pca_{i}" for i in range(n_components)]
+    result = pd.DataFrame(transformed, index=feat.index, columns=cols)
+    if date_col is not None:
+        result["_date"] = date_col.values
+    return result, pca
+
+
+def cluster_alpha360_features(X, n_clusters=30):
+    """Cluster features into super-factors via KMeans on transposed matrix."""
+    from sklearn.cluster import KMeans
+
+    has_date = "_date" in X.columns
+    date_col = X["_date"] if has_date else None
+    feat = X.drop(columns=["_date"]) if has_date else X
+
+    n_clusters = min(n_clusters, feat.shape[1])
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(feat.T.values)
+    cluster_ids = sorted(set(labels))
+    result = pd.DataFrame(index=feat.index)
+    for cid in cluster_ids:
+        members = feat.columns[labels == cid]
+        result[f"cluster_{cid}"] = feat[members].mean(axis=1)
+    if date_col is not None:
+        result["_date"] = date_col.values
+    return result, kmeans

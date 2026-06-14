@@ -1,127 +1,214 @@
-"""评分函数注册表"""
+"""Scoring registry with explicit technical + momentum split.
+
+职责边界:
+- scoring/__init__.py: 收集技术指标信号（collect_signals），信号层入口
+- scoring/hybrid_scorer.py: 多源信号加权融合（hybrid_score）
+- factors/scorer.py: Alpha Zoo 因子层面的截面转换，不涉及多信号融合
+"""
+
 from __future__ import annotations
-from typing import Callable, Union
+
+import pandas as pd
+
+from collections.abc import Callable
+
 from aimoon.indicators.technical import TechInd
-from aimoon.models import Signal
+from aimoon.models import ScoredStock, Signal
+from aimoon.scoring.bollinger import score_bollinger
+from aimoon.scoring.fundamentals import score_fundamentals
+from aimoon.scoring.hybrid_scorer import (
+    HybridScoreConfig,
+    analyze_score_breakdown,
+    compute_hybrid_score,
+)
+from aimoon.scoring.kdj import score_kdj
+from aimoon.scoring.macd import score_macd
 from aimoon.scoring.momentum import score_momentum
 from aimoon.scoring.momentum_ext import score_momentum_ext
+from aimoon.scoring.reversal import score_reversal
+from aimoon.scoring.mean_reversion import score_mean_reversion
+from aimoon.scoring.rsi import score_rsi
 from aimoon.scoring.trend import score_trend
 from aimoon.scoring.trend_ext import score_trend_ext
-from aimoon.scoring.macd import score_macd
-from aimoon.scoring.kdj import score_kdj
 from aimoon.scoring.volume import score_volume
-from aimoon.scoring.bollinger import score_bollinger
-from aimoon.scoring.sector import score_sector
-from aimoon.scoring.fundamentals import score_fundamentals
-from aimoon.scoring.reversal import score_reversal
 
-Scorer = Callable[..., Union[Signal, list[Signal], None]]
+Scorer = Callable[..., Signal | list[Signal] | None]
 
-SCORERS: list[Scorer] = [
-    score_momentum, score_momentum_ext,  # 动量（降权）
-    score_trend, score_trend_ext,         # 趋势（降权）
-    score_macd, score_kdj,
-    score_volume, score_bollinger, score_sector,
-    score_fundamentals,                   # 基本面估值
+ALL_SCORERS: list[Scorer] = [
+    score_reversal,
+    score_mean_reversion,
+    score_momentum,
+    score_momentum_ext,
+    score_trend,
+    score_trend_ext,
+    score_volume,
+    score_rsi,
+    score_macd,
+    score_kdj,
+    score_bollinger,
+    score_fundamentals,
 ]
 
-# Reversal scorer: opt-in via --reversal flag (strong in mean-reversion regimes)
-REVERSAL_SCORER: Scorer = score_reversal
 
-
-def collect_signals(ti: TechInd, code: str = "", ctx: dict | None = None,
-                    use_reversal: bool = False) -> list[Signal]:
-    """运行所有评分函数，收集非空信号。"""
-    signals: list[Signal] = []
-    scorers = SCORERS + ([REVERSAL_SCORER] if use_reversal else [])
-    for scorer in scorers:
-        result = scorer(ti, code=code, ctx=ctx)
+def collect_signals(
+    ti: TechInd, code: str = "", use_reversal: bool = True
+) -> list[Signal]:
+    """Run scoring functions and collect non-empty signals.
+    
+    Returns signals grouped by scorer, each scorer's signals are averaged
+    to produce one composite signal per scorer. This prevents scorers
+    that generate many signals from dominating the final score.
+    """
+    from collections import defaultdict
+    scorer_signals: dict[str, list[Signal]] = defaultdict(list)
+    for scorer in ALL_SCORERS:
+        result = scorer(ti, code=code)
         if result is None:
             continue
-        signals.extend(result if isinstance(result, list) else [result])
-    return signals
+        sigs = result if isinstance(result, list) else [result]
+        # Use scorer function name as group key
+        group = scorer.__name__
+        scorer_signals[group].extend(sigs)
+    
+    # Average signals per scorer group, then flatten
+    all_signals: list[Signal] = []
+    for group_name, sigs in scorer_signals.items():
+        if not sigs:
+            continue
+        avg_score = int(round(sum(s.score for s in sigs) / len(sigs)))
+        # Use the group name as signal name, combine labels
+        labels = "; ".join(s.label for s in sigs[:3])
+        if len(sigs) > 3:
+            labels += f"... +{len(sigs)-3}more"
+        # All signals keep their original category
+        # Just use the first signal's category as representative
+        cat = sigs[0].category
+        all_signals.append(Signal(
+            name=f"group_{group_name}",
+            label=f"[{len(sigs)}sig] {labels}",
+            score=avg_score,
+            category=cat,
+        ))
+    return all_signals
 
 
-# ── Category-level score capping ──
-# Prevents any single signal category from dominating the total score.
-# Factor evaluation shows A-shares are strongly mean-reverting: most signals
-# are contrarian predictors. Uncapped momentum scores (up to +40) overwhelm
-# the few contrarian signals (+2), so the system systematically picks
-# overbought stocks that subsequently underperform.
+def hybrid_score(signals: list[Signal], config: HybridScoreConfig | None = None) -> int:
+    """使用混合方法计算评分（唯一评分入口）
 
-# ── 100 分制加权评分 ──
-# Alpha Zoo: 60 分 | 动量: 20 分 | 趋势/量价: 20 分
+    四组独立评分后线性加权：
+    - ML 分数：直接使用百分位（0-100），最准确
+    - Alpha 因子：基本面/板块信号，tanh 缩放
+    - Reversal 信号：技术指标（趋势/RSI/MACD/KDJ/布林/成交量），tanh 缩放
+    - Momentum 信号：动量指标（ROC/动量加速/量价关系），tanh 缩放
 
-_CATEGORY_CAPS: dict[str, int] = {
-    "alpha": 30,
-    "momentum": 6, "rps": 4,
-    "trend": 5, "macd": 3, "kdj": 2, "volume": 4,
-    "valuation": 3, "sector": 2, "reversal": 4,
-}
+    Args:
+        signals: 信号列表（每个信号需有 category 字段）
+        config: 评分配置（可选，支持 regime 自适应权重）
 
-_CATEGORY_GROUP: dict[str, str] = {
-    "alpha": "alpha",
-    "momentum": "momentum", "rps": "momentum",
-    "trend": "trend_vol", "macd": "trend_vol", "kdj": "trend_vol",
-    "volume": "trend_vol", "valuation": "trend_vol",
-    "sector": "trend_vol", "reversal": "trend_vol", "other": "trend_vol",
-}
-
-_GROUP_WEIGHTS: dict[str, int] = {
-    "alpha": 60,
-    "momentum": 20,
-    "trend_vol": 20,
-}
-
-_SIGNAL_CATEGORY_PREFIXES: list[tuple[str, str]] = [
-    ("momentum_exhaustion", "momentum"), ("momentum_overextended", "momentum"),
-    ("crash_filter", "momentum"), ("rps_ext_", "momentum"),
-    ("vol_adj_", "momentum"), ("persist_", "momentum"), ("skew_", "momentum"),
-    ("hl_net_", "momentum"), ("recovery_", "momentum"),
-    ("roc", "momentum"), ("accel_", "momentum"), ("decel_", "momentum"),
-    ("high_", "momentum"), ("low_", "momentum"), ("adx_strong", "momentum"),
-    ("ma_golden", "trend"), ("ma_death", "trend"), ("trend_", "trend"),
-    ("ma_align_", "trend"), ("above_ma", "trend"), ("below_ma", "trend"),
-    ("adx_bull_", "trend"), ("adx_bear_", "trend"),
-    ("macd_red_", "trend"), ("macd_green_", "trend"), ("ema_slope_", "trend"),
-    ("rsi_", "rsi"), ("macd_", "macd"), ("kdj_", "kdj"),
-    ("volume_", "volume"), ("obv_", "volume"), ("ud_vol_", "volume"),
-    ("vwap_", "volume"),
-    ("pe_", "valuation"), ("pb_", "valuation"),
-    ("sector_", "sector"),
-    ("rps_", "rps"),
-    ("reversal_", "reversal"),
-    ("alpha_", "alpha"),  # Alpha Zoo 截面因子
-]
+    Returns:
+        int: 分数 (0-100)
+    """
+    score, _ = compute_hybrid_score(signals, config)
+    return score
 
 
-def _classify_signal(name: str) -> str:
-    for prefix, cat in _SIGNAL_CATEGORY_PREFIXES:
-        if name.startswith(prefix):
-            return cat
-    return "other"
+def hybrid_score_with_details(
+    signals: list[Signal],
+    config: HybridScoreConfig | None = None,
+) -> tuple[int, dict[str, float]]:
+    """使用混合方法计算评分，并返回详细信息。
+
+    返回的详细信息包含四组分数：ml, alpha, reversal, momentum。
+
+    Args:
+        signals: 信号列表
+        config: 评分配置（可选）
+
+    Returns:
+        tuple: (分数, 详细信息)
+    """
+    return compute_hybrid_score(signals, config)
 
 
-def category_capped_score(signals: list[Signal]) -> int:
-    """100 分制加权评分。Alpha Zoo 60 分 / 动量 20 分 / 趋势量价 20 分。"""
-    cat_totals: dict[str, int] = {}
-    for s in signals:
-        cat = _classify_signal(s.name)
-        cat_totals[cat] = cat_totals.get(cat, 0) + s.score
+def score_portfolio(
+    codes: list[str],
+    klines: dict[str, pd.DataFrame],
+    use_reversal: bool = False,
+    ml_scores: dict[str, int] | None = None,
+    regime: str | None = None,
+) -> list[ScoredStock]:
+    """Score an arbitrary portfolio (watchlist / holdings pool).
 
-    # 按类别 cap 截断，再按组归一化到目标权重
-    group_raw: dict[str, float] = {}
-    group_caps: dict[str, float] = {}
-    for cat, raw in cat_totals.items():
-        group = _CATEGORY_GROUP.get(cat, "trend_vol")
-        cap = _CATEGORY_CAPS.get(cat, 6)
-        clamped = max(0, min(cap, raw))  # 负分归零
-        group_raw[group] = group_raw.get(group, 0) + clamped
-        group_caps[group] = group_caps.get(group, 0) + cap
+    Uses the same scoring pipeline as ``screen_universe`` but operates on
+    a pre-defined set of stock codes rather than a full market universe.
+    Each stock is scored with technical signals + optional ML signals,
+    then ranked by hybrid_score descending.
 
-    total = 0
-    for group, weight in _GROUP_WEIGHTS.items():
-        raw = group_raw.get(group, 0)
-        cap = group_caps.get(group, 1)
-        total += int(raw / cap * weight) if cap > 0 else 0
-    return total
+    Args:
+        codes: Stock codes to score.
+        klines: ``{code: DataFrame}`` with OHLCV data for each stock.
+        ctx: Market context (sector_map, top_sectors, etc.).
+        use_reversal: Whether to include reversal scorers.
+        ml_scores: Optional ``{code: ml_score}`` from ML ensemble.
+        regime: Market regime for adaptive weights.
+
+    Returns:
+        List of ScoredStock, sorted by total_score descending.
+    """
+    from aimoon.indicators.technical import TechInd
+    from aimoon.scoring.hybrid_scorer import get_regime_config
+
+    config = get_regime_config(regime) if regime else None
+    results: list[ScoredStock] = []
+
+    for code in codes:
+        kdf = klines.get(code)
+        if kdf is None or len(kdf) < 60:
+            continue
+
+        ti = TechInd(kdf)
+        signals = collect_signals(ti, code=code, use_reversal=use_reversal)
+
+        if ml_scores and code in ml_scores:
+            from aimoon.scoring._ml_signal import create_ml_signal
+
+            ml_signal = create_ml_signal(ml_scores[code])
+            if ml_signal is not None:
+                signals.append(ml_signal)
+
+        if not signals:
+            continue
+
+        total = hybrid_score(signals, config)
+        price = float(kdf["close"].iloc[-1])
+        pct = float(kdf["pct_change"].iloc[-1]) if "pct_change" in kdf.columns else 0.0
+
+        results.append(
+            ScoredStock(
+                code=code,
+                name=code,
+                price=price,
+                pct_change=pct,
+                signals=tuple(signals),
+                ml_score=ml_scores.get(code) if ml_scores else None,
+                hybrid_score=total,
+            )
+        )
+
+    results.sort(key=lambda s: s.total_score, reverse=True)
+    return results
+
+
+def get_score_analysis(
+    signals: list[Signal], config: HybridScoreConfig | None = None
+) -> dict:
+    """获取详细的评分分析
+
+    Args:
+        signals: 信号列表
+        config: 评分配置（可选）
+
+    Returns:
+        dict: 详细的评分分析
+    """
+    return analyze_score_breakdown(signals, config)

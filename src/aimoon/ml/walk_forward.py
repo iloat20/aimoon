@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class WalkForwardResult:
     """Walk-Forward 验证结果。"""
+
     predictions: pd.Series
     actual_returns: pd.Series
     window_metrics: list[dict[str, float]]
@@ -79,7 +80,6 @@ class WalkForwardValidator:
         Returns:
             验证结果
         """
-        from aimoon.ml.label_engine import generate_rank_labels
 
         close = panel.get("close")
         if close is None:
@@ -94,13 +94,17 @@ class WalkForwardValidator:
             )
 
         # 计算窗口数量
-        n_windows = (n_dates - self.train_size - self.test_size - self.purge_days) // self.step_size + 1
-        logger.info(f"Walk-Forward validation: {n_windows} windows, train={self.train_size}, test={self.test_size}, step={self.step_size}")
+        n_windows = (
+            n_dates - self.train_size - self.test_size - self.purge_days
+        ) // self.step_size + 1
+        logger.info(
+            f"Walk-Forward validation: {n_windows} windows, train={self.train_size}, test={self.test_size}, step={self.step_size}"
+        )
 
         # 存储结果
         all_predictions = []
         all_actual_returns = []
-        window_metrics = []
+        window_metrics: list[dict[str, float]] = []
 
         for window_idx in range(n_windows):
             # 计算窗口边界
@@ -116,7 +120,9 @@ class WalkForwardValidator:
             train_dates = all_dates[train_start:train_end]
             test_dates = all_dates[test_start:test_end]
 
-            logger.info(f"Window {window_idx + 1}/{n_windows}: train={train_dates[0]} to {train_dates[-1]}, test={test_dates[0]} to {test_dates[-1]}")
+            logger.info(
+                f"Window {window_idx + 1}/{n_windows}: train={train_dates[0]} to {train_dates[-1]}, test={test_dates[0]} to {test_dates[-1]}"
+            )
 
             # 训练模型
             try:
@@ -124,7 +130,9 @@ class WalkForwardValidator:
                     panel, klines, train_dates, forward_days
                 )
                 if len(X_train) < 10:
-                    logger.warning(f"Window {window_idx + 1}: insufficient training data ({len(X_train)} samples)")
+                    logger.warning(
+                        f"Window {window_idx + 1}: insufficient training data ({len(X_train)} samples)"
+                    )
                     continue
 
                 self.model.fit(X_train, y_train)
@@ -138,38 +146,44 @@ class WalkForwardValidator:
                     panel, klines, test_dates, forward_days
                 )
                 if len(X_test) < 5:
-                    logger.warning(f"Window {window_idx + 1}: insufficient test data ({len(X_test)} samples)")
+                    logger.warning(
+                        f"Window {window_idx + 1}: insufficient test data ({len(X_test)} samples)"
+                    )
                     continue
 
                 predictions = self.model.predict(X_test)
 
                 # 存储结果
                 for i, (code, pred) in enumerate(zip(X_test.index, predictions)):
-                    all_predictions.append({
-                        'date': test_dates[i % len(test_dates)],
-                        'code': code,
-                        'prediction': float(pred),
-                    })
+                    all_predictions.append(
+                        {
+                            "date": test_dates[i % len(test_dates)],
+                            "code": code,
+                            "prediction": float(pred),
+                        }
+                    )
                     if code in y_test.index:
-                        all_actual_returns.append({
-                            'date': test_dates[i % len(test_dates)],
-                            'code': code,
-                            'actual_return': float(y_test[code]),
-                        })
+                        all_actual_returns.append(
+                            {
+                                "date": test_dates[i % len(test_dates)],
+                                "code": code,
+                                "actual_return": float(y_test[code]),
+                            }
+                        )
 
                 # 计算窗口指标
                 window_ic = self._calculate_ic(predictions, y_test)
-                window_metrics.append({
-                    'window': window_idx + 1,
-                    'train_start': str(train_dates[0]),
-                    'train_end': str(train_dates[-1]),
-                    'test_start': str(test_dates[0]),
-                    'test_end': str(test_dates[-1]),
-                    'ic': window_ic,
-                    'n_samples': len(X_test),
-                })
+                window_metrics.append(
+                    {
+                        "window": float(window_idx + 1),
+                        "ic": float(window_ic),
+                        "n_samples": float(len(X_test)),
+                    }
+                )
 
-                logger.info(f"Window {window_idx + 1}: IC={window_ic:.4f}, samples={len(X_test)}")
+                logger.info(
+                    f"Window {window_idx + 1}: IC={window_ic:.4f}, samples={len(X_test)}"
+                )
 
             except Exception as e:
                 logger.error(f"Window {window_idx + 1}: testing failed: {e}")
@@ -180,36 +194,46 @@ class WalkForwardValidator:
             raise ValueError("Walk-Forward validation failed: no valid predictions")
 
         predictions_series = pd.Series(
-            [p['prediction'] for p in all_predictions],
+            [p["prediction"] for p in all_predictions],
             index=pd.MultiIndex.from_tuples(
-                [(p['date'], p['code']) for p in all_predictions],
-                names=['date', 'code']
-            )
+                [(p["date"], p["code"]) for p in all_predictions],
+                names=["date", "code"],
+            ),
         )
 
         actual_returns_series = pd.Series(
-            [r['actual_return'] for r in all_actual_returns],
+            [r["actual_return"] for r in all_actual_returns],
             index=pd.MultiIndex.from_tuples(
-                [(r['date'], r['code']) for r in all_actual_returns],
-                names=['date', 'code']
-            )
+                [(r["date"], r["code"]) for r in all_actual_returns],
+                names=["date", "code"],
+            ),
         )
 
         # 计算整体指标
         overall_ic = self._calculate_ic(
             predictions_series.values,
-            actual_returns_series.reindex(predictions_series.index).values
+            actual_returns_series.reindex(predictions_series.index).values,
         )
 
-        overall_metrics = {
-            'ic': overall_ic,
-            'n_windows': len(window_metrics),
-            'n_predictions': len(all_predictions),
-            'avg_window_ic': np.mean([m['ic'] for m in window_metrics]) if window_metrics else 0.0,
-            'std_window_ic': np.std([m['ic'] for m in window_metrics]) if window_metrics else 0.0,
+        overall_metrics: dict[str, float] = {
+            "ic": overall_ic,
+            "n_windows": float(len(window_metrics)),
+            "n_predictions": float(len(all_predictions)),
+            "avg_window_ic": (
+                float(np.mean([m["ic"] for m in window_metrics]))
+                if window_metrics
+                else 0.0
+            ),
+            "std_window_ic": (
+                float(np.std([float(m["ic"]) for m in window_metrics]))
+                if window_metrics
+                else 0.0
+            ),
         }
 
-        logger.info(f"Walk-Forward validation complete: IC={overall_ic:.4f}, windows={len(window_metrics)}")
+        logger.info(
+            f"Walk-Forward validation complete: IC={overall_ic:.4f}, windows={len(window_metrics)}"
+        )
 
         return WalkForwardResult(
             predictions=predictions_series,
@@ -254,8 +278,8 @@ class WalkForwardValidator:
         y = pd.concat(labels_list, axis=0)
 
         # 去重（同一股票可能在多个日期出现）
-        X = X[~X.index.duplicated(keep='last')]
-        y = y[~y.index.duplicated(keep='last')]
+        X = X[~X.index.duplicated(keep="last")]
+        y = y[~y.index.duplicated(keep="last")]
 
         # 对齐
         common = X.index.intersection(y.index)
@@ -264,7 +288,9 @@ class WalkForwardValidator:
 
         return X, y
 
-    def _calculate_ic(self, predictions: np.ndarray, actual_returns: np.ndarray) -> float:
+    def _calculate_ic(
+        self, predictions: np.ndarray, actual_returns: np.ndarray
+    ) -> float:
         """计算信息系数（IC）。"""
         from scipy.stats import spearmanr
 

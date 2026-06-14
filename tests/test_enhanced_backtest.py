@@ -34,7 +34,7 @@ class TestEnhancedBacktestEngine:
     def test_stop_loss_exits_present(self, trending_klines):
         engine = EnhancedBacktestEngine(hold_days=20, stop_loss_pct=0.02)
         result = engine.run_portfolio(trending_klines, {"A": "A", "B": "B", "C": "C"})
-        valid_reasons = {"stop_loss", "take_profit", "hold_period", "data_gap", "momentum_exit"}
+        valid_reasons = {"stop_loss", "take_profit", "hold_period", "data_gap", "momentum_exit", "profit_protection", "time_decay"}
         for t in result.trades:
             assert t.exit_reason in valid_reasons
 

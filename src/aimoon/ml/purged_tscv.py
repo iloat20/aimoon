@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Generator
+from collections.abc import Generator
 
 import numpy as np
 import pandas as pd
@@ -79,38 +79,51 @@ class PurgedTimeSeriesSplit:
         n_samples = len(X)
 
         # 优先使用 date_column 参数
+        dates: pd.DatetimeIndex | None = None
         if date_column and isinstance(X, pd.DataFrame) and date_column in X.columns:
             dates = pd.to_datetime(X[date_column])
             is_datetime = True
-        else:
+        elif isinstance(X, pd.DataFrame):
             # 检测是否使用日期索引
             is_datetime = isinstance(X.index, pd.DatetimeIndex)
-            dates = X.index if is_datetime else None
+            dates = X.index if is_datetime else None  # type: ignore[assignment]
+        else:
+            is_datetime = False
 
         if is_datetime:
             # 确保 dates 是 DatetimeIndex
             if not isinstance(dates, pd.DatetimeIndex):
                 dates = pd.DatetimeIndex(dates)
-            total_days = (dates[-1] - dates[0]).days
-            fold_days = total_days // (self.n_splits + 1)
 
-            if fold_days < self.purge_days + self.embargo_days:
+            # M1: 使用交易日数而非日历日数计算 fold 大小
+            # 在A股中，交易日间隔≈1，日历日需转换为交易日
+            n_trading_days = len(dates)
+            fold_size = n_trading_days // (self.n_splits + 1)
+
+            if fold_size < self.purge_days + self.embargo_days:
                 logger.warning(
-                    "Fold days (%d) is smaller than purge (%d) + embargo (%d). "
+                    "Fold size (%d trading days) is smaller than purge (%d) + embargo (%d). "
                     "Consider reducing n_splits or increasing data size.",
-                    fold_days, self.purge_days, self.embargo_days
+                    fold_size,
+                    self.purge_days,
+                    self.embargo_days,
                 )
 
             for i in range(self.n_splits):
-                # 计算日期边界
-                fold_end_date = dates[0] + pd.Timedelta(days=fold_days * (i + 1))
-                purge_end_date = fold_end_date - pd.Timedelta(days=self.purge_days)
-                embargo_start_date = fold_end_date + pd.Timedelta(days=self.embargo_days)
-                val_end_date = embargo_start_date + pd.Timedelta(days=fold_days)
+                # M1: 基于交易日索引（而非日历日）计算边界
+                fold_end_idx = fold_size * (i + 1)
+                purge_end_idx = max(0, fold_end_idx - self.purge_days)
+                embargo_start_idx = min(
+                    n_trading_days - 1, fold_end_idx + self.embargo_days
+                )
+                val_end_idx = min(
+                    n_trading_days, embargo_start_idx + fold_size
+                )
 
-                # 使用 searchsorted 查找对应的行索引
-                train_mask = dates < purge_end_date
-                val_mask = (dates >= embargo_start_date) & (dates < val_end_date)
+                train_mask = np.zeros(n_trading_days, dtype=bool)
+                train_mask[:purge_end_idx] = True
+                val_mask = np.zeros(n_trading_days, dtype=bool)
+                val_mask[embargo_start_idx:val_end_idx] = True
 
                 train_idx = np.where(train_mask)[0]
                 val_idx = np.where(val_mask)[0]
@@ -118,15 +131,20 @@ class PurgedTimeSeriesSplit:
                 if len(train_idx) == 0 or len(val_idx) == 0:
                     logger.debug(
                         "Skipping fold %d: train (%d) or val (%d) is empty",
-                        i, len(train_idx), len(val_idx)
+                        i,
+                        len(train_idx),
+                        len(val_idx),
                     )
                     continue
 
                 logger.debug(
                     "Fold %d (date-based): train=[0:%d], val=[%d:%d], "
                     "purge=%d days, embargo=%d days",
-                    i, len(train_idx), len(val_idx),
-                    self.purge_days, self.embargo_days
+                    i,
+                    len(train_idx),
+                    len(val_idx),
+                    self.purge_days,
+                    self.embargo_days,
                 )
 
                 yield train_idx, val_idx
@@ -138,7 +156,9 @@ class PurgedTimeSeriesSplit:
                 logger.warning(
                     "Fold size (%d) is smaller than purge (%d) + embargo (%d). "
                     "Consider reducing n_splits or increasing data size.",
-                    fold_size, self.purge_days, self.embargo_days
+                    fold_size,
+                    self.purge_days,
+                    self.embargo_days,
                 )
 
             for i in range(self.n_splits):
@@ -150,14 +170,17 @@ class PurgedTimeSeriesSplit:
                 if val_end > n_samples:
                     logger.debug(
                         "Skipping fold %d: val_end (%d) > n_samples (%d)",
-                        i, val_end, n_samples
+                        i,
+                        val_end,
+                        n_samples,
                     )
                     break
 
                 if train_end_purged < 0:
                     logger.debug(
                         "Skipping fold %d: train_end_purged (%d) < 0",
-                        i, train_end_purged
+                        i,
+                        train_end_purged,
                     )
                     continue
 
@@ -166,8 +189,12 @@ class PurgedTimeSeriesSplit:
 
                 logger.debug(
                     "Fold %d: train=[0:%d], val=[%d:%d], purge=%d, embargo=%d",
-                    i, train_end_purged, val_start, val_end,
-                    self.purge_days, self.embargo_days
+                    i,
+                    train_end_purged,
+                    val_start,
+                    val_end,
+                    self.purge_days,
+                    self.embargo_days,
                 )
 
                 yield train_idx, val_idx
@@ -218,12 +245,11 @@ class CombinatorialPurgedCV:
         from itertools import combinations
 
         n_samples = len(X)
-        is_datetime = isinstance(X.index, pd.DatetimeIndex)
+        dates: pd.DatetimeIndex | None = None
+        if isinstance(X, pd.DataFrame) and isinstance(X.index, pd.DatetimeIndex):
+            dates = X.index
 
-        if is_datetime:
-            # 帮助 mypy 进行类型窄化
-            assert isinstance(X.index, pd.DatetimeIndex)
-            dates: pd.DatetimeIndex = X.index
+        if dates is not None:
             total_days = (dates[-1] - dates[0]).days
             fold_days = total_days // self.n_splits
 
@@ -234,8 +260,8 @@ class CombinatorialPurgedCV:
 
             for test_folds in test_fold_combinations:
                 train_folds = [f for f in range(self.n_splits) if f not in test_folds]
-                train_idx = []
-                val_idx = []
+                train_idx: list[int] = []
+                val_idx: list[int] = []
 
                 for fold_idx in train_folds:
                     fold_start = dates[0] + pd.Timedelta(days=fold_days * fold_idx)
@@ -355,9 +381,9 @@ def validate_cv_results(
                 issues.append(f"Fold {i}: 训练集和验证集顺序错误")
 
     return {
-        'valid': len(issues) == 0,
-        'issues': issues,
-        'n_folds': len(train_indices),
-        'avg_train_size': np.mean([len(idx) for idx in train_indices]),
-        'avg_val_size': np.mean([len(idx) for idx in val_indices]),
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "n_folds": len(train_indices),
+        "avg_train_size": np.mean([len(idx) for idx in train_indices]),
+        "avg_val_size": np.mean([len(idx) for idx in val_indices]),
     }

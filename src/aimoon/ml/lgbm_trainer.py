@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -11,16 +10,18 @@ from typing import Any
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
+from aimoon.factors.registry import Registry
 from aimoon.ml._training_commons import (
     check_overfit,
     compute_icir,
     compute_shap_top20,
-    features_compatible,
-    save_training_meta,
+    compute_spearmanr_safe,
+    log_training_summary,
+    save_model_artifacts,
+    should_retrain_on_overfit,
+    try_warm_start_lgbm,
 )
-from aimoon.factors.registry import Registry
 from aimoon.ml.optimized_config import get_lgbm_params
 from aimoon.ml.trainer import TrainingResult, _collect_training_data
 
@@ -32,6 +33,47 @@ _LGBM_MODEL_FILE = "model.lgbm.txt"
 def _default_lgbm_params() -> dict[str, Any]:
     """Return LightGBM hyperparameters from centralized config."""
     return get_lgbm_params()
+
+
+def _resolve_lgbm_hyperopt_params(
+    X: pd.DataFrame,
+    y: pd.Series,
+    dates_column: pd.Series | None,
+    forward_days: int,
+    *,
+    n_trials: int = 50,
+    force: bool = False,
+) -> dict[str, Any] | None:
+    """Run hyperparameter optimization for LightGBM and return best params.
+
+    Returns None if optuna is not installed or optimization fails.
+    """
+    try:
+        from aimoon.ml.hyperopt import is_optuna_available, run_hyperopt
+    except ImportError:
+        return None
+
+    if not is_optuna_available():
+        return None
+
+    val_size = max(int(len(X) * 0.2), 30)
+    X_train = X.iloc[:-val_size]
+    y_train = y.iloc[:-val_size]
+    X_val = X.iloc[-val_size:]
+    y_val = y.iloc[-val_size:]
+
+    result = run_hyperopt(
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        model_type="lgbm",
+        n_trials=n_trials,
+        force=force,
+    )
+    if result is None:
+        return None
+    return result.best_params
 
 
 def _build_lgbm(params: dict[str, Any], n_estimators: int) -> lgb.LGBMRegressor:
@@ -62,28 +104,56 @@ def train_lgbm_model(
     save_dir: str | Path | None = None,
     sector_map: dict[str, str] | None = None,
     warm_start: bool = False,
+    *,
+    use_hyperopt: bool = False,
+    hyperopt_trials: int = 50,
+    hyperopt_force: bool = False,
+    zoo_factor_ids: list[str] | None = None,
 ) -> TrainingResult:
-    """Train LightGBM with purged TimeSeriesSplit cross-validation."""
+    """Train LightGBM with purged TimeSeriesSplit cross-validation.
+
+    When ``use_hyperopt`` is True and ``params`` is None, runs Bayesian
+    hyperparameter optimization before training.  Requires ``optuna``.
+    """
     from aimoon.factors.registry import get_default_registry
 
     registry = registry or get_default_registry()
     t0 = time.time()
 
-    X, y = _collect_training_data(
+    X, y, _ = _collect_training_data(
         panel,
         klines,
         registry,
         n_dates,
         forward_days,
         sector_map=sector_map,
+        zoo_factor_ids=zoo_factor_ids,
     )
     if len(X) < 50 or X.shape[1] < 2:
-        raise ValueError(f"Insufficient training data: {len(X)} samples, {X.shape[1]} features")
+        raise ValueError(
+            f"Insufficient training data: {len(X)} samples, {X.shape[1]} features"
+        )
 
     dates_column = None
     if "_date" in X.columns:
         dates_column = X["_date"].copy()
         X = X.drop(columns=["_date"])
+
+    # Clip labels to reduce outlier impact (与 XGBoost trainer 一致，z-score 单位)
+    y = y.clip(-3.0, 3.0)
+
+    # ── Hyperparameter optimization ──────────────────────────────────────
+    if params is None and use_hyperopt:
+        params = _resolve_lgbm_hyperopt_params(
+            X,
+            y,
+            dates_column,
+            forward_days,
+            n_trials=hyperopt_trials,
+            force=hyperopt_force,
+        )
+        if params:
+            logger.info("Hyperopt: using optimized LightGBM params")
 
     lgbm_params = {**_default_lgbm_params(), **(params or {})}
     feature_names = X.columns.tolist()
@@ -91,18 +161,35 @@ def train_lgbm_model(
     from aimoon.ml.purged_tscv import PurgedTimeSeriesSplit
 
     tscv = PurgedTimeSeriesSplit(
-        n_splits=5,
+        n_splits=8,
         purge_days=forward_days,
-        embargo_days=forward_days,
+        embargo_days=forward_days * 3,
     )
     fold_ics: list[float] = []
     cv_rmse_scores: list[float] = []
     best_cv_score = -999.0
     best_round = 0
 
-    val_size = int(len(X) * 0.2)
-    X_train_final, X_val_final = X.iloc[:-val_size], X.iloc[-val_size:]
-    y_train_final, y_val_final = y.iloc[:-val_size], y.iloc[-val_size:]
+    # M2: Use time-series split for final model (consistent with XGBoost)
+    if dates_column is not None:
+        unique_dates = sorted(dates_column.unique())
+        cutoff_idx = max(1, int(len(unique_dates) * 0.8))
+        cutoff_idx = min(cutoff_idx, len(unique_dates) - 1)
+        cutoff_date = unique_dates[cutoff_idx]
+        train_mask = dates_column <= cutoff_date
+        val_mask = dates_column > cutoff_date
+        X_train_final = X[train_mask]
+        X_val_final = X[val_mask]
+        y_train_final = y[train_mask]
+        y_val_final = y[val_mask]
+        logger.info(
+            "LightGBM final split: train=%d, val=%d",
+            len(X_train_final), len(X_val_final),
+        )
+    else:
+        val_size = int(len(X) * 0.2)
+        X_train_final, X_val_final = X.iloc[:-val_size], X.iloc[-val_size:]
+        y_train_final, y_val_final = y.iloc[:-val_size], y.iloc[-val_size:]
 
     X_with_dates = X.copy()
     if dates_column is not None:
@@ -123,8 +210,7 @@ def train_lgbm_model(
             callbacks=[lgb.early_stopping(20, verbose=False)],
         )
         val_pred = model.predict(X_val)
-        ic, _ = spearmanr(val_pred, y_val)
-        fold_ic = float(ic) if not np.isnan(ic) else 0.0
+        fold_ic = compute_spearmanr_safe(val_pred, y_val)
         fold_ics.append(fold_ic)
 
         # Track actual LightGBM eval metric (RMSE) per fold
@@ -144,46 +230,34 @@ def train_lgbm_model(
             best_round = model.best_iteration_
 
     # Warm start
-    prev_booster = None
-    if warm_start and save_dir is not None:
-        prev_path = Path(save_dir) / _LGBM_MODEL_FILE
-        if prev_path.exists():
-            try:
-                prev_booster = lgb.Booster(model_file=str(prev_path))
-                prev_features = prev_booster.feature_name()
-                if not features_compatible(prev_features, feature_names):
-                    logger.info(
-                        "LightGBM warm start discarded: feature mismatch (old=%d, new=%d)",
-                        len(prev_features or []),
-                        len(feature_names),
-                    )
-                    prev_booster = None
-                else:
-                    # Reorder features to match previous model's column order
-                    if prev_features and list(prev_features) != feature_names:
-                        X = X[list(prev_features)]
-                        X_train_final = X.iloc[:-val_size]
-                        X_val_final = X.iloc[-val_size:]
-                        feature_names = list(prev_features)
-                        logger.info("LightGBM warm start: reordered features")
-                    logger.info("LightGBM warm start: continuing from previous model")
-            except Exception as e:
-                logger.warning("LightGBM warm start failed, training from scratch: %s", e)
-                prev_booster = None
+    prev_booster, warm_divisor, feature_names = try_warm_start_lgbm(
+        save_dir, feature_names, X, X_train_final, y_train_final, X_val_final, y_val_final,
+    )
 
     num_rounds = (
         min(best_round + 50, lgbm_params["n_estimators"])
         if best_round > 0
         else lgbm_params["n_estimators"]
     )
-    if prev_booster:
-        num_rounds = max(num_rounds // 3, 100)
+    if prev_booster is not None:
+        num_rounds = max(num_rounds // warm_divisor, 100)
 
     final_model = _build_lgbm(lgbm_params, num_rounds)
     if prev_booster is not None:
-        final_model.fit(X_train_final, y_train_final, init_model=prev_booster)
+        final_model.fit(
+            X_train_final,
+            y_train_final,
+            eval_set=[(X_val_final, y_val_final)],
+            callbacks=[lgb.early_stopping(20, verbose=False)],
+            init_model=prev_booster,
+        )
     else:
-        final_model.fit(X_train_final, y_train_final)
+        final_model.fit(
+            X_train_final,
+            y_train_final,
+            eval_set=[(X_val_final, y_val_final)],
+            callbacks=[lgb.early_stopping(20, verbose=False)],
+        )
 
     # Overfit detection
     def _lgbm_predict(X_data: pd.DataFrame) -> np.ndarray:
@@ -198,26 +272,30 @@ def train_lgbm_model(
     )
 
     # Auto-degradation: if warm-start caused severe overfitting, retrain from scratch
-    if prev_booster is not None and overfit_ratio > 5.0:
-        logger.warning(
-            "LightGBM overfit ratio %.1f > 5.0 with warm-start, retraining from scratch",
-            overfit_ratio,
-        )
+    if should_retrain_on_overfit(
+        prev_booster is not None, overfit_ratio, model_name="LightGBM"
+    ):
         fresh_model = _build_lgbm(lgbm_params, num_rounds)
-        fresh_model.fit(X_train_final, y_train_final)
+        fresh_model.fit(
+            X_train_final,
+            y_train_final,
+            eval_set=[(X_val_final, y_val_final)],
+            callbacks=[lgb.early_stopping(20, verbose=False)],
+        )
         final_model = fresh_model
 
-        def _fresh_predict(X_data: pd.DataFrame) -> np.ndarray:
-            return final_model.predict(X_data)
-
         ic, ic_train, overfit_ratio = check_overfit(
-            _fresh_predict,
+            lambda X_data: final_model.predict(X_data),
             X_train_final,
             y_train_final,
             X_val_final,
             y_val_final,
         )
-        logger.info("LightGBM fresh retrain: val_IC=%.04f, overfit_ratio=%.1f", ic, overfit_ratio)
+        logger.info(
+            "LightGBM fresh retrain: val_IC=%.04f, overfit_ratio=%.1f",
+            ic,
+            overfit_ratio,
+        )
 
     # Feature importance
     importance_arr = final_model.feature_importances_
@@ -232,9 +310,8 @@ def train_lgbm_model(
     _, _, fold_icir = compute_icir(fold_ics)
 
     train_duration = time.time() - t0
-    logger.info(
-        "LightGBM trained: val_IC=%.04f, train_IC=%.04f, ICIR=%.04f, "
-        "%d samples x %d features, %.1fs",
+    log_training_summary(
+        "LightGBM",
         ic,
         ic_train,
         fold_icir,
@@ -246,14 +323,19 @@ def train_lgbm_model(
     # Save artifacts
     if save_dir is not None:
         save_path = Path(save_dir)
-        save_path.mkdir(parents=True, exist_ok=True)
-        final_model.booster_.save_model(str(save_path / _LGBM_MODEL_FILE))
-        fn_path = save_path / "feature_names.json"
-        if not fn_path.exists():
-            with open(fn_path, "w", encoding="utf-8") as f:
-                json.dump(feature_names, f)
-        save_training_meta(
+
+        def _lgbm_save(model: Any, path: str) -> None:
+            if hasattr(model, "booster_") and model.booster_ is not None:
+                model.booster_.save_model(path)
+            else:
+                logger.warning(
+                    "LGBM booster_ not available, model may not be saved correctly"
+                )
+
+        save_model_artifacts(
             save_path,
+            final_model,
+            feature_names,
             ic=ic,
             ic_train=ic_train,
             fold_ics=fold_ics,
@@ -269,7 +351,10 @@ def train_lgbm_model(
             n_samples_train=len(X_train_final),
             n_samples_val=len(X_val_final),
             shap_top20=shap_top20,
-            filename="lgbm_meta.json",
+            model_filename=_LGBM_MODEL_FILE,
+            feature_filename="lgbm_feature_names.json",
+            meta_filename="lgbm_meta.json",
+            model_save_fn=_lgbm_save,
         )
 
     return TrainingResult(

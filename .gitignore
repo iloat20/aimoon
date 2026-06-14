@@ -3,6 +3,7 @@
 *.egg-info/
 /output/
 .pytest_cache/
-.aimoon_cache/
+.aimoon_cache
+.aimoon_cache*/
 dist/
 build/

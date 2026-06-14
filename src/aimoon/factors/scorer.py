@@ -1,15 +1,23 @@
-"""Alpha Zoo 因子 → aimoon 信号转换器。
+"""Alpha Zoo 因子 → Signal 转换器。
 
-将截面因子值（宽表最后一行）转换为每只股票的 Signal 对象。
-转换逻辑：提取最后一行 → 截面排名 → 百分位 → 分数。
+职责: 将截面因子值（宽表最后一行）转换为每只股票的 Signal 对象。
+转换逻辑: 提取最后一行 → 截面排名 → 百分位 → 分数。
+ICIR 加权和主题均衡委托给 weighting.py，质量过滤委托给 quality.py。
+信号组合与加权评分由 scoring/hybrid_scorer.py 负责。
 """
+
 from __future__ import annotations
 
 import logging
 
 import pandas as pd
 
-from aimoon.factors.registry import Registry, SkipAlpha, RegistryError
+from aimoon.factors.quality import _greedy_correlation_filter  # noqa: F401
+from aimoon.factors.registry import Registry, RegistryError, SkipAlphaError
+from aimoon.factors.weighting import (
+    apply_theme_balancing,
+    compute_icir_multipliers,
+)
 from aimoon.models import Signal
 
 logger = logging.getLogger(__name__)
@@ -19,22 +27,30 @@ def compute_alpha_signals(
     registry: Registry,
     panel: dict[str, pd.DataFrame],
     target_date: pd.Timestamp | None = None,
+    icir_weights: dict[str, float] | None = None,
+    decay_factors: dict[str, float] | None = None,
+    filter_to_ids: list[str] | None = None,
+    factor_cache: dict[str, pd.DataFrame] | None = None,
+    icir_temperature: float = 1.0,
+    apply_theme_balance: bool = False,
+    theme_target_weights: dict[str, float] | None = None,
 ) -> dict[str, list[Signal]]:
-    """运行所有注册的 alpha 因子，转换为每只股票的 Signal 列表。
+    """Run registered alpha factors, convert to Signal objects per stock.
 
     Parameters
     ----------
-    registry : Registry
-        因子注册表。
-    panel : dict[str, pd.DataFrame]
-        Alpha Zoo 宽表格式的面板数据。
-    target_date : pd.Timestamp | None
-        指定日期的截面值。None 则取最后一行。
+    registry, panel, target_date : standard alpha computation parameters.
+    icir_weights : alpha_id -> ICIR weight for adaptive signal scaling.
+    decay_factors : alpha_id -> decay multiplier [0.1, 1.0].
+    filter_to_ids : if provided, only compute these factor IDs.
+    factor_cache : pre-computed factor DataFrames.
+    icir_temperature : softmax temperature (default 1.0).
+    apply_theme_balance : whether to apply theme balancing.
+    theme_target_weights : target theme weights (None = equal).
 
     Returns
     -------
-    dict[str, list[Signal]]
-        股票代码 -> 来自 alpha 因子的 Signal 列表。
+    dict[str, list[Signal]] : code -> list of alpha Signals.
     """
     if not panel or "close" not in panel:
         return {}
@@ -44,11 +60,15 @@ def compute_alpha_signals(
         return {}
 
     factor_snapshots: dict[str, pd.Series] = {}
+    alpha_ids = filter_to_ids if filter_to_ids else registry.list()
 
-    for alpha_id in registry.list():
+    for alpha_id in alpha_ids:
         try:
-            factor_df = registry.compute(alpha_id, panel)
-        except SkipAlpha:
+            if factor_cache is not None and alpha_id in factor_cache:
+                factor_df = factor_cache[alpha_id]
+            else:
+                factor_df = registry.compute(alpha_id, panel)
+        except SkipAlphaError:
             continue
         except RegistryError as exc:
             logger.debug("Alpha %s 计算失败: %s", alpha_id, exc)
@@ -57,7 +77,6 @@ def compute_alpha_signals(
             logger.debug("Alpha %s 异常: %s", alpha_id, exc)
             continue
 
-        # 取指定日期或最后一行的截面值
         if target_date is not None and target_date in factor_df.index:
             row = factor_df.loc[target_date]
         else:
@@ -69,7 +88,15 @@ def compute_alpha_signals(
     if not factor_snapshots:
         return {}
 
-    # 将每个因子的截面值转换为每只股票的 Signal
+    icir_mults = compute_icir_multipliers(icir_weights or {}, temperature=icir_temperature)
+
+    if apply_theme_balance and icir_weights:
+        icir_mults = apply_theme_balancing(
+            icir_mults,
+            icir_weights,
+            theme_target_weights=theme_target_weights,
+        )
+
     signals_by_code: dict[str, list[Signal]] = {code: [] for code in codes}
 
     for alpha_id, snapshot in factor_snapshots.items():
@@ -77,50 +104,54 @@ def compute_alpha_signals(
         nickname = meta.get("nickname") or alpha_id
         themes = meta.get("theme", [])
 
-        # 截面排名：将因子值转换为百分位
+        icir_mult = icir_mults.get(alpha_id, 1.0)
+        decay_mult = decay_factors.get(alpha_id, 1.0) if decay_factors else 1.0
+
         ranked = snapshot.rank(pct=True, na_option="keep")
 
         for code in codes:
             if code not in ranked.index:
                 continue
-            pct = ranked[code]
-            if pd.isna(pct):
+            pct_val = ranked.loc[code]
+            if isinstance(pct_val, pd.Series):
+                pct_val = pct_val.iloc[0]
+            if pd.isna(pct_val):
                 continue
 
-            score = _pct_to_score(pct, themes)
+            score = _pct_to_score(float(pct_val), themes)
             if score == 0:
                 continue
 
+            scaled_score = int(round(score * icir_mult * decay_mult))
+
             signal = Signal(
                 name=f"alpha_{alpha_id}",
-                label=f"α:{nickname}({pct:.0%})",
-                score=score,
+                label=f"\u03b1:{nickname}({pct_val:.0%})",
+                score=scaled_score,
+                category="alpha",
             )
             signals_by_code[code].append(signal)
 
-    # 过滤空列表
     return {code: sigs for code, sigs in signals_by_code.items() if sigs}
 
 
 def _pct_to_score(pct: float, themes: list[str]) -> int:
-    """将百分位排名转换为 aimoon 分数（提升权重）。
+    """Convert percentile rank to signal score.
 
-    标准规则（因子值越高预测收益越高）：
-    - ≥0.80: +3 (强看多)
-    - ≥0.65: +2 (温和看多)
-    - ≤0.20: -3 (强看空)
-    - ≤0.35: -2 (温和看空)
-    - 其他: 0 (不发出信号)
+    Symmetric thresholds:
+    - >= 0.85: +3  |  <= 0.15: -3
+    - >= 0.65: +2  |  <= 0.35: -2
+    - other: 0 (no signal)
 
-    对于反转类因子（theme 含 "reversal"），信号取反。
+    Reversal themes flip the sign.
     """
     is_reversal = "reversal" in themes
 
-    if pct >= 0.80:
+    if pct >= 0.85:
         score = +3
     elif pct >= 0.65:
         score = +2
-    elif pct <= 0.20:
+    elif pct <= 0.15:
         score = -3
     elif pct <= 0.35:
         score = -2

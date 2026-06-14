@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -81,7 +80,7 @@ class MarketImpactModel:
         # 限制在合理范围
         return max(
             self.config.min_participation,
-            min(participation, self.config.max_participation)
+            min(participation, self.config.max_participation),
         )
 
     def calculate_temporary_impact(
@@ -145,7 +144,10 @@ class MarketImpactModel:
 
         logger.debug(
             "Market impact: participation=%.4f, temp=%.4f, perm=%.4f, total=%.4f",
-            participation, temp_impact, perm_impact, total_impact
+            participation,
+            temp_impact,
+            perm_impact,
+            total_impact,
         )
 
         return total_impact
@@ -199,7 +201,8 @@ class SlippageModel:
             small_cap_penalty = self.config.small_cap_penalty
             logger.debug(
                 "Small cap penalty: market_cap=%.2f亿, penalty=%.4f",
-                market_cap / 1e8, small_cap_penalty
+                market_cap / 1e8,
+                small_cap_penalty,
             )
 
         # 总滑点
@@ -211,7 +214,10 @@ class SlippageModel:
 
         logger.debug(
             "Slippage calculation: base=%.4f, impact=%.4f, small_cap=%.4f, total=%.4f",
-            base_slippage, market_impact, small_cap_penalty, total_slippage
+            base_slippage,
+            market_impact,
+            small_cap_penalty,
+            total_slippage,
         )
 
         return total_slippage
@@ -265,19 +271,19 @@ def calculate_slippage_from_kline(
         return 0.002  # 默认 0.2%
 
     # 计算日均成交额
-    if 'amount' in kline_data.columns:
-        daily_volume = kline_data['amount'].iloc[-lookback_days:].mean()
-    elif 'volume' in kline_data.columns and 'close' in kline_data.columns:
+    if "amount" in kline_data.columns:
+        daily_volume = kline_data["amount"].iloc[-lookback_days:].mean()
+    elif "volume" in kline_data.columns and "close" in kline_data.columns:
         daily_volume = (
-            kline_data['volume'].iloc[-lookback_days:] *
-            kline_data['close'].iloc[-lookback_days:]
+            kline_data["volume"].iloc[-lookback_days:]
+            * kline_data["close"].iloc[-lookback_days:]
         ).mean()
     else:
         daily_volume = 1e8  # 默认 1亿
 
     # 计算波动率
-    if 'close' in kline_data.columns:
-        returns = kline_data['close'].pct_change().iloc[-lookback_days:]
+    if "close" in kline_data.columns:
+        returns = kline_data["close"].pct_change().iloc[-lookback_days:]
         volatility = returns.std() * np.sqrt(252)
     else:
         volatility = 0.3  # 默认 30%
@@ -300,10 +306,10 @@ class AdaptiveSlippageModel:
     def __init__(self, base_config: SlippageConfig | None = None):
         self.base_config = base_config or SlippageConfig()
         self.regime_adjustments = {
-            'bull': 0.8,      # 牛市滑点较小
-            'bear': 1.5,      # 熊市滑点较大
-            'sideways': 1.0,  # 震荡市正常
-            'high_vol': 2.0,  # 高波动滑点很大
+            "bull": 0.8,  # 牛市滑点较小
+            "bear": 1.5,  # 熊市滑点较大
+            "sideways": 1.0,  # 震荡市正常
+            "high_volatility": 2.0,  # 高波动滑点很大
         }
 
     def calculate_adaptive_slippage(
@@ -311,7 +317,7 @@ class AdaptiveSlippageModel:
         order_amount: float,
         daily_volume: float,
         volatility: float,
-        market_regime: str = 'sideways',
+        market_regime: str = "sideways",
         market_cap: float = 0.0,
     ) -> float:
         """计算自适应滑点
@@ -337,7 +343,10 @@ class AdaptiveSlippageModel:
 
         logger.debug(
             "Adaptive slippage: regime=%s, base=%.4f, adjustment=%.2f, final=%.4f",
-            market_regime, base_slippage, adjustment, adjusted_slippage
+            market_regime,
+            base_slippage,
+            adjustment,
+            adjusted_slippage,
         )
 
         return adjusted_slippage

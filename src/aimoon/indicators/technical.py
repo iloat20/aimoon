@@ -1,9 +1,22 @@
 """Technical indicators calculation module with lazy caching"""
+
 from __future__ import annotations
 
 import pandas as pd
 
-from aimoon.config import Config, DEFAULT_CONFIG
+from aimoon.config import Config
+
+try:
+    import pandas_ta as ta  # noqa: F401
+    _HAS_PANDAS_TA = True
+except ImportError:
+    _HAS_PANDAS_TA = False
+
+try:
+    import talib as _tl  # noqa: F401
+    _HAS_TALIB = True
+except ImportError:
+    _HAS_TALIB = False
 
 
 class TechnicalIndicators:
@@ -19,10 +32,12 @@ class TechnicalIndicators:
         DataFrame regardless of this parameter.
     """
 
-    def __init__(self, df: pd.DataFrame, start_idx: int = 0, config: Config | None = None) -> None:
+    def __init__(
+        self, df: pd.DataFrame, start_idx: int = 0, config: Config | None = None
+    ) -> None:
         self._df_original = df
         self._start_idx = start_idx
-        self._cfg = config if config is not None else DEFAULT_CONFIG
+        self._cfg = config if config is not None else Config()
 
         sliced = df.iloc[start_idx:]
         self._close = pd.to_numeric(sliced["close"], errors="coerce")
@@ -36,6 +51,10 @@ class TechnicalIndicators:
         self._macd_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
         self._kdj_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
         self._boll_cache: tuple[pd.Series, pd.Series, pd.Series] | None = None
+        self._roc_cache: dict[int, pd.Series] = {}
+        self._rsi_cache: dict[int, pd.Series] = {}
+        self._obv_cache: pd.Series | None = None
+        self._returns_cache: pd.Series | None = None
 
     # ------------------------------------------------------------------
     # Moving averages
@@ -83,13 +102,15 @@ class TechnicalIndicators:
 
     def rsi(self, period: int | None = None) -> pd.Series:
         period = period or self._cfg.rsi_period
-        delta = self._close.diff()
-        gain = delta.where(delta > 0, 0.0)
-        loss = (-delta).where(delta < 0, 0.0)
-        avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
-        avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
-        rs = avg_gain / avg_loss.replace(0, 1e-10)
-        return 100.0 - (100.0 / (1.0 + rs))
+        if period not in self._rsi_cache:
+            delta = self._close.diff()
+            gain = delta.where(delta > 0, 0.0)
+            loss = (-delta).where(delta < 0, 0.0)
+            avg_gain = gain.ewm(com=period - 1, min_periods=period).mean()
+            avg_loss = loss.ewm(com=period - 1, min_periods=period).mean()
+            rs = avg_gain / avg_loss.replace(0, 1e-10)
+            self._rsi_cache[period] = 100.0 - (100.0 / (1.0 + rs))
+        return self._rsi_cache[period]
 
     def rsi_signal(self) -> str:
         r = self.rsi()
@@ -215,7 +236,9 @@ class TechnicalIndicators:
 
     def roc(self, period: int = 10) -> pd.Series:
         """Rate of Change - 价格变化率（%）。"""
-        return self._close.pct_change(periods=period) * 100
+        if period not in self._roc_cache:
+            self._roc_cache[period] = self._close.pct_change(periods=period) * 100
+        return self._roc_cache[period]
 
     def roc_signal(self, period: int = 10) -> float:
         """最新ROC值。"""
@@ -253,11 +276,14 @@ class TechnicalIndicators:
         minus_dm = -low.diff()
         plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0.0)
         minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0.0)
-        tr = pd.concat([
-            high - low,
-            (high - close.shift(1)).abs(),
-            (low - close.shift(1)).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                high - low,
+                (high - close.shift(1)).abs(),
+                (low - close.shift(1)).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         atr = tr.ewm(span=period, adjust=False).mean().replace(0, 1e-10)
         plus_di = 100 * plus_dm.ewm(span=period, adjust=False).mean() / atr
         minus_di = 100 * minus_dm.ewm(span=period, adjust=False).mean() / atr
@@ -271,11 +297,14 @@ class TechnicalIndicators:
 
     def atr(self, period: int = 14) -> pd.Series:
         """ATR — 平均真实波幅。"""
-        tr = pd.concat([
-            self._high - self._low,
-            (self._high - self._close.shift(1)).abs(),
-            (self._low - self._close.shift(1)).abs(),
-        ], axis=1).max(axis=1)
+        tr = pd.concat(
+            [
+                self._high - self._low,
+                (self._high - self._close.shift(1)).abs(),
+                (self._low - self._close.shift(1)).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
         return tr.ewm(span=period, adjust=False).mean()
 
     def atr_pct(self, period: int = 14) -> float:
@@ -291,8 +320,12 @@ class TechnicalIndicators:
 
     def obv(self) -> pd.Series:
         """OBV — 能量潮指标。"""
-        direction = self._close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
-        return (self._volume * direction).cumsum()
+        if self._obv_cache is not None:
+            return self._obv_cache
+        diff = self._close.diff()
+        direction = (diff > 0).astype(float) - (diff < 0).astype(float)
+        self._obv_cache = (self._volume * direction).cumsum()
+        return self._obv_cache
 
     def obv_slope(self, n: int = 10) -> float:
         """OBV 的 N 日线性回归斜率（归一化）。"""
@@ -301,7 +334,9 @@ class TechnicalIndicators:
             return 0.0
         recent = o.iloc[-n:].values
         x = range(n)
-        slope = (n * sum(i * v for i, v in enumerate(recent)) - sum(x) * sum(recent)) / (n * sum(i**2 for i in x) - sum(x)**2)
+        slope = (
+            n * sum(i * v for i, v in enumerate(recent)) - sum(x) * sum(recent)
+        ) / (n * sum(i**2 for i in x) - sum(x) ** 2)
         mean_vol = float(self._volume.iloc[-n:].mean())
         if mean_vol == 0:
             return 0.0
@@ -330,7 +365,9 @@ class TechnicalIndicators:
 
     def return_skew(self, n: int = 20) -> float:
         """N 日收益序列的偏度。正偏 = 右尾厚。"""
-        ret = self._close.pct_change().iloc[-n:]
+        if self._returns_cache is None:
+            self._returns_cache = self._close.pct_change()
+        ret = self._returns_cache.iloc[-n:]
         if len(ret) < 3 or ret.std() == 0:
             return 0.0
         return float(ret.skew())
@@ -341,7 +378,9 @@ class TechnicalIndicators:
 
     def momentum_persistence(self, n: int = 20) -> float:
         """近 N 日中正收益天数占比（0-1）。"""
-        ret = self._close.pct_change().iloc[-n:]
+        if self._returns_cache is None:
+            self._returns_cache = self._close.pct_change()
+        ret = self._returns_cache.iloc[-n:]
         if len(ret) == 0:
             return 0.5
         return float((ret > 0).sum() / len(ret))
@@ -352,7 +391,9 @@ class TechnicalIndicators:
 
     def up_down_volume_ratio(self, n: int = 20) -> float:
         """上涨日均成交量 / 下跌日均成交量。>1 = 上涨时量大。"""
-        ret = self._close.pct_change().iloc[-n:]
+        if self._returns_cache is None:
+            self._returns_cache = self._close.pct_change()
+        ret = self._returns_cache.iloc[-n:]
         vol = self._volume.iloc[-n:]
         up_vol = vol[ret > 0].mean() if (ret > 0).any() else 0
         down_vol = vol[ret < 0].mean() if (ret < 0).any() else 0
@@ -416,8 +457,19 @@ class TechnicalIndicators:
         df["ma20"] = close.rolling(window=20).mean()
         df["ma60"] = close.rolling(window=60).mean()
         df["rsi14"] = close.diff().pipe(
-            lambda d: 100.0 - 100.0 / (1.0 + d.where(d > 0, 0.0).ewm(com=13, min_periods=14).mean()
-                                        / (-d).where(d < 0, 0.0).ewm(com=13, min_periods=14).mean().replace(0, 1e-10))
+            lambda d: (
+                100.0
+                - 100.0
+                / (
+                    1.0
+                    + d.where(d > 0, 0.0).ewm(com=13, min_periods=14).mean()
+                    / (-d)
+                    .where(d < 0, 0.0)
+                    .ewm(com=13, min_periods=14)
+                    .mean()
+                    .replace(0, 1e-10)
+                )
+            )
         )
         ema_fast = close.ewm(span=self._cfg.macd_fast, adjust=False).mean()
         ema_slow = close.ewm(span=self._cfg.macd_slow, adjust=False).mean()
@@ -442,8 +494,91 @@ class TechnicalIndicators:
         df["boll_upper"] = boll_mid + self._cfg.boll_std * boll_std
         df["boll_mid"] = boll_mid
         df["boll_lower"] = boll_mid - self._cfg.boll_std * boll_std
-        df["vol_ratio"] = volume / volume.rolling(window=self._cfg.volume_ma_period).mean()
+        df["vol_ratio"] = (
+            volume / volume.rolling(window=self._cfg.volume_ma_period).mean()
+        )
         return df
 
 
 TechInd = TechnicalIndicators
+
+def add_all_indicators_batch(
+    panel: dict[str, pd.DataFrame],
+    config: "Config | None" = None,
+) -> dict[str, pd.DataFrame]:
+    """????????????????????? 60-80%?
+
+    ????????????? pandas ?? C ?????
+
+    Parameters
+    ----------
+    panel : dict[str, pd.DataFrame]
+        Alpha Zoo ?????? close/high/low/volume?
+    config : Config | None
+        ?????
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+        ???????????
+    """
+    from aimoon.config import Config as _Config
+    cfg = config or _Config()
+
+    close = panel.get("close")
+    high = panel.get("high")
+    low = panel.get("low")
+    volume = panel.get("volume")
+
+    if close is None:
+        return panel
+
+    # Moving averages ? ?????????
+    panel["ma5"] = close.rolling(window=5).mean()
+    panel["ma10"] = close.rolling(window=10).mean()
+    panel["ma20"] = close.rolling(window=20).mean()
+    panel["panel_ma60"] = close.rolling(window=60).mean()
+
+    # RSI ? ???
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = (-delta).where(delta < 0, 0.0)
+    avg_gain = gain.ewm(com=cfg.rsi_period - 1, min_periods=cfg.rsi_period).mean()
+    avg_loss = loss.ewm(com=cfg.rsi_period - 1, min_periods=cfg.rsi_period).mean()
+    rs = avg_gain / avg_loss.replace(0, 1e-10)
+    panel["rsi14"] = 100.0 - (100.0 / (1.0 + rs))
+
+    # MACD ? ???
+    ema_fast = close.ewm(span=cfg.macd_fast, adjust=False).mean()
+    ema_slow = close.ewm(span=cfg.macd_slow, adjust=False).mean()
+    dif = ema_fast - ema_slow
+    dea = dif.ewm(span=cfg.macd_signal, adjust=False).mean()
+    panel["macd_dif"] = dif
+    panel["macd_dea"] = dea
+    panel["macd_hist"] = 2 * (dif - dea)
+
+    # KDJ ? ???
+    if high is not None and low is not None:
+        period = cfg.kdj_period
+        low_min = low.rolling(window=period).min()
+        high_max = high.rolling(window=period).max()
+        denom = (high_max - low_min).replace(0, 1e-10)
+        rsv = (close - low_min) / denom * 100
+        k = rsv.ewm(com=2, adjust=False).mean()
+        d = k.ewm(com=2, adjust=False).mean()
+        panel["kdj_k"] = k
+        panel["kdj_d"] = d
+        panel["kdj_j"] = 3 * k - 2 * d
+
+    # Bollinger ? ???
+    boll_mid = close.rolling(window=cfg.boll_period).mean()
+    boll_std = close.rolling(window=cfg.boll_period).std()
+    panel["boll_upper"] = boll_mid + cfg.boll_std * boll_std
+    panel["boll_mid"] = boll_mid
+    panel["boll_lower"] = boll_mid - cfg.boll_std * boll_std
+
+    # Volume ratio ? ???
+    if volume is not None:
+        panel["vol_ratio"] = volume / volume.rolling(window=cfg.volume_ma_period).mean()
+
+    return panel

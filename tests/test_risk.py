@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import pytest
 from aimoon.risk import RiskLimits, Position, PortfolioState, kelly_criterion, volatility_position_size, check_risk_limits
 
@@ -40,15 +40,15 @@ class TestPosition:
         assert pos.unrealized_pnl == 0.2
 
     def test_stop_loss_not_triggered(self):
-        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=9.3)
+        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=9.6)
         assert pos.is_stopped_out is False
 
     def test_stop_loss_triggered(self):
-        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=9.2)
+        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=9.4)
         assert pos.is_stopped_out is True
 
     def test_take_profit(self):
-        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=12.1)
+        pos = Position(code='000001', name='Test', weight=0.1, entry_price=10.0, current_price=13.1)
         assert pos.is_take_profit is True
 
 

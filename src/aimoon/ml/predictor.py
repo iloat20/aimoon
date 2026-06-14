@@ -46,9 +46,13 @@ def predict_alpha_signals(
         return {}
 
     # Ensure feature columns match model expectation
-    feature_names_path = _FEATURE_CACHE_DIR / "feature_names.json"
+    canonical = _FEATURE_CACHE_DIR / "canonical_feature_names.json"
+    xgb_fn = _FEATURE_CACHE_DIR / "xgb_feature_names.json"
+    feature_names_path = canonical if canonical.exists() else xgb_fn
     if not feature_names_path.exists():
-        logger.warning("ML predict: feature_names.json not found at %s", feature_names_path)
+        logger.warning(
+            "ML predict: feature_names.json not found at %s", feature_names_path
+        )
         return {}
 
     with open(feature_names_path, encoding="utf-8") as f:
@@ -92,6 +96,7 @@ def predict_alpha_signals(
                     "ml_alpha_strong",
                     f"ML因子强烈看多({pct:.0%})",
                     +5,
+                    category="ml",
                 )
             )
         elif pct >= 0.75:
@@ -100,6 +105,7 @@ def predict_alpha_signals(
                     "ml_alpha",
                     f"ML因子看多({pct:.0%})",
                     +3,
+                    category="ml",
                 )
             )
         elif pct <= 0.10:
@@ -108,6 +114,7 @@ def predict_alpha_signals(
                     "ml_alpha_bear_strong",
                     f"ML因子强烈看空({pct:.0%})",
                     -5,
+                    category="ml",
                 )
             )
         elif pct <= 0.25:
@@ -116,6 +123,7 @@ def predict_alpha_signals(
                     "ml_alpha_bear",
                     f"ML因子看空({pct:.0%})",
                     -3,
+                    category="ml",
                 )
             )
 

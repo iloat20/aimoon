@@ -1,7 +1,9 @@
-
 """Data quality checks and cleaning for K-line data."""
+
 from __future__ import annotations
+
 import logging
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ def validate_kline(df: pd.DataFrame, min_rows: int = 60) -> tuple:
     if zero_vol > 3:
         issues.append(f"Suspicious: {zero_vol} zero-volume days in last 5")
     if len(df) > 1:
-        pct = df["close"].pct_change()
+        pct = df["close"].pct_change(fill_method=None)
         extreme = (pct.abs() > 0.20).sum()
         if extreme > 0:
             issues.append(f"{extreme} days with >20% price change")

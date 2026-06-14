@@ -7,6 +7,7 @@ Alpha Zoo 因子作用于宽表 dict[str, DataFrame]，其中：
 aimoon 的 get_kline 返回单股 DataFrame（index=date, columns=OHLCV+...）。
 本模块将多只股票的 kline 合并为宽表。
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,6 +41,11 @@ def build_panel(
     if not klines:
         return None
 
+    # 修复整数索引的日期（必须在 build_panel 之前）
+    from aimoon.data.history import fix_kline_dates
+
+    klines = {code: fix_kline_dates(df) for code, df in klines.items()}
+
     # 过滤数据不足的股票
     valid_codes: list[str] = []
     for code, df in klines.items():
@@ -54,33 +60,42 @@ def build_panel(
         logger.warning("Panel 需要至少 2 只有效股票，只有 %d 只", len(valid_codes))
         return None
 
-    # 构建每列的宽表
+    # Precompute datetime index per stock
+    dt_indices: dict[str, pd.DatetimeIndex] = {}
+    for code in valid_codes:
+        idx = klines[code].index
+        dt_indices[code] = pd.to_datetime(idx) if not isinstance(idx, pd.DatetimeIndex) else idx
+
+    # 构建每列的宽表 — 批量 dict 构造，避免逐 stock Python 循环 + pd.concat
     panel: dict[str, pd.DataFrame] = {}
     for col in _PANEL_COLUMNS:
-        series_dict: dict[str, pd.Series] = {}
+        # 一次性构建 {code: Series} dict，然后批量构造 DataFrame
+        col_data: dict[str, pd.Series] = {}
         for code in valid_codes:
             df = klines[code]
             if col in df.columns:
-                s = df[col].copy()
-                s.index = pd.to_datetime(df.index)
-                series_dict[code] = s
-        wide = pd.DataFrame(series_dict)
-        # 前向填充短期缺失（停牌等），最多填 5 天
-        wide = wide.ffill(limit=5)
-        panel[col] = wide
+                s = df[col]
+                s.index = dt_indices[code]
+                col_data[code] = s
+
+        if col_data:
+            wide = pd.DataFrame(col_data)
+            wide = wide.sort_index()
+            wide = wide.ffill(limit=5)
+            panel[col] = wide
 
     # 如果有 amount 列，也构建它（用于 vwap 计算）
     has_amount = any("amount" in klines[c].columns for c in valid_codes)
     if has_amount:
-        amount_dict: dict[str, pd.Series] = {}
+        amount_data: dict[str, pd.Series] = {}
         for code in valid_codes:
             df = klines[code]
-            if "amount" in df.columns:
-                s = df["amount"].copy()
-                s.index = pd.to_datetime(df.index)
-                amount_dict[code] = s
-        if amount_dict:
-            panel["amount"] = pd.DataFrame(amount_dict).ffill(limit=5)
+            if "amount" in df.columns and len(df) >= min_rows:
+                s = df["amount"]
+                s.index = dt_indices[code]
+                amount_data[code] = s
+        if amount_data:
+            panel["amount"] = pd.DataFrame(amount_data).sort_index().ffill(limit=5)
 
     logger.info(
         "Panel 构建完成: %d 只股票, %d 个交易日",

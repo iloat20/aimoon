@@ -3,11 +3,13 @@
 移植自 HKUDS/Vibe-Trading (MIT)，简化为 frozen dataclass（无 pydantic 依赖）。
 每个因子文件包含 __alpha_meta__ 字典字面量 + compute(panel) 函数。
 """
+
 from __future__ import annotations
 
 import ast
 import importlib
 import importlib.util
+import json
 import logging
 import re
 import sys
@@ -29,6 +31,7 @@ _MAX_PY_BYTES = 200_000
 @dataclass(frozen=True)
 class AlphaMeta:
     """因子元数据 — 从 __alpha_meta__ 字典字面量提取。"""
+
     id: str
     nickname: str | None = None
     theme: list[str] = field(default_factory=list)
@@ -46,13 +49,14 @@ class AlphaMeta:
 @dataclass(frozen=True, slots=True)
 class Alpha:
     """注册表持有的因子句柄。"""
+
     id: str
     zoo: str
     module_path: str
     meta: dict[str, Any] = field(default_factory=dict)
 
 
-class SkipAlpha(Exception):
+class SkipAlphaError(Exception):
     """当因子的前置条件（列、板块）不满足时抛出。"""
 
 
@@ -107,6 +111,78 @@ def _zoo_dir_default() -> Path:
     return Path(__file__).parent / "zoo"
 
 
+# Registry cache file
+_REGISTRY_CACHE_FILE = Path(__file__).parent / ".registry_cache.json"
+
+
+def _compute_zoo_fingerprint(zoo_root: Path) -> str:
+    """Compute a fingerprint of the zoo directory based on file mtimes and sizes."""
+    import hashlib
+
+    hasher = hashlib.md5()
+    for py_file in sorted(zoo_root.rglob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        stat = py_file.stat()
+        hasher.update(f"{py_file.relative_to(zoo_root)}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+    return hasher.hexdigest()
+
+
+def _load_registry_cache(zoo_root: Path) -> tuple[dict, dict, list] | None:
+    """Load registry from cache if fingerprint matches."""
+    if not _REGISTRY_CACHE_FILE.exists():
+        return None
+    try:
+        with open(_REGISTRY_CACHE_FILE, encoding="utf-8") as f:
+            cache = json.load(f)
+        # Verify fingerprint
+        current_fp = _compute_zoo_fingerprint(zoo_root)
+        if cache.get("fingerprint") != current_fp:
+            return None
+        # Restore alphas, py_paths, load_errors
+        alphas = {}
+        for aid, data in cache.get("alphas", {}).items():
+            alphas[aid] = Alpha(
+                id=data["id"],
+                zoo=data["zoo"],
+                module_path=data["module_path"],
+                meta=data["meta"],
+            )
+        py_paths = {aid: Path(p) for aid, p in cache.get("py_paths", {}).items()}
+        load_errors = [_LoadError(e["alpha_id"], e["reason"]) for e in cache.get("load_errors", [])]
+        return alphas, py_paths, load_errors
+    except (json.JSONDecodeError, KeyError, TypeError, FileNotFoundError):
+        return None
+
+
+def _save_registry_cache(zoo_root: Path, alphas: dict, py_paths: dict, load_errors: list) -> None:
+    """Save registry to cache."""
+    try:
+        fingerprint = _compute_zoo_fingerprint(zoo_root)
+        cache = {
+            "fingerprint": fingerprint,
+            "alphas": {
+                aid: {
+                    "id": a.id,
+                    "zoo": a.zoo,
+                    "module_path": a.module_path,
+                    "meta": a.meta,
+                }
+                for aid, a in alphas.items()
+            },
+            "py_paths": {aid: str(p) for aid, p in py_paths.items()},
+            "load_errors": [{"alpha_id": e.alpha_id, "reason": e.reason} for e in load_errors],
+        }
+        with open(_REGISTRY_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+    except (OSError, TypeError):
+        pass
+
+
+_nan_warned: set = set()  # Module-level mutable set (not part of frozen dataclass)
+_module_load_lock = threading.Lock()
+
+
 class Registry:
     """内存中的因子注册表，扫描 zoo 子目录。"""
 
@@ -117,7 +193,15 @@ class Registry:
         self._py_paths: dict[str, Path] = {}
         self._alphas: dict[str, Alpha] = {}
         self._load_errors: list[_LoadError] = []
-        self._scan()
+
+        # Try to load from cache first
+        cached = _load_registry_cache(self._zoo_root)
+        if cached is not None:
+            self._alphas, self._py_paths, self._load_errors = cached
+            logger.info("Registry loaded from cache: %d factors", len(self._alphas))
+        else:
+            self._scan()
+            _save_registry_cache(self._zoo_root, self._alphas, self._py_paths, self._load_errors)
 
     def _scan(self) -> None:
         if not self._zoo_root.is_dir():
@@ -206,24 +290,37 @@ class Registry:
         return {
             "loaded": len(self._alphas),
             "failed": len(self._load_errors),
-            "errors": [
-                {"alpha_id": e.alpha_id, "reason": e.reason} for e in self._load_errors
-            ],
+            "errors": [{"alpha_id": e.alpha_id, "reason": e.reason} for e in self._load_errors],
         }
 
     def compute(self, alpha_id: str, panel: dict[str, pd.DataFrame]) -> pd.DataFrame:
-        """惰性导入因子模块并执行 compute(panel)。失败时抛出 SkipAlpha 或 RegistryError。"""
+        """惰性导入因子模块并执行 compute(panel)。失败时抛出 SkipAlphaError 或 RegistryError。"""
         alpha = self.get(alpha_id)
         meta = alpha.meta
 
         missing = [c for c in meta.get("columns_required", []) if c not in panel]
         if missing:
-            raise SkipAlpha(f"{alpha_id}: panel missing required columns {missing}")
+            raise SkipAlphaError(f"{alpha_id}: panel missing required columns {missing}")
+
+        # Warmup check: skip factors that need more history than available.
+        # A factor with min_warmup_bars=N needs N warmup rows before the first
+        # valid value. For meaningful output we require at least 2*N rows
+        # (otherwise >50% of output is NaN). Factors that only need a short
+        # window (e.g. 21 bars) are always computed.
+        min_warmup = meta.get("min_warmup_bars", 0)
+        if min_warmup > 21 and "close" in panel:
+            available = len(panel["close"])
+            if available < min_warmup * 2:
+                raise SkipAlphaError(
+                    f"{alpha_id}: insufficient history — "
+                    f"needs {min_warmup}*2={min_warmup * 2} bars for meaningful output, "
+                    f"panel has {available}"
+                )
         missing_extra = [c for c in meta.get("extras_required", []) if c not in panel]
         if missing_extra:
-            raise SkipAlpha(f"{alpha_id}: panel missing extras {missing_extra}")
+            raise SkipAlphaError(f"{alpha_id}: panel missing extras {missing_extra}")
         if meta.get("requires_sector") and "sector" not in panel:
-            raise SkipAlpha(f"{alpha_id}: panel missing sector tag")
+            raise SkipAlphaError(f"{alpha_id}: panel missing sector tag")
 
         try:
             module = self._load_module(alpha)
@@ -248,17 +345,22 @@ class Registry:
         cached = sys.modules.get(alpha.module_path)
         if cached is not None and getattr(cached, "__file__", None) == str(py_file):
             return cached
-        spec = importlib.util.spec_from_file_location(alpha.module_path, py_file)
-        if spec is None or spec.loader is None:
-            raise RegistryError(f"{alpha.id}: could not build import spec for {py_file}")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[alpha.module_path] = module
-        try:
-            spec.loader.exec_module(module)
-        except Exception:
-            sys.modules.pop(alpha.module_path, None)
-            raise
-        return module
+        with _module_load_lock:
+            # Double-check after acquiring lock
+            cached = sys.modules.get(alpha.module_path)
+            if cached is not None and getattr(cached, "__file__", None) == str(py_file):
+                return cached
+            spec = importlib.util.spec_from_file_location(alpha.module_path, py_file)
+            if spec is None or spec.loader is None:
+                raise RegistryError(f"{alpha.id}: could not build import spec for {py_file}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[alpha.module_path] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(alpha.module_path, None)
+                raise
+            return module
 
     @staticmethod
     def _validate_output(
@@ -280,8 +382,31 @@ class Registry:
             raise RegistryError(f"{alpha_id}: output contains +/- inf")
         nan_ratio = float(np.isnan(arr).mean()) if arr.size > 0 else 1.0
         if nan_ratio > 0.95:
-            raise RegistryError(f"{alpha_id}: output >95% NaN (nan_ratio={nan_ratio:.3f})")
+            if alpha_id not in _nan_warned:
+                _nan_warned.add(alpha_id)
+                logger.warning(
+                    "%s: output >95%% NaN (nan_ratio=%.3f) — returning result as-is; "
+                    "factor will be filtered by ICIR weighter",
+                    alpha_id,
+                    nan_ratio,
+                )
         return result
+
+    def warmup(self) -> int:
+        """预加载所有因子模块到 sys.modules，返回成功加载数。
+
+        调用此方法可以避免首次 compute() 调用时的导入延迟。
+        适合在 screen_universe 开始时调用，预热所有因子模块。
+        """
+        loaded = 0
+        for alpha_id, alpha in self._alphas.items():
+            try:
+                self._load_module(alpha)
+                loaded += 1
+            except Exception as exc:
+                logger.debug("Warmup skip %s: %s", alpha_id, exc)
+        logger.info("Factor warmup: %d/%d modules loaded", loaded, len(self._alphas))
+        return loaded
 
 
 # ── 进程级单例 ──

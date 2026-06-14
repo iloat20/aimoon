@@ -49,11 +49,12 @@ aimoon train-model --force      # 强制全量重训练
 ```
 
 训练管线：
-- 200 个历史快照（分层采样，覆盖 1 年以上）
+- 120 个历史快照（分层采样，覆盖 1 年以上）
 - 排名标签（stationary，消除市场整体涨跌影响）
-- Purged TimeSeriesSplit（5 折，forward_days 间隔防前瞻偏差）
+- Purged TimeSeriesSplit（3 折，forward_days 间隔防前瞻偏差）
 - XGBoost + LightGBM 并行训练，IC 加权集成
-- **强正则化防过拟合**：max_depth=3, min_child_weight=50, lr=0.01, gamma=1.0
+- **强正则化防过拟合**：max_depth=2, min_child_weight=100, lr=0.005, gamma=2.0, reg_lambda=20, reg_alpha=5
+- **因子质量过滤**：ICIR ≥ 0.5，无换手率限制
 - **稳定性特征选择**：IC≥0.01, top_k=40，仅保留跨时间一致的特征
 - **自动退化检测**：过拟合比>5.0 时自动丢弃 warm-start 重训
 - 增量学习（warm_start），避免每次全量重训练
@@ -62,10 +63,15 @@ aimoon train-model --force      # 强制全量重训练
 
 ```bash
 aimoon backtest                     # 默认回测
-aimoon backtest --walk-forward      # Walk-Forward 验证
+aimoon backtest --walk-forward      # Walk-Forward 验证（带 regime 检测）
 ```
 
 回测与实盘使用**完全一致的评分系统**：ML 集成（Alpha360 特征）+ Alpha Zoo（ICIR 动态权重 + 因子衰减）+ 技术指标 → hybrid_score()。
+
+**Walk-Forward 改进**：
+- **Regime 检测**：Train/Test 分裂点检测市场状态（bull/bear/sideways），跨 regime 窗口自动跳过
+- **数据泄漏修复**：Test 集不再包含 Train 日期
+- **ML 模型简化**：max_depth=2, n_estimators=500, 强正则化防过拟合
 
 ---
 
@@ -302,9 +308,20 @@ aimoon backtest --stocks 000001,000002 --hold-days 20 --max-positions 3
 
 ---
 
-## 性能
+## 数据管线
 
-81 只股票筛选耗时约 **80 秒**（首次运行），后续运行因因子缓存更快。
+历史 K 线数据使用三级兜底策略：
+
+1. **mootdx**（TCP 直连，速度最快）→ 2. **Tencent**（HTTP）→ 3. **AKShare**（HTTP，带重试）
+
+- 个股和指数统一走同一套接口（mootdx/Tencent/AKShare）
+- 自动处理整数索引、缺失日期列等数据格式问题
+- 原子写入缓存，崩溃不会损坏数据文件
+
+### 实时行情缓存
+
+- 默认 TTL **300 秒**（5 分钟），确保交易时间内数据新鲜
+- 支持全市场实时行情获取
 
 回测表现（统一评分：ML集成 + Alpha Zoo ICIR + 因子衰减 + 技术指标）：
 
@@ -537,6 +554,34 @@ src/aimoon/
 ---
 
 ## 更新日志
+
+### v0.2.3 (2026-06-07) - 数据管线修复 + 回测改进 + 代码质量
+
+**🔧 数据管线修复**：
+- **三级兜底**：mootdx → Tencent → AKShare，个股和指数统一接口
+- **fix_kline_dates 修复**：整数索引数据自动生成日期范围，不再崩溃
+- **原子缓存写入**：tempfile + os.replace()，崩溃不损坏缓存文件
+- **实时行情 TTL**：86400 秒 → 300 秒（5 分钟），确保数据新鲜
+
+**📊 回测改进**：
+- **Walk-Forward Regime 检测**：Train/Test 分裂点检测市场状态，跨 regime 窗口自动跳过
+- **数据泄漏修复**：Test 集不再包含 Train 日期
+- **ML 模型简化**：max_depth 3→2, n_estimators 2000→500, lr 0.01→0.005
+- **因子质量过滤**：移除换手率限制（原 0.30 阈值导致 452 因子全被过滤）
+- **profit_protection 修复**：增加 pnl > 0 条件，避免亏损仓误触发
+- **IC 方向修复**：改用 generate_labels 前瞻收益（原为 generate_realized_returns 过去收益）
+
+**🐛 Bug 修复**：
+- **ConstantInputWarning**：所有 spearmanr 调用点增加 std == 0 检查
+- **feature_names.json 竞争**：XGB/LGBM 分离为独立文件
+- **ensemble.py 元 IC 丢弃**：修复赋值语句
+- **pct_change FutureWarning**：17 个因子文件改用 fill_method=None
+- **SkipAlpha 命名**：N818 → SkipAlphaError
+- **自选股豁免**：watchlist 股票跳过所有过滤器
+
+**🛡️ 代码质量**：
+- Ruff：540 → 0 错误（-100%）
+- Mypy：153 → 0 错误（-100%）
 
 ### v0.2.2 (2026-06-06) - ML训练优化 + 统一回测评分
 

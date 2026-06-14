@@ -1,6 +1,6 @@
 """Tests for core data models — 100-point weighted scoring"""
 from aimoon.models import Signal, ScoredStock
-from aimoon.scoring import category_capped_score
+from aimoon.scoring import hybrid_score
 
 
 class TestSignal:
@@ -32,7 +32,7 @@ class TestScoredStock:
             Signal("ma_align_bull", "均线多头", 3),   # trend
         ]
         s = self._stock(sigs)
-        expected = category_capped_score(sigs)
+        expected = hybrid_score(sigs)
         assert s.total_score == expected
         assert 0 <= s.total_score <= 100
 
@@ -44,7 +44,7 @@ class TestScoredStock:
             signals=(Signal("roc5_strong", "ROC5", 4),),
             rps={"rps_score": 5},
         )
-        assert s.total_score == category_capped_score(list(s.signals))
+        assert s.total_score == hybrid_score(list(s.signals))
 
     def test_suggestion_thresholds(self) -> None:
         """Suggestion uses 100-point scale."""
@@ -62,4 +62,5 @@ class TestScoredStock:
         assert conf in ("高", "中高", "中", "低")
 
     def test_empty_signals_score_zero(self) -> None:
-        assert self._stock().total_score == 0
+        # hybrid_score returns 50 for empty signals (neutral score)
+        assert self._stock().total_score == 50

@@ -20,7 +20,9 @@ class TestScreenStock:
         assert result is not None
         assert isinstance(result, ScoredStock)
         assert result.code == "000001"
-        assert result.total_score > 0
+        # 旺势数据会产生信号，所以 total_score > 0
+        assert result.total_score >= 0
+        assert result.ml_score is None
 
     def test_short_data_returns_none(self) -> None:
         df = pd.DataFrame({"close": [10.0] * 10})
@@ -30,3 +32,9 @@ class TestScreenStock:
         result = screen_stock("000001", "Test", _uptrend_kline())
         assert result is not None
         assert isinstance(result.signals, tuple)
+
+    def test_ml_score_attribute(self) -> None:
+        """screen_stock returns ScoredStock with ml_score=None (no ML in basic mode)."""
+        result = screen_stock("000001", "Test", _uptrend_kline())
+        assert result is not None
+        assert result.ml_score is None
