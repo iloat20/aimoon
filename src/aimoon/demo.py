@@ -9,8 +9,8 @@ import pandas as pd
 
 from aimoon.cache import DataCache
 from aimoon.config import Config
-from aimoon.data.filters import get_holdings_pool
 from aimoon.data.history import get_kline
+from aimoon.data.holdings_pool import get_holdings_pool
 from aimoon.data.spot import get_spot_for_codes
 
 logger = logging.getLogger(__name__)

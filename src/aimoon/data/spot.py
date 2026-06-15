@@ -202,3 +202,9 @@ def get_spot_for_codes(
         return Ok(df)
     except Exception as e:
         return Err(f"Fetch spot data for pool failed: {e}")
+
+
+# Public aliases for internal helpers used by other modules
+DEFAULT_HEADERS = _DEFAULT_HEADERS
+em_get = _em_get
+FIELDS = _FIELDS

@@ -30,7 +30,7 @@ if sys.platform == "win32":
 from aimoon.cache import DataCache
 from aimoon.config import Config, load_config
 from aimoon.data import get_spot_for_codes, filter_universe
-from aimoon.data.filters import get_holdings_pool
+from aimoon.data.holdings_pool import get_holdings_pool
 from aimoon.data.spot import get_spot
 from aimoon.output import OutputFormatter
 from aimoon.scoring.rps import compute_rps
@@ -429,7 +429,7 @@ def main() -> None:
 
     # Refresh holdings pool
     if cfg.command == "refresh-pool":
-        from aimoon.data.filters import get_holdings_pool, save_shipped_pool
+        from aimoon.data.holdings_pool import get_holdings_pool, save_shipped_pool
         fmt.console.print("[bold blue]=== Refreshing holdings pool ===[/bold blue]")
         fmt.console.print("[dim]Fetching northbound + fund + ROE data...[/dim]")
         pool = get_holdings_pool(cfg, force=True, cache_dir=Path(cfg.cache_dir))
