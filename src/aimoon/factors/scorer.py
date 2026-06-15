@@ -12,7 +12,6 @@ import logging
 
 import pandas as pd
 
-from aimoon.factors.quality import _greedy_correlation_filter  # noqa: F401
 from aimoon.factors.registry import Registry, RegistryError, SkipAlphaError
 from aimoon.factors.weighting import (
     apply_theme_balancing,

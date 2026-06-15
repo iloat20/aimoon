@@ -56,7 +56,9 @@ def screen_universe(
     tails: dict[str, pd.DataFrame] = {}
     all_klines: dict[str, pd.DataFrame] = {}
 
-    def _process(row: pd.Series) -> tuple[ScoredStock | None, str, pd.DataFrame | None, pd.DataFrame | None]:
+    def _process(
+        row: pd.Series,
+    ) -> tuple[ScoredStock | None, str, pd.DataFrame | None, pd.DataFrame | None]:
         code = row["stock_code"]
         name = row["stock_name"]
         kdf = (klines or {}).get(code)
@@ -85,31 +87,38 @@ def screen_universe(
                 logger.warning("Screen failed: %s", e)
 
     if cfg.use_alpha and all_klines:
-        results = _inject_alpha_signals(results, all_klines)
-        results = _inject_ml_signals(results, all_klines, cfg.cache_dir)
+        panel = _build_shared_panel(all_klines)
+        if panel is not None:
+            results = _inject_alpha_signals(results, panel)
+            results = _inject_ml_signals(results, panel, cfg.cache_dir)
 
     return results, tails, all_klines
 
 
-def _inject_alpha_signals(
-    results: list[ScoredStock],
-    all_klines: dict[str, pd.DataFrame],
-) -> list[ScoredStock]:
-    """构建宽表，运行 Alpha Zoo 因子，注入信号到每只股票。"""
+def _build_shared_panel(all_klines: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame] | None:
+    """Build a shared wide panel from all klines, with batch technical indicators."""
     from aimoon.factors.panel import build_panel
-    from aimoon.factors.registry import get_default_registry
-    from aimoon.factors.scorer import compute_alpha_signals
 
     panel = build_panel(all_klines)
     if panel is None:
-        return results
+        return None
 
-    # Batch compute technical indicators on the wide panel (M5)
     try:
         from aimoon.indicators.technical import add_all_indicators_batch
         panel = add_all_indicators_batch(panel)
     except Exception as e:
         logger.debug("Batch TechInd failed: %s", e)
+
+    return panel
+
+
+def _inject_alpha_signals(
+    results: list[ScoredStock],
+    panel: dict[str, pd.DataFrame],
+) -> list[ScoredStock]:
+    """Run Alpha Zoo factors on the shared panel and inject signals."""
+    from aimoon.factors.registry import get_default_registry
+    from aimoon.factors.scorer import compute_alpha_signals
 
     registry = get_default_registry()
     alpha_signals = compute_alpha_signals(registry, panel)
@@ -121,7 +130,7 @@ def _inject_alpha_signals(
         extra = alpha_signals.get(scored.code, [])
         if extra:
             new_signals = tuple(list(scored.signals) + extra)
-            new_total = hybrid_score(new_signals)
+            new_total = hybrid_score(list(new_signals))
             scored = ScoredStock(
                 code=scored.code, name=scored.name, price=scored.price,
                 pct_change=scored.pct_change, turnover=scored.turnover,
@@ -138,12 +147,11 @@ def _inject_alpha_signals(
 
 def _inject_ml_signals(
     results: list[ScoredStock],
-    all_klines: dict[str, pd.DataFrame],
+    panel: dict[str, pd.DataFrame],
     cache_dir: str | None = None,
 ) -> list[ScoredStock]:
-    """注入 ML 集成模型预测信号到评分结果。"""
+    """Inject ML ensemble model prediction signals into scored results."""
     try:
-        from aimoon.factors.panel import build_panel
         from aimoon.factors.registry import get_default_registry
         from aimoon.ml.ensemble import EnsemblePredictor, ensemble_predict_signals
     except ImportError:
@@ -152,17 +160,6 @@ def _inject_ml_signals(
     predictor = EnsemblePredictor.from_cache(cache_dir)
     if not predictor.has_any:
         return results
-
-    panel = build_panel(all_klines)
-    if panel is None:
-        return results
-
-    # Batch compute technical indicators on the wide panel (M5)
-    try:
-        from aimoon.indicators.technical import add_all_indicators_batch
-        panel = add_all_indicators_batch(panel)
-    except Exception as e:
-        logger.debug("Batch TechInd failed (ML path): %s", e)
 
     registry = get_default_registry()
     ml_signals = ensemble_predict_signals(predictor, panel, registry)
@@ -174,7 +171,7 @@ def _inject_ml_signals(
         extra = ml_signals.get(scored.code, [])
         if extra:
             new_signals = tuple(list(scored.signals) + list(extra))
-            new_total = hybrid_score(new_signals)
+            new_total = hybrid_score(list(new_signals))
             scored = ScoredStock(
                 code=scored.code, name=scored.name, price=scored.price,
                 pct_change=scored.pct_change, turnover=scored.turnover,

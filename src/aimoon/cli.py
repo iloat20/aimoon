@@ -29,12 +29,12 @@ if sys.platform == "win32":
 
 from aimoon.cache import DataCache
 from aimoon.config import Config, load_config
-from aimoon.data import get_spot_for_codes, filter_universe
+from aimoon.data import filter_universe, get_spot_for_codes
 from aimoon.data.holdings_pool import get_holdings_pool
 from aimoon.data.spot import get_spot
 from aimoon.output import OutputFormatter
-from aimoon.scoring.rps import compute_rps
 from aimoon.scoring import hybrid_score
+from aimoon.scoring.rps import compute_rps
 from aimoon.screener import screen_universe
 
 logging.basicConfig(level=logging.WARNING)
@@ -156,6 +156,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     """Backtest sub-command -- 先筛选 top 股票，再做增强组合回测。"""
     from aimoon.data.history import get_kline
     from aimoon.enhanced_backtest import EnhancedBacktestEngine
+    from aimoon.scoring.rps import compute_rps
 
     if not _check_network():
         fmt.console.print("[red]Network required for backtest. Check connection or try --demo.[/red]")
@@ -184,7 +185,6 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
         fmt.console.print("[red]No stocks passed screening.[/red]")
         return
 
-    from aimoon.scoring.rps import compute_rps
     results = compute_rps(results, tails)
     top_stocks = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:bt_top]
     codes = [s.code for s in top_stocks]
@@ -238,7 +238,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
 
     # Charts (optional matplotlib)
     try:
-        from aimoon.charts import plot_equity_curve, plot_drawdown, plot_monthly_returns
+        from aimoon.charts import plot_drawdown, plot_equity_curve, plot_monthly_returns
         os.makedirs(cfg.output_dir, exist_ok=True)
         eq_path = os.path.join(cfg.output_dir, "equity_curve.png")
         dd_path = os.path.join(cfg.output_dir, "drawdown.png")
@@ -302,7 +302,8 @@ def _load_screening_data(
 def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
     """Parameter optimization sub-command."""
     from aimoon.data.history import get_kline
-    from aimoon.optimizer import grid_search, _PARAM_RANGES
+    from aimoon.optimizer import _PARAM_RANGES, grid_search
+    from aimoon.scoring.rps import compute_rps
 
     bt_top = getattr(args, "top", cfg.top_n)
     metric = getattr(args, "metric", "sharpe")
@@ -321,7 +322,6 @@ def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
         fmt.console.print("[red]No stocks passed screening.[/red]")
         return
 
-    from aimoon.scoring.rps import compute_rps
     results = compute_rps(results, tails)
     top_stocks = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:bt_top]
     codes = [s.code for s in top_stocks]
@@ -360,6 +360,7 @@ def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     fmt.console.print("[dim]Press Ctrl+C to stop[/dim]")
 
     def _run_once() -> None:
+        from aimoon.scoring.rps import compute_rps
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
             if cfg.demo:
@@ -372,7 +373,6 @@ def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
                 cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
                 results, tails, all_klines = screen_universe(universe, cfg, cache)
 
-            from aimoon.scoring.rps import compute_rps
             results = compute_rps(results, tails)
             top = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)[:cfg.top_n]
 
@@ -442,7 +442,12 @@ def main() -> None:
 
     # Watchlist management
     if cfg.command == "watchlist":
-        from aimoon.watchlist import add_watchlist, remove_watchlist, list_watchlist, clear_watchlist
+        from aimoon.watchlist import (
+            add_watchlist,
+            clear_watchlist,
+            list_watchlist,
+            remove_watchlist,
+        )
         action = cfg.watchlist_action
         if action == "add":
             codes = [c.strip() for c in cfg.watchlist_codes.split(",") if c.strip()]
@@ -512,9 +517,9 @@ def main() -> None:
     results = compute_rps(results, tails)
     regime = None
     if cfg.command is None and not cfg.demo:
+        from aimoon.data.history import get_kline as _get_kline
         from aimoon.regime_enhanced import detect_regime
         from aimoon.scoring.adaptive_weight import apply_regime_to_list
-        from aimoon.data.history import get_kline as _get_kline
         _c = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
         bench_code = '000001'
         br = _get_kline(bench_code, cfg.history_days, _c)
@@ -524,6 +529,7 @@ def main() -> None:
             results = apply_regime_to_list(results, regime)
 
     # ── Super Turtle 策略信号 ──
+    from aimoon.risk import PortfolioState, Position, RiskLimits, check_risk_limits
     from aimoon.scoring.turtle import generate_turtle_plan
     turtle_plans: dict = {}
     for r in results:
@@ -534,7 +540,6 @@ def main() -> None:
                 turtle_plans[r.code] = plan
 
     # Risk warnings
-    from aimoon.risk import RiskLimits, Position, PortfolioState, check_risk_limits
     limits = RiskLimits(
         max_position_pct=cfg.max_position_pct,
         max_sector_pct=cfg.max_sector_pct,

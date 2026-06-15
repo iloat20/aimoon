@@ -28,7 +28,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 try:
-    from prometheus_client import Counter, Gauge, Histogram, start_http_server
+    from prometheus_client import Gauge, Histogram, start_http_server
     _HAS_PROMETHEUS = True
 except ImportError:
     _HAS_PROMETHEUS = False
