@@ -8,12 +8,12 @@ import time
 
 import akshare as ak
 import httpx
-import numpy as np
 import pandas as pd
 import pendulum
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from aimoon.cache import DataCache
+from aimoon.data.validator import fix_kline_dates  # re-export for backward compat
 from aimoon.result import Err, Ok, Result
 
 logger = logging.getLogger(__name__)
@@ -168,36 +168,6 @@ def _akshare_index_kline(
                     f"{code}: AKShare index failed after {retries + 1} attempts: {e}"
                 )
     return Err(f"{code}: unreachable")
-
-
-def fix_kline_dates(kline: pd.DataFrame) -> pd.DataFrame:
-    """全局日期修复函数 - 确保 K 线数据使用正确的日期格式"""
-    if kline is None or kline.empty:
-        return kline
-
-    # 如果 index 已经是 datetime，直接返回
-    if len(kline) > 0 and isinstance(kline.index[0], pd.Timestamp):
-        return kline
-
-    # 如果 index 是整数，尝试使用 date 列
-    if len(kline) > 0 and isinstance(kline.index[0], (int, np.integer)):
-        if "date" in kline.columns:
-            try:
-                kline = kline.copy()
-                kline["date"] = pd.to_datetime(kline["date"])
-                kline = kline.set_index("date").sort_index()
-                return kline
-            except Exception as e:
-                logger.warning("Failed to fix dates using date column: %s", e)
-
-        # 没有 date 列：记录警告并返回原始数据，不猜测日期
-        logger.error(
-            "Cannot fix kline dates: index is integer and no date column. "
-            "This indicates a data source bug. Returning original data."
-        )
-        return kline
-
-    return kline
 
 
 def get_kline(

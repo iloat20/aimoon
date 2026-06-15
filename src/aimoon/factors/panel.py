@@ -42,7 +42,7 @@ def build_panel(
         return None
 
     # 修复整数索引的日期（必须在 build_panel 之前）
-    from aimoon.data.history import fix_kline_dates
+    from aimoon.data.validator import fix_kline_dates
 
     klines = {code: fix_kline_dates(df) for code, df in klines.items()}
 
