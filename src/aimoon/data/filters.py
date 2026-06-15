@@ -1,8 +1,8 @@
 """data filters -- pure functions."""
 from __future__ import annotations
 
+import json
 import logging
-import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
@@ -26,16 +26,16 @@ _POOL_TTL = 90 * 86400  # 90 days (one quarter)
 
 def _cached(key: str, ttl: int, fetcher):
     """Disk cache. Empty results are not cached."""
-    path = _CACHE_DIR / f"_{key}.pkl"
+    path = _CACHE_DIR / f"_{key}.json"
     if path.exists() and (time.time() - path.stat().st_mtime) < ttl:
         try:
-            return pickle.loads(path.read_bytes())
+            return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             pass
     result = fetcher()
     if result is not None:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(pickle.dumps(result))
+        path.write_text(json.dumps(result, ensure_ascii=False, default=str), encoding="utf-8")
     return result
 
 
@@ -44,10 +44,10 @@ def _cached(key: str, ttl: int, fetcher):
 #
 # Design:
 #   - First call tries to build from network (northbound + fund + ROE).
-#   - On success the set is persisted to _holdings_pool.pkl.
+#   - On success the set is persisted to _holdings_pool.json.
 #   - On failure (network / API error) the persisted file is used regardless
 #     of age, so the user always has a usable pool.
-#   - The shipped fallback file (data/holdings_pool.pkl) is the last resort.
+#   - The shipped fallback file (data/holdings_pool.json) is the last resort.
 # ---------------------------------------------------------------------------
 
 def get_holdings_pool(
@@ -60,14 +60,14 @@ def get_holdings_pool(
     Use force=True to bypass TTL and rebuild from network.
     """
     cache_dir = cache_dir or Path(cfg.cache_dir)
-    pool_file = cache_dir / "_holdings_pool.pkl"
+    pool_file = cache_dir / "_holdings_pool.json"
 
     # 1. Check in-memory / disk cache first (skip if force)
     if not force and pool_file.exists():
         age = time.time() - pool_file.stat().st_mtime
         if age < _POOL_TTL:
             try:
-                data = pickle.loads(pool_file.read_bytes())
+                data = json.loads(pool_file.read_text(encoding="utf-8"))
                 if data:
                     logger.info("Using cached holdings pool (%d stocks)", len(data))
                     return data
@@ -78,14 +78,14 @@ def get_holdings_pool(
     result = _build_holdings_pool(cfg)
     if result:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        pool_file.write_bytes(pickle.dumps(result))
+        pool_file.write_text(json.dumps(result, ensure_ascii=False, default=str), encoding="utf-8")
         logger.info("Persisted holdings pool: %d stocks", len(result))
         return result
 
     # 3. Network failed -- try stale disk cache (any age)
     if pool_file.exists():
         try:
-            data = pickle.loads(pool_file.read_bytes())
+            data = json.loads(pool_file.read_text(encoding="utf-8"))
             if data:
                 logger.warning("Using stale holdings pool (%d stocks)", len(data))
                 return data
@@ -103,11 +103,11 @@ def get_holdings_pool(
 
 def _load_shipped_pool() -> set[str]:
     """Load the pool file shipped with the package (in data/ directory)."""
-    shipped = Path(__file__).parent / "holdings_pool.pkl"
+    shipped = Path(__file__).parent / "holdings_pool.json"
     if shipped.exists():
         try:
-            data = pickle.loads(shipped.read_bytes())
-            return data if isinstance(data, set) else set()
+            data = json.loads(shipped.read_text(encoding="utf-8"))
+            return set(data) if isinstance(data, list) else set()
         except Exception:
             pass
     return set()
@@ -120,8 +120,8 @@ def save_shipped_pool(pool: set[str]) -> None:
     installs have an up-to-date pool without needing network access
     to northbound/fund/ROE APIs.
     """
-    target = Path(__file__).parent / "holdings_pool.pkl"
-    target.write_bytes(pickle.dumps(pool))
+    target = Path(__file__).parent / "holdings_pool.json"
+    target.write_text(json.dumps(sorted(pool), ensure_ascii=False, default=str), encoding="utf-8")
     logger.info("Saved shipped pool: %d stocks -> %s", len(pool), target)
 
 
