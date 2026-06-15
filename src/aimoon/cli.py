@@ -512,7 +512,7 @@ def main() -> None:
     results = compute_rps(results, tails)
     regime = None
     if cfg.command is None and not cfg.demo:
-        from aimoon.regime import detect_regime
+        from aimoon.regime_enhanced import detect_regime
         from aimoon.scoring.adaptive_weight import apply_regime_to_list
         from aimoon.data.history import get_kline as _get_kline
         _c = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)

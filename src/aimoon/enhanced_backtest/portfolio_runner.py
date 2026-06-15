@@ -13,8 +13,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from aimoon.backtest import _detect_regime_safe, risk_controls
+from aimoon.enhanced_backtest import risk_controls
 from aimoon.enhanced_backtest.models import EnhancedPosition, EnhancedTrade
+from aimoon.regime_enhanced import detect_enhanced_regime as _detect_regime_safe
 from aimoon.rumi_strategy import RumiSignal
 
 logger = logging.getLogger(__name__)

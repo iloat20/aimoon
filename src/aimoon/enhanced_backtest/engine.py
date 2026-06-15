@@ -10,13 +10,13 @@ from typing import Any
 
 import pandas as pd
 
-from aimoon.backtest import risk_controls
-from aimoon.backtest.position import compute_position_weights
+from aimoon.enhanced_backtest import risk_controls
 from aimoon.enhanced_backtest.models import (
     EnhancedPosition,
     EnhancedTrade,
 )
 from aimoon.enhanced_backtest.portfolio_runner import run_portfolio as _run_backtest
+from aimoon.enhanced_backtest.position import compute_position_weights
 from aimoon.indicators.technical import TechInd
 from aimoon.risk import RiskLimits
 from aimoon.rumi_strategy import (

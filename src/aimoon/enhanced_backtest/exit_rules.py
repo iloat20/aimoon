@@ -12,8 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from aimoon.backtest import risk_controls
-from aimoon.backtest.risk_controls import PARTIAL_PROFIT_TAKE_PNL, PARTIAL_PROFIT_TAKE_RATIO, PARTIAL_PROFIT_SECONDARY_PNL
+from aimoon.enhanced_backtest import risk_controls
 from aimoon.enhanced_backtest.helpers import (
     TIME_DECAY_IDLE_DAYS_THRESHOLD as _TIME_DECAY_IDLE_DAYS_THRESHOLD,
 )
@@ -30,6 +29,11 @@ from aimoon.enhanced_backtest.helpers import (
     regime_take_profit as _regime_take_profit,
 )
 from aimoon.enhanced_backtest.models import EnhancedPosition, EnhancedTrade
+from aimoon.enhanced_backtest.risk_controls import (
+    PARTIAL_PROFIT_SECONDARY_PNL,
+    PARTIAL_PROFIT_TAKE_PNL,
+    PARTIAL_PROFIT_TAKE_RATIO,
+)
 
 logger = logging.getLogger(__name__)
 

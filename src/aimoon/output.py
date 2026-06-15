@@ -4,6 +4,9 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+# 类型标注用（避免循环导入）
+from typing import TYPE_CHECKING
+
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
@@ -11,19 +14,23 @@ from rich.table import Table
 from aimoon.config import Config
 from aimoon.models import ScoredStock
 
-# 类型标注用（避免循环导入）
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from aimoon.backtest import PortfolioBacktest
     from aimoon.factor_eval import FactorEval
 
+
+
+def _color_value(v: float, invert: bool = False) -> str:
+    """Return 'green' or 'red' Rich color tag based on value sign."""
+    if invert:
+        return "green" if v < 0 else "red"
+    return "green" if v > 0 else "red"
 
 class OutputFormatter:
     def __init__(self, cfg: Config | None = None) -> None:
         self.console = Console(force_terminal=True)
         self.cfg = cfg or Config()
 
-    def display(self, results: list[ScoredStock]) -> None:
+    def display(self, results: list[ScoredStock], turtle_plans: dict | None = None) -> None:
         if not results:
             self.console.print("[yellow]No stocks match the criteria[/yellow]")
             return
@@ -34,6 +41,7 @@ class OutputFormatter:
         table.add_column("Price", justify="right", width=8)
         table.add_column("Chg%", justify="right", width=8)
         table.add_column("Score", justify="right", width=6)
+        table.add_column("Turtle", width=12)
         table.add_column("Suggestion", width=10)
         table.add_column("Conf.", width=6)
         for i, r in enumerate(results, 1):
@@ -41,14 +49,71 @@ class OutputFormatter:
             ts = "bold green" if r.total_score >= 65 else ("yellow" if r.total_score >= 35 else "red")
             sug, conf = r.suggestion
             ss = "bold green" if "买" in sug else ("red" if "卖" in sug else "dim")
+            # Turtle signal
+            plan = (turtle_plans or {}).get(r.code)
+            if plan is not None:
+                ttype = plan.signal_type
+                if ttype == "buy":
+                    turtle_str = f"[bold green]▲买{plan.entry_price:.1f}[/bold green]"
+                elif ttype == "add":
+                    turtle_str = f"[green]＋{plan.entry_price:.1f}[/green]"
+                elif ttype == "close":
+                    turtle_str = f"[red]▼卖{plan.exit_price:.1f}[/red]"
+                else:
+                    turtle_str = "[dim]─[/dim]"
+            else:
+                turtle_str = "[dim]─[/dim]"
             table.add_row(
                 str(i), r.code, r.name, f"{r.price:.2f}",
                 f"[{ps}]{r.pct_change:+.2f}[/{ps}]",
                 f"[{ts}]{r.total_score}[/{ts}]",
+                turtle_str,
                 f"[{ss}]{sug}[/{ss}]", conf,
             )
         self.console.print(table)
         self.console.print(f"\n[dim]Total: {len(results)} stocks[/dim]")
+
+    def display_turtle_plans(self, turtle_plans: dict) -> None:
+        """Display detailed Turtle trading plans with specific prices."""
+        if not turtle_plans:
+            return
+
+        table = Table(title="Super Turtle 交易计划")
+        table.add_column("Code", style="cyan", width=8)
+        table.add_column("Name", style="bold", width=10)
+        table.add_column("Signal", width=8)
+        table.add_column("当前价", justify="right", width=8)
+        table.add_column("买入价", justify="right", width=8)
+        table.add_column("止损价", justify="right", width=8)
+        table.add_column("加仓价", justify="right", width=14)
+        table.add_column("目标1", justify="right", width=8)
+        table.add_column("目标2", justify="right", width=8)
+        table.add_column("清仓价", justify="right", width=8)
+        table.add_column("跟踪止损", justify="right", width=8)
+        table.add_column("每单位", justify="right", width=8)
+
+        for code, plan in turtle_plans.items():
+            sig_color = "bold green" if plan.signal_type == "buy" else ("red" if plan.signal_type == "close" else "dim")
+            sig_text = "▲买入" if plan.signal_type == "buy" else ("▼卖出" if plan.signal_type == "close" else "─")
+
+            add_str = ",".join(f"{p:.1f}" for p in plan.add_prices) if plan.add_prices else "-"
+            chandelier_str = f"{plan.chandelier_stop:.2f}" if plan.chandelier_stop > 0 else "-"
+
+            table.add_row(
+                plan.code, plan.name,
+                f"[{sig_color}]{sig_text}[/{sig_color}]",
+                f"{plan.current_price:.2f}",
+                f"{plan.entry_price:.2f}",
+                f"{plan.entry_stop_loss:.2f}",
+                add_str,
+                f"{plan.tp1_price:.2f}",
+                f"{plan.tp2_price:.2f}",
+                f"{plan.exit_price:.2f}",
+                chandelier_str,
+                f"{plan.shares_per_unit}股",
+            )
+
+        self.console.print(table)
 
     def export_csv(self, results: list[ScoredStock], filename: str | None = None) -> str:
         if not filename:
@@ -70,7 +135,7 @@ class OutputFormatter:
 
     def export_markdown(self, results: list[ScoredStock], filename: str | None = None,
                         regime: str | None = None) -> str:
-        from aimoon.scoring import category_capped_score
+        from aimoon.scoring import hybrid_score
         if not filename:
             filename = f"aimoon_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         os.makedirs(self.cfg.output_dir, exist_ok=True)
@@ -83,14 +148,12 @@ class OutputFormatter:
             lines += [f"**市场状态：{regime}**", ""]
 
         # Scored with capped score for ranking
-        ranked = sorted(results, key=lambda s: category_capped_score(list(s.signals)), reverse=True)
+        ranked = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)
 
         # Trading advice sections
         top1 = ranked[0] if ranked else None
         if top1:
-            top1_score = category_capped_score(list(top1.signals))
-            risk_sigs = [s for s in top1.signals if any(k in s.name for k in
-                         ["overbought", "overextended", "exhaustion", "crash", "weak", "bearish", "death", "below_ma"])]
+            top1_score = hybrid_score(list(top1.signals))
             lines += [
                 "## 交易建议", "",
                 "### 首选买入", "",
@@ -101,13 +164,13 @@ class OutputFormatter:
             ]
 
         # Strong buy candidates (top 5)
-        strong_buy = [s for s in ranked if category_capped_score(list(s.signals)) >= 15][:5]
+        strong_buy = [s for s in ranked if hybrid_score(list(s.signals)) >= 15][:5]
         if len(strong_buy) > 1:
             lines += ["### 强势候选（前5）", "",
                        "| 代码 | 名称 | 价格 | 分类评分 | 建议 |",
                        "|------|------|------|----------|------|"]
             for s in strong_buy:
-                cs = category_capped_score(list(s.signals))
+                cs = hybrid_score(list(s.signals))
                 sug, conf = s.suggestion
                 lines.append(f"| {s.code} | {s.name} | {s.price:.2f} | {cs} | {sug} |")
             lines.append("")
@@ -119,7 +182,7 @@ class OutputFormatter:
                   "|-----|------|------|-------|----------|----------|------------|"]
         for i, r in enumerate(ranked, 1):
             sug, conf = r.suggestion
-            cs = category_capped_score(list(r.signals))
+            cs = hybrid_score(list(r.signals))
             lines.append(f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |")
 
         lines += ["", f"---\n\n*报告生成时间: {now}*"]
@@ -165,58 +228,17 @@ class OutputFormatter:
             )
         self.console.print(table)
 
-    def display_portfolio_backtest(self, result: PortfolioBacktest) -> None:
+    def display_portfolio_backtest(self, result) -> None:
         """显示组合回测报告。"""
         table = Table(title="Portfolio Backtest Results")
         table.add_column("Metric", style="cyan", width=20)
         table.add_column("Value", justify="right", width=12)
-
-        def _color(v: float, invert: bool = False) -> str:
-            if invert:
-                return "green" if v < 0 else "red"
-            return "green" if v > 0 else "red"
-
-        table.add_row("Total Return", f"[{_color(result.total_return)}]{result.total_return:+.2f}%[/{_color(result.total_return)}]")
-        table.add_row("Annual Return", f"[{_color(result.annual_return)}]{result.annual_return:+.2f}%[/{_color(result.annual_return)}]")
-        table.add_row("Sharpe Ratio", f"[{_color(result.sharpe_ratio)}]{result.sharpe_ratio:+.2f}[/{_color(result.sharpe_ratio)}]")
-        table.add_row("Max Drawdown", f"[{_color(result.max_drawdown, True)}]{result.max_drawdown:.2f}%[/{_color(result.max_drawdown, True)}]")
-        table.add_row("Calmar Ratio", f"[{_color(result.calmar_ratio)}]{result.calmar_ratio:+.2f}[/{_color(result.calmar_ratio)}]")
-        table.add_row("Win Rate", f"{result.win_rate:.1%}")
-        table.add_row("Trade Count", str(result.trade_count))
-        table.add_row("Avg Hold Days", f"{result.avg_hold_days:.0f}")
-        table.add_row("Turnover Rate", f"{result.turnover_rate:.2f}")
-        if result.benchmark_return != 0.0:
-            table.add_row("Benchmark Return", f"{result.benchmark_return:+.2f}%")
-            table.add_row("Excess Return", f"[{_color(result.excess_return)}]{result.excess_return:+.2f}%[/{_color(result.excess_return)}]")
-        self.console.print(table)
 
     def display_enhanced_backtest(self, result) -> None:
         """显示增强回测报告（Sortino/盈亏比/基准对比）。"""
         table = Table(title="Enhanced Portfolio Backtest")
         table.add_column("Metric", style="cyan", width=20)
         table.add_column("Value", justify="right", width=12)
-
-        def _c(v: float, invert: bool = False) -> str:
-            if invert:
-                return "green" if v < 0 else "red"
-            return "green" if v > 0 else "red"
-
-        table.add_row("Total Return", f"[{_c(result.total_return)}]{result.total_return:+.2f}%[/{_c(result.total_return)}]")
-        table.add_row("Annual Return", f"[{_c(result.annual_return)}]{result.annual_return:+.2f}%[/{_c(result.annual_return)}]")
-        table.add_row("Sharpe Ratio", f"[{_c(result.sharpe_ratio)}]{result.sharpe_ratio:+.2f}[/{_c(result.sharpe_ratio)}]")
-        table.add_row("Sortino Ratio", f"[{_c(result.sortino_ratio)}]{result.sortino_ratio:+.2f}[/{_c(result.sortino_ratio)}]")
-        table.add_row("Max Drawdown", f"[{_c(result.max_drawdown, True)}]{result.max_drawdown:.2f}%[/{_c(result.max_drawdown, True)}]")
-        table.add_row("Calmar Ratio", f"[{_c(result.calmar_ratio)}]{result.calmar_ratio:+.2f}[/{_c(result.calmar_ratio)}]")
-        table.add_row("Win Rate", f"{result.win_rate:.1%}")
-        table.add_row("Profit Factor", f"{result.profit_factor:.2f}")
-        table.add_row("Avg Win", f"[green]{result.avg_win:+.2f}%[/green]")
-        table.add_row("Avg Loss", f"[red]{result.avg_loss:+.2f}%[/red]")
-        table.add_row("Trade Count", str(result.trade_count))
-        table.add_row("Avg Hold Days", f"{result.avg_hold_days:.0f}")
-        if result.benchmark_return != 0.0:
-            table.add_row("Benchmark", f"{result.benchmark_return:+.2f}%")
-            table.add_row("Excess Return", f"[{_c(result.excess_return)}]{result.excess_return:+.2f}%[/{_c(result.excess_return)}]")
-        self.console.print(table)
 
     def display_optimize(self, results) -> None:
         """显示参数优化结果。"""

@@ -9,7 +9,7 @@ import logging
 
 import pandas as pd
 
-from aimoon.backtest import risk_controls
+from aimoon.enhanced_backtest import risk_controls
 from aimoon.indicators.technical import TechInd
 
 logger = logging.getLogger(__name__)

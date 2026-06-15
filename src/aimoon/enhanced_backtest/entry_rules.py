@@ -11,7 +11,6 @@ from typing import Any
 
 import pandas as pd
 
-from aimoon.backtest.position import compute_position_weights
 from aimoon.enhanced_backtest.helpers import (
     RECENT_RET_THRESHOLD as _RECENT_RET_THRESHOLD,
 )
@@ -25,6 +24,7 @@ from aimoon.enhanced_backtest.helpers import (
     ROC5_RISE_THRESHOLD as _ROC5_RISE_THRESHOLD,
 )
 from aimoon.enhanced_backtest.models import EnhancedPosition
+from aimoon.enhanced_backtest.position import compute_position_weights
 
 logger = logging.getLogger(__name__)
 
