@@ -43,7 +43,6 @@ from aimoon.ml.optimized_config import get_xgb_params
 
 logger = logging.getLogger(__name__)
 
-_MODEL_DIR = Path(".aimoon_cache") / "ml"
 _MODEL_TTL_DAYS = 7
 
 # H2: 最小日期间隔（交易日），确保CV折间独立性
@@ -539,6 +538,7 @@ def train_ensemble(
     n_dates: int = 300,
     forward_days: int = 5,
     save_dir: str | Path | None = None,
+    cache_dir: str | Path = ".aimoon_cache",
     sector_map: dict[str, str] | None = None,
     warm_start: bool = True,
     zoo_factor_ids: list[str] | None = None,
@@ -555,7 +555,7 @@ def train_ensemble(
     from aimoon.ml.lgbm_trainer import train_lgbm_model
 
     registry = registry or get_default_registry()
-    save_path = Path(save_dir or _MODEL_DIR)
+    save_path = Path(save_dir) if save_dir else Path(cache_dir) / "ml"
     save_path.mkdir(parents=True, exist_ok=True)
 
     logger.info("=== Training Stacking Ensemble (Elastic Net + XGB + LGBM) ===")
@@ -777,6 +777,7 @@ def train_elasticnet_model(
     n_dates: int = 300,
     forward_days: int = 5,
     save_dir: str | Path | None = None,
+    cache_dir: str | Path = ".aimoon_cache",
     sector_map: dict[str, str] | None = None,
     zoo_factor_ids: list[str] | None = None,
 ) -> TrainingResult:
@@ -922,7 +923,7 @@ def train_elasticnet_model(
     )
 
     # Save model
-    save_path = Path(save_dir or _MODEL_DIR)
+    save_path = Path(save_dir) if save_dir else Path(cache_dir) / "ml"
     save_path.mkdir(parents=True, exist_ok=True)
     en_params = {
         "coef": final_model.coef_.tolist(),
@@ -967,13 +968,14 @@ def ensure_model_fresh(
     klines: dict[str, pd.DataFrame],
     force: bool = False,
     model_dir: str | Path | None = None,
+    cache_dir: str | Path = ".aimoon_cache",
     n_dates: int = 300,
     forward_days: int = 5,
 ) -> object | None:
     """Check if ensemble needs retraining. Returns EnsemblePredictor or None."""
     from aimoon.ml.ensemble import EnsemblePredictor
 
-    save_dir = Path(model_dir or _MODEL_DIR)
+    save_dir = Path(model_dir) if model_dir else Path(cache_dir) / "ml"
     meta_file = save_dir / "meta.json"
     model_file = save_dir / "xgb_model.json"
     lgbm_file = save_dir / "lgbm_model.txt"
