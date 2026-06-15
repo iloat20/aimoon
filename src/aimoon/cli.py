@@ -265,7 +265,7 @@ def _load_screening_data(
     2. If pool is empty, fall back to full market spot data.
     """
     fmt.console.print("[dim]Loading holdings pool (cached)...[/dim]")
-    pool = get_holdings_pool(cfg)
+    pool = get_holdings_pool(cfg, cache_dir=Path(cfg.cache_dir))
     fmt.console.print(f"[dim]Holdings pool: {len(pool)} stocks[/dim]")
 
     if pool:
@@ -280,7 +280,7 @@ def _load_screening_data(
 
     # Fallback: full market
     fmt.console.print("[yellow]Holdings pool unavailable, loading full market...[/yellow]")
-    full = get_spot(cfg)
+    full = get_spot(cfg, cache_dir=Path(cfg.cache_dir))
     if full.is_err():
         fmt.console.print(f"[red]Failed: {full.error}[/red]")
         fmt.console.print("[yellow]Try: python -m aimoon --demo[/yellow]")
@@ -432,7 +432,7 @@ def main() -> None:
         from aimoon.data.filters import get_holdings_pool, save_shipped_pool
         fmt.console.print("[bold blue]=== Refreshing holdings pool ===[/bold blue]")
         fmt.console.print("[dim]Fetching northbound + fund + ROE data...[/dim]")
-        pool = get_holdings_pool(cfg, force=True)
+        pool = get_holdings_pool(cfg, force=True, cache_dir=Path(cfg.cache_dir))
         if pool:
             save_shipped_pool(pool)
             fmt.console.print(f"[green]Holdings pool refreshed: {len(pool)} stocks[/green]")

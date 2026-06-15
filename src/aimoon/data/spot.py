@@ -18,7 +18,6 @@ _DEFAULT_HEADERS = {
     "Referer": "https://quote.eastmoney.com/",
 }
 
-_SPOT_CACHE_FILE = Path(".aimoon_cache") / "_spot.json"
 _SPOT_CACHE_TTL = 300  # 5 minutes — real-time data must be fresh
 
 
@@ -66,13 +65,17 @@ def _em_fetch_all_pages(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def get_spot(cfg: Config) -> Result[pd.DataFrame, str]:
+def get_spot(
+    cfg: Config, cache_dir: Path | None = None
+) -> Result[pd.DataFrame, str]:
     """从东财获取全市场实时行情。磁盘缓存 5 分钟。"""
-    if _SPOT_CACHE_FILE.exists():
-        age = time.time() - _SPOT_CACHE_FILE.stat().st_mtime
+    cache_dir = cache_dir or Path(cfg.cache_dir)
+    spot_file = cache_dir / "_spot.json"
+    if spot_file.exists():
+        age = time.time() - spot_file.stat().st_mtime
         if age < _SPOT_CACHE_TTL:
             try:
-                df = pd.read_json(_SPOT_CACHE_FILE, orient="records", lines=True)
+                df = pd.read_json(spot_file, orient="records", lines=True)
                 return Ok(df)
             except Exception:
                 pass
@@ -119,8 +122,8 @@ def get_spot(cfg: Config) -> Result[pd.DataFrame, str]:
                 "f37": "roe",  # ROE TTM（加权）
             }
         )
-        _SPOT_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        df.to_json(_SPOT_CACHE_FILE, orient="records", lines=True, force_ascii=False)
+        spot_file.parent.mkdir(parents=True, exist_ok=True)
+        df.to_json(spot_file, orient="records", lines=True, force_ascii=False)
         return Ok(df)
     except Exception as e:
         return Err(f"Fetch spot data failed: {e}")
@@ -156,10 +159,12 @@ _FIELDS = (
 )
 
 
-def get_spot_for_codes(codes: set[str], cfg: Config) -> Result[pd.DataFrame, str]:
+def get_spot_for_codes(
+    codes: set[str], cfg: Config, cache_dir: Path | None = None
+) -> Result[pd.DataFrame, str]:
     """批量获取指定股票的实时行情（每批 500 只，约 1 秒/批）。"""
-    cache_key = "_spot_pool.json"
-    cache_file = Path(cfg.cache_dir) / cache_key
+    cache_dir = cache_dir or Path(cfg.cache_dir)
+    cache_file = cache_dir / "_spot_pool.json"
     if (
         cache_file.exists()
         and (time.time() - cache_file.stat().st_mtime) < _SPOT_CACHE_TTL

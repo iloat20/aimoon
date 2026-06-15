@@ -21,7 +21,6 @@ _CACHE_DIR = Path(".aimoon_cache")
 
 # Holdings pool file -- persisted separately so it survives cache clears
 # and is available immediately on first run after install.
-_POOL_FILE = _CACHE_DIR / "_holdings_pool.pkl"
 _POOL_TTL = 90 * 86400  # 90 days (one quarter)
 
 
@@ -51,19 +50,24 @@ def _cached(key: str, ttl: int, fetcher):
 #   - The shipped fallback file (data/holdings_pool.pkl) is the last resort.
 # ---------------------------------------------------------------------------
 
-def get_holdings_pool(cfg: Config, *, force: bool = False) -> set[str]:
+def get_holdings_pool(
+    cfg: Config, *, force: bool = False, cache_dir: Path | None = None
+) -> set[str]:
     """Get institutional holdings pool.
 
     Returns cached/persisted pool on failure so users always have stocks
     to screen.  The pool is refreshed at most once per quarter.
     Use force=True to bypass TTL and rebuild from network.
     """
+    cache_dir = cache_dir or Path(cfg.cache_dir)
+    pool_file = cache_dir / "_holdings_pool.pkl"
+
     # 1. Check in-memory / disk cache first (skip if force)
-    if not force and _POOL_FILE.exists():
-        age = time.time() - _POOL_FILE.stat().st_mtime
+    if not force and pool_file.exists():
+        age = time.time() - pool_file.stat().st_mtime
         if age < _POOL_TTL:
             try:
-                data = pickle.loads(_POOL_FILE.read_bytes())
+                data = pickle.loads(pool_file.read_bytes())
                 if data:
                     logger.info("Using cached holdings pool (%d stocks)", len(data))
                     return data
@@ -73,15 +77,15 @@ def get_holdings_pool(cfg: Config, *, force: bool = False) -> set[str]:
     # 2. Try to build from network
     result = _build_holdings_pool(cfg)
     if result:
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _POOL_FILE.write_bytes(pickle.dumps(result))
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        pool_file.write_bytes(pickle.dumps(result))
         logger.info("Persisted holdings pool: %d stocks", len(result))
         return result
 
     # 3. Network failed -- try stale disk cache (any age)
-    if _POOL_FILE.exists():
+    if pool_file.exists():
         try:
-            data = pickle.loads(_POOL_FILE.read_bytes())
+            data = pickle.loads(pool_file.read_bytes())
             if data:
                 logger.warning("Using stale holdings pool (%d stocks)", len(data))
                 return data

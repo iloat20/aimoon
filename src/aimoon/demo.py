@@ -1,8 +1,17 @@
-"""Demo 模式模拟数据生成 — 使用机构持仓池真实股票代码"""
+"""Demo 模式 — 使用持仓池真实股票代码 + 真实行情数据"""
+
 from __future__ import annotations
+
 import logging
-import numpy as np
+from pathlib import Path
+
 import pandas as pd
+
+from aimoon.cache import DataCache
+from aimoon.config import Config
+from aimoon.data.filters import get_holdings_pool
+from aimoon.data.history import get_kline
+from aimoon.data.spot import get_spot_for_codes
 
 logger = logging.getLogger(__name__)
 
@@ -10,9 +19,7 @@ logger = logging.getLogger(__name__)
 def _load_pool_codes(n: int = 30) -> list[str]:
     """从持仓池加载股票代码，取前 n 只。"""
     try:
-        from aimoon.data.filters import get_holdings_pool
-        from aimoon.config import Config
-        pool = get_holdings_pool(Config())
+        pool = get_holdings_pool(Config(), cache_dir=Path(Config().cache_dir))
         if pool:
             codes = sorted(pool)[:n]
             logger.info("Demo 使用持仓池 %d 只股票", len(codes))
@@ -25,63 +32,71 @@ def _load_pool_codes(n: int = 30) -> list[str]:
 def _fallback_codes() -> list[str]:
     """持仓池不可用时的备用股票代码列表。"""
     return [
-        "000001", "000002", "000333", "000568", "000651", "000725", "000858",
-        "002049", "002230", "002304", "002415", "002475", "002594", "002714",
-        "300059", "300064", "300124", "300750", "600030", "600036", "600276",
-        "600309", "600519", "600585", "600887", "601012", "601166", "601318",
-        "601398", "601888",
+        "000001",
+        "000002",
+        "000333",
+        "000568",
+        "000651",
+        "000725",
+        "000858",
+        "002049",
+        "002230",
+        "002304",
+        "002415",
+        "002475",
+        "002594",
+        "002714",
+        "300059",
+        "300064",
+        "300124",
+        "300750",
+        "600030",
+        "600036",
+        "600276",
+        "600309",
+        "600519",
+        "600585",
+        "600887",
+        "601012",
+        "601166",
+        "601318",
+        "601398",
+        "601888",
     ]
 
 
 def generate_demo(n_stocks: int = 30) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """生成模拟数据。优先使用持仓池真实股票代码。"""
-    np.random.seed(42)
+    """生成真实数据。优先使用持仓池真实股票代码 + 真实行情。"""
+    cfg = Config()
+    cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
 
+    # 1. 获取股票代码
     codes = _load_pool_codes(n_stocks)
     if not codes:
         codes = _fallback_codes()[:n_stocks]
 
-    # 生成 spot_df（模拟实时行情）
-    rows = []
-    for code in codes:
-        price = float(np.random.uniform(10, 200))
-        rows.append({
-            "stock_code": code, "stock_name": code,  # demo 用代码代替名称
-            "price": price,
-            "pct_change": float(np.random.uniform(-5, 5)),
-            "turnover": float(np.random.uniform(1, 15)),
-            "volume": float(np.random.randint(100000, 10000000)),
-            "amount": float(np.random.randint(10000000, 1000000000)),
-            "amplitude": float(np.random.uniform(1, 8)),
-            "high": price * 1.02, "low": price * 0.98,
-            "open": price * 1.001, "prev_close": price * 0.99,
-            "volume_ratio": float(np.random.uniform(0.5, 3)),
-            "pe": float(np.random.uniform(5, 50)),
-            "pb": float(np.random.uniform(0.5, 10)),
-            "total_market_cap": float(np.random.uniform(5e9, 3e12)),
-            "float_market_cap": float(np.random.uniform(1e9, 2e12)),
-            "pct_60d": float(np.random.uniform(-30, 30)),
-            "pct_ytd": float(np.random.uniform(-20, 50)),
-        })
-    spot_df = pd.DataFrame(rows)
+    logger.info("Demo: 获取 %d 只股票的真实行情...", len(codes))
 
-    # 生成 K 线（模拟 260 个交易日）
+    # 2. 获取真实实时行情
+    spot_result = get_spot_for_codes(set(codes), cfg)
+    if spot_result.is_err():
+        logger.error("获取实时行情失败: %s", spot_result.error)  # type: ignore[union-attr]
+        return pd.DataFrame(), {}
+
+    spot_df = spot_result.unwrap()
+    logger.info("Demo: 获取到 %d 只股票的实时行情", len(spot_df))
+
+    # 3. 获取真实 K 线数据
     klines: dict[str, pd.DataFrame] = {}
-    dates = pd.date_range(end=pd.Timestamp.today(), periods=260, freq="B")
-    n = len(dates)
-    for code in codes:
-        c = np.random.uniform(10, 200)
-        close = np.maximum(c + np.cumsum(np.random.randn(n) * c * 0.02), 1.0)
-        high = close + np.abs(np.random.randn(n) * close * 0.02)
-        low = close - np.abs(np.random.randn(n) * close * 0.02)
-        open_ = close + np.random.randn(n) * close * 0.01
-        vol = np.random.randint(100000, 10000000, n).astype(float)
-        df = pd.DataFrame({
-            "open": open_, "close": close, "high": high, "low": low,
-            "volume": vol, "turnover": np.random.uniform(0.5, 15, n),
-            "pct_change": np.random.randn(n) * 3,
-        }, index=dates)
-        df.index.name = "date"
-        klines[code] = df
+    valid_codes = (
+        spot_df["stock_code"].tolist() if "stock_code" in spot_df.columns else codes
+    )
+
+    for code in valid_codes:
+        r = get_kline(code, cfg.history_days, cache)
+        if r.is_ok():
+            klines[code] = r.unwrap()
+
+    logger.info("Demo: 获取到 %d 只股票的 K 线数据", len(klines))
 
     return spot_df, klines
