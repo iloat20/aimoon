@@ -18,35 +18,21 @@ from scipy.stats import spearmanr
 from aimoon.factors.panel import build_panel
 from aimoon.factors.registry import Registry, get_default_registry
 from aimoon.ml._training_commons import (
-    check_overfit,
     compute_icir,
     compute_shap_top20,
     compute_spearmanr_safe,
     log_training_summary,
-    save_model_artifacts,
-    should_retrain_on_overfit,
-    try_warm_start_xgb,
 )
-from aimoon.ml.feature_pipeline import (
-    _select_factor_subset,
-    apply_pca_to_alpha360,
-    compute_feature_importance,
-    extract_features,
-    select_features_by_ic,
-)
-from aimoon.ml.label_engine import (
-    cross_sectional_standardize,
-    generate_labels,
-    generate_reversal_labels,
-)
+from aimoon.ml.data_collection import _collect_training_data
+from aimoon.ml.feature_pipeline import compute_feature_importance, extract_features
+from aimoon.ml.label_engine import generate_labels
+from aimoon.ml.model_persistence import save_model_artifacts
 from aimoon.ml.optimized_config import get_xgb_params
+from aimoon.ml.training_loop import run_cv_training
 
 logger = logging.getLogger(__name__)
 
 _MODEL_TTL_DAYS = 7
-
-# H2: 最小日期间隔（交易日），确保CV折间独立性
-_MIN_DATE_INTERVAL_DAYS = 5
 
 
 @dataclass(frozen=True)
@@ -76,199 +62,6 @@ class EnsembleTrainingResult(TypedDict):
 def _default_params() -> dict[str, Any]:
     """Return XGBoost hyperparameters from centralized config."""
     return get_xgb_params()
-
-
-def _select_dates_evenly(
-    available_dates: list,
-    n_dates: int,
-    min_interval: int = _MIN_DATE_INTERVAL_DAYS,
-) -> list:
-    """Select evenly spaced dates with minimum interval.
-
-    H2 Fix: Ensures adjacent selected dates are at least min_interval apart,
-    preventing near-identical feature snapshots that inflate CV scores.
-
-    When data is insufficient, reduces n_dates rather than shrinking interval.
-    """
-    if not available_dates:
-        return []
-
-    # Ensure we have enough room for n_dates with min_interval spacing
-    min_required = (n_dates - 1) * min_interval + 1
-    if len(available_dates) < min_required:
-        # Reduce n_dates to fit available data
-        n_dates = max(1, (len(available_dates) - 1) // min_interval + 1)
-        logger.info(
-            "Adjusted n_dates to %d (min_interval=%d, available=%d)",
-            n_dates, min_interval, len(available_dates),
-        )
-
-    if n_dates <= 1:
-        return [available_dates[len(available_dates) // 2]]
-
-    # Evenly space n_dates across available_dates with guaranteed min_interval
-    total_span = len(available_dates) - 1
-    ideal_step = total_span / (n_dates - 1)
-    step = max(min_interval, ideal_step)
-
-    selected = []
-    pos = 0
-    for _ in range(n_dates):
-        if pos >= len(available_dates):
-            break
-        selected.append(available_dates[int(pos)])
-        pos += step
-
-    return sorted(selected)
-
-
-def _collect_training_data(
-    panel: dict[str, pd.DataFrame],
-    klines: dict[str, pd.DataFrame],
-    registry: Registry | None = None,
-    n_dates: int = 300,
-    forward_days: int = 5,
-    sector_map: dict[str, str] | None = None,
-    *,
-    use_pca: bool = False,
-    pca_components: int = 50,
-    use_clustering: bool = False,
-    n_clusters: int = 30,
-    standardize_labels: bool = True,
-    zoo_factor_ids: list[str] | None = None,
-) -> tuple[pd.DataFrame, pd.Series, dict[str, Any]]:
-    """Collect features and labels across multiple dates for training.
-
-    Takes snapshots at n_dates evenly spaced dates from the panel.
-    Applies PCA to Alpha360 features and cross-sectional label standardization.
-
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.Series, dict[str, Any]]
-        (features, labels, metadata) where metadata contains pca_object,
-        feature_names, and other training artifacts.
-    """
-    close = panel.get("close")
-    if close is None or len(close) < 20:
-        return pd.DataFrame(), pd.Series(dtype=float), {}
-
-    available_dates = close.index[65:].tolist()  # Alpha360 needs 60+ rows of lookback
-    if len(available_dates) < n_dates:
-        n_dates = len(available_dates)
-    if n_dates < 1:
-        return pd.DataFrame(), pd.Series(dtype=float), {}
-
-    # H2: Use improved date selection with minimum interval
-    selected_dates = _select_dates_evenly(
-        available_dates, n_dates, min_interval=max(forward_days, _MIN_DATE_INTERVAL_DAYS)
-    )
-
-    all_features: list[pd.DataFrame] = []
-    all_labels: list[pd.Series] = []
-
-    # Use deterministic factor IDs for train/backtest consistency
-    _zoo_factor_ids: list[str] | None = None
-    if registry is not None:
-        _zoo_factor_ids = _select_factor_subset(registry, 80)
-        logger.info("Training factor subset: %d factors", len(_zoo_factor_ids))
-
-    for date in selected_dates:
-        features = extract_features(
-            panel, registry, target_date=date, sector_map=sector_map,
-            zoo_factor_ids=_zoo_factor_ids,
-        )
-        labels = generate_reversal_labels(klines, date, forward_days, lookback_days=20)
-
-        if features.empty or labels.empty:
-            continue
-
-        common = features.index.intersection(labels.index)
-        if len(common) < 10:
-            continue
-
-        features_with_date = features.loc[common].copy()
-        features_with_date["_date"] = date
-        all_features.append(features_with_date)
-        all_labels.append(labels.loc[common])
-
-    if not all_features:
-        return pd.DataFrame(), pd.Series(dtype=float), {}
-
-    X = pd.concat(all_features, axis=0)
-    y = pd.concat(all_labels, axis=0)
-
-    # Cross-sectional standardization: remove market factor per date
-    # 对小股票池 (<200只) 禁用，因为std估计噪声会放大
-    if standardize_labels:
-        n_stocks_per_date = X.groupby("_date").size().median()
-        if n_stocks_per_date >= 200:
-            y = cross_sectional_standardize(y, X["_date"])
-            logger.info("Applied cross-sectional label standardization (n_stocks=%.0f)", n_stocks_per_date)
-        else:
-            logger.info("Skipped cross-sectional standardization for small universe (n_stocks=%.0f)", n_stocks_per_date)
-
-    constant_cols = X.nunique() == 1
-    if constant_cols.any():
-        X = X.loc[:, ~constant_cols]
-        logger.info("Removed %d constant features", constant_cols.sum())
-
-    # Stability-based feature selection: use first 60% of dates (temporal split)
-    if len(X) > 100 and X.shape[1] > 40:
-        date_col = X.get("_date")
-        if date_col is not None:
-            unique_dates = sorted(date_col.unique())
-            cutoff_idx = int(len(unique_dates) * 0.6)
-            early_dates = set(unique_dates[:cutoff_idx])
-            early_mask = date_col.isin(early_dates)
-            X_early = X.loc[early_mask].drop(columns=["_date"], errors="ignore")
-            y_early = y.loc[early_mask]
-        else:
-            split_idx = int(len(X) * 0.6)
-            X_early = X.iloc[:split_idx].drop(columns=["_date"], errors="ignore")
-            y_early = y.iloc[:split_idx]
-
-        # H3: Balanced feature selection — retain informative features without noise
-        selected = select_features_by_ic(X_early, y_early, top_k=40, min_ic=0.015)
-        keep_cols = [c for c in selected if c in X.columns]
-        if date_col is not None and "_date" not in keep_cols:
-            keep_cols.append("_date")
-        X = X[keep_cols]
-        logger.info(
-            "Stability-based feature selection: %d features retained", len(selected)
-        )
-
-    # Apply PCA or clustering to Alpha360 features to reduce collinearity
-    pca_object = None
-    kmeans_object = None
-    if use_clustering:
-        from aimoon.ml.feature_pipeline import cluster_alpha360_features
-
-        n_before = X.shape[1] - (1 if "_date" in X.columns else 0)
-        X, kmeans_object = cluster_alpha360_features(X, n_clusters=n_clusters)
-        n_after = X.shape[1] - (1 if "_date" in X.columns else 0)
-        logger.info("Clustering: %d features -> %d super factors", n_before, n_after)
-    elif use_pca:
-        X, pca_object = apply_pca_to_alpha360(X, n_components=pca_components)
-
-    n_features = X.shape[1] - (1 if "_date" in X.columns else 0)
-    logger.info(
-        "Training data: %d samples, %d features, %d dates",
-        len(X),
-        n_features,
-        len(all_features),
-    )
-
-    metadata = {
-        "pca_object": pca_object,
-        "kmeans_object": kmeans_object,
-        "feature_names": [c for c in X.columns if c != "_date"],
-        "standardize_labels": standardize_labels,
-        "use_pca": use_pca,
-        "use_clustering": use_clustering,
-        "n_clusters": n_clusters,
-        "zoo_factor_ids": _zoo_factor_ids,
-    }
-    return X, y, metadata
 
 
 def _search_ensemble_weights(
@@ -338,158 +131,43 @@ def train_model(
             f"(need >=50 samples and >=2 features)"
         )
 
-    dates_column = None
-    if "_date" in X.columns:
-        dates_column = X["_date"].copy()
-        X = X.drop(columns=["_date"])
+    n_stocks = len(X)
 
     # H4: Clip labels after cross-sectional standardization (z-score units)
     y = y.clip(-3.0, 3.0)
 
     xgb_params = {**_default_params(), **(params or {})}
-    feature_names = X.columns.tolist()
-    model_params = {
-        k: v
-        for k, v in xgb_params.items()
-        if k not in ("early_stopping_rounds", "n_estimators")
-    }
-
-    from aimoon.ml.purged_tscv import PurgedTimeSeriesSplit
-
-    tscv = PurgedTimeSeriesSplit(
-        n_splits=8,
-        purge_days=forward_days,
-        embargo_days=forward_days * 3,
-    )
-    cv_scores: list[float] = []
-    fold_ics: list[float] = []
-    best_cv_score = -999.0
-    best_round = 0
-
-    # M2: Use time-series split for final model (consistent with CV)
-    if dates_column is not None:
-        unique_dates = sorted(dates_column.unique())
-        cutoff_idx = max(1, int(len(unique_dates) * 0.8))
-        # Ensure cutoff leaves at least 1 date for validation
-        cutoff_idx = min(cutoff_idx, len(unique_dates) - 1)
-        cutoff_date = unique_dates[cutoff_idx]
-        train_mask = dates_column <= cutoff_date
-        val_mask = dates_column > cutoff_date
-        X_train_final = X[train_mask]
-        X_val_final = X[val_mask]
-        y_train_final = y[train_mask]
-        y_val_final = y[val_mask]
-        logger.info(
-            "Final model split: train=%d samples (%d dates), val=%d samples (%d dates)",
-            len(X_train_final), train_mask.sum(),
-            len(X_val_final), val_mask.sum(),
-        )
-    else:
-        # Fallback: simple 80/20 split
-        val_size = int(len(X) * 0.2)
-        X_train_final, X_val_final = X.iloc[:-val_size], X.iloc[-val_size:]
-        y_train_final, y_val_final = y.iloc[:-val_size], y.iloc[-val_size:]
-
-    if len(X_train_final) < 10 or len(X_val_final) < 5:
-        raise ValueError(
-            f"Final split too small: train={len(X_train_final)}, val={len(X_val_final)}"
-        )
-
-    X_with_dates = X.copy()
-    if dates_column is not None:
-        X_with_dates["_date"] = dates_column
-
-    for train_idx, val_idx in tscv.split(X_with_dates, date_column="_date"):
-        if len(train_idx) < 10 or len(val_idx) < 5:
-            continue
-
-        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
-        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
-
-        dtrain = xgb.DMatrix(X_train, label=y_train)
-        dval = xgb.DMatrix(X_val, label=y_val)
-
-        booster = xgb.train(
-            model_params,
-            dtrain,
-            num_boost_round=xgb_params["n_estimators"],
-            evals=[(dval, "val")],
-            early_stopping_rounds=xgb_params["early_stopping_rounds"],
-            verbose_eval=False,
-        )
-        cv_scores.append(float(booster.best_score))
-
-        fold_preds = booster.predict(dval)
-        fold_ic = compute_spearmanr_safe(fold_preds, y_val)
-        fold_ics.append(fold_ic)
-
-        if booster.best_score > best_cv_score:
-            best_cv_score = booster.best_score
-            best_round = booster.best_iteration
-
-    dtrain_final = xgb.DMatrix(X_train_final, label=y_train_final)
-
-    # Warm start: load previous model for incremental training
-    prev_model, warm_divisor, feature_names = try_warm_start_xgb(
-        save_dir, feature_names, X, X_train_final, y_train_final, X_val_final, y_val_final,
-    )
-    # Note: try_warm_start_xgb may update X and feature_names via reindex
-
-    num_rounds = (
-        min(best_round + 50, xgb_params["n_estimators"])
-        if best_round > 0
-        else xgb_params["n_estimators"]
-    )
-    if prev_model is not None:
-        num_rounds = max(num_rounds // warm_divisor, 100)
-
-    final_model = xgb.train(
-        model_params,
-        dtrain_final,
-        num_boost_round=num_rounds,
-        xgb_model=prev_model,
-        verbose_eval=False,
+    feature_names = (
+        [c for c in X.columns if c != "_date"] if "_date" in X.columns
+        else X.columns.tolist()
     )
 
-    # Overfit detection: compare train vs val IC
-    def _xgb_predict(X_data: pd.DataFrame) -> np.ndarray:
-        return final_model.predict(xgb.DMatrix(X_data))
-
-    ic, ic_train, overfit_ratio = check_overfit(
-        _xgb_predict,
-        X_train_final,
-        y_train_final,
-        X_val_final,
-        y_val_final,
+    (
+        final_model, cv_scores, fold_ics, best_cv_score, best_round,
+        X_train_final, X_val_final, y_train_final, y_val_final,
+    ) = run_cv_training(
+        X, y, xgb_params, feature_names, forward_days,
+        Path(save_dir) if save_dir else None,
     )
-
-    # Auto-degradation: if warm-start caused severe overfitting, retrain from scratch
-    if should_retrain_on_overfit(prev_model is not None, overfit_ratio, model_name="XGBoost"):
-        final_model = xgb.train(
-            model_params,
-            dtrain_final,
-            num_boost_round=min(best_round + 50, xgb_params["n_estimators"]),
-            verbose_eval=False,
-        )
-        ic, ic_train, overfit_ratio = check_overfit(
-            lambda X: final_model.predict(xgb.DMatrix(X)),
-            X_train_final,
-            y_train_final,
-            X_val_final,
-            y_val_final,
-        )
-        logger.info(
-            "Fresh retrain: val_IC=%.04f, overfit_ratio=%.1f", ic, overfit_ratio
-        )
 
     importance = compute_feature_importance(final_model, feature_names)
     shap_top20 = compute_shap_top20(final_model, X_val_final, feature_names)
     _, _, fold_icir = compute_icir(fold_ics)
 
+    # Re-compute IC for logging/saving
+    import xgboost as xgb_mod
+    ic = compute_spearmanr_safe(
+        final_model.predict(xgb_mod.DMatrix(X_val_final)), y_val_final
+    )
+    ic_train = compute_spearmanr_safe(
+        final_model.predict(xgb_mod.DMatrix(X_train_final)), y_train_final
+    )
+    overfit_ratio = ic_train / (ic + 1e-10)
+
     train_duration = time.time() - t0
     log_training_summary(
         "XGBoost", ic, ic_train, fold_icir,
-        X.shape[0], X.shape[1], train_duration,
+        n_stocks, len(feature_names), train_duration,
     )
 
     # Save artifacts
@@ -502,8 +180,8 @@ def train_model(
             ic=ic,
             ic_train=ic_train,
             fold_ics=fold_ics,
-            n_stocks=len(y),
-            n_features=X.shape[1],
+            n_stocks=n_stocks,
+            n_features=len(feature_names),
             n_dates=n_dates,
             forward_days=forward_days,
             train_duration=train_duration,
@@ -525,7 +203,7 @@ def train_model(
         feature_names=tuple(feature_names),
         feature_importance=importance,
         ic=ic,
-        n_stocks=len(X),
+        n_stocks=n_stocks,
         n_dates=n_dates,
         train_duration=train_duration,
     )
