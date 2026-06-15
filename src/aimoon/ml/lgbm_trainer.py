@@ -43,6 +43,7 @@ def _resolve_lgbm_hyperopt_params(
     *,
     n_trials: int = 50,
     force: bool = False,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any] | None:
     """Run hyperparameter optimization for LightGBM and return best params.
 
@@ -70,6 +71,7 @@ def _resolve_lgbm_hyperopt_params(
         model_type="lgbm",
         n_trials=n_trials,
         force=force,
+        cache_dir=cache_dir if cache_dir is not None else Path(".aimoon_cache") / "ml",
     )
     if result is None:
         return None

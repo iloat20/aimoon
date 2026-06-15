@@ -15,7 +15,7 @@ from aimoon.models import Signal
 
 logger = logging.getLogger(__name__)
 
-_FEATURE_CACHE_DIR = Path(".aimoon_cache") / "ml"
+_DEFAULT_CACHE_DIR = Path(".aimoon_cache") / "ml"
 
 
 def predict_alpha_signals(
@@ -24,11 +24,27 @@ def predict_alpha_signals(
     registry: Registry | None = None,
     sector_map: dict[str, str] | None = None,
     top_k: int = 0,
+    cache_dir: Path = _DEFAULT_CACHE_DIR,
 ) -> dict[str, list[Signal]]:
     """Generate stock Signals from trained XGBoost model.
 
     Uses the model to predict forward returns from current cross-sectional data,
     then maps predictions to Signal objects with scores based on percentile rank.
+
+    Parameters
+    ----------
+    model : xgb.Booster
+        Trained XGBoost model.
+    panel : dict[str, pd.DataFrame]
+        Alpha Zoo panel data.
+    registry : Registry | None
+        Factor registry.
+    sector_map : dict[str, str] | None
+        Stock -> sector mapping for neutralization.
+    top_k : int
+        If > 0, only return top_k stocks by prediction.
+    cache_dir : Path
+        Cache directory for feature names files.
 
     Returns
     -------
@@ -46,8 +62,9 @@ def predict_alpha_signals(
         return {}
 
     # Ensure feature columns match model expectation
-    canonical = _FEATURE_CACHE_DIR / "canonical_feature_names.json"
-    xgb_fn = _FEATURE_CACHE_DIR / "xgb_feature_names.json"
+    cache_dir = Path(cache_dir)
+    canonical = cache_dir / "canonical_feature_names.json"
+    xgb_fn = cache_dir / "xgb_feature_names.json"
     feature_names_path = canonical if canonical.exists() else xgb_fn
     if not feature_names_path.exists():
         logger.warning(

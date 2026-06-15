@@ -21,7 +21,6 @@ from scipy.stats import ConstantInputWarning, spearmanr
 
 logger = logging.getLogger(__name__)
 
-_DECAY_CACHE_DIR = Path(".aimoon_cache") / "factor_decay"
 _DEFAULT_RECENT_WINDOW = 20
 _DEFAULT_DECAY_THRESHOLD = 0.5
 _MIN_IC_SERIES_LEN = 10
@@ -249,12 +248,17 @@ def get_decayed_factors(
 ) -> dict[str, float]:
     """加载缓存的衰减因子权重衰减系数。
 
+    Parameters
+    ----------
+    cache_dir : str | Path | None
+        缓存目录路径。默认为 Path(".aimoon_cache") / "factor_decay"。
+
     Returns
     -------
     dict[str, float]
         alpha_id -> decay_factor (0.1-1.0)。1.0 = 无衰减，0.5 = 半权。
     """
-    cache_path = Path(cache_dir or _DECAY_CACHE_DIR) / "decayed.json"
+    cache_path = Path(cache_dir or Path(".aimoon_cache") / "factor_decay") / "decayed.json"
     if not cache_path.exists():
         return {}
 
@@ -273,8 +277,16 @@ def save_decay_results(
     alerts: list[DecayAlert],
     cache_dir: str | Path | None = None,
 ) -> None:
-    """保存衰减检测结果到缓存。"""
-    save_path = Path(cache_dir or _DECAY_CACHE_DIR)
+    """保存衰减检测结果到缓存。
+
+    Parameters
+    ----------
+    alerts : list[DecayAlert]
+        衰减警报列表。
+    cache_dir : str | Path | None
+        缓存目录路径。默认为 Path(".aimoon_cache") / "factor_decay"。
+    """
+    save_path = Path(cache_dir or Path(".aimoon_cache") / "factor_decay")
     save_path.mkdir(parents=True, exist_ok=True)
 
     factors: dict[str, float] = {}

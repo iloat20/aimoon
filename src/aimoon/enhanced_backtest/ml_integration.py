@@ -15,6 +15,7 @@ Contains:
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -86,7 +87,10 @@ def compute_alpha_signals(
             return None
         registry = get_default_registry()
 
-        filtered_ids = get_or_compute_filtered_ids(panel, klines, registry)
+        cache_p = Path(engine.cache_dir) if engine.cache_dir else None
+        filtered_ids = get_or_compute_filtered_ids(
+            panel, klines, registry, cache_dir=cache_p,
+        )
 
         from aimoon.ml.feature_pipeline import _select_factor_subset
         all_factor_ids = _select_factor_subset(registry, 80)
@@ -98,13 +102,18 @@ def compute_alpha_signals(
 
         try:
             from aimoon.ml.icir_weighter import load_or_compute_ewma
-            engine._icir_weights = load_or_compute_ewma(panel, klines, registry, factor_cache=factor_cache)
+            cache_p = Path(engine.cache_dir) if engine.cache_dir else Path(".aimoon_cache")
+            engine._icir_weights = load_or_compute_ewma(
+                panel, klines, registry,
+                factor_cache=factor_cache, cache_dir=cache_p,
+            )
         except (ValueError, KeyError, RuntimeError):
             logger.debug("ICIR weight computation failed")
 
         try:
             from aimoon.ml.factor_decay import get_decayed_factors
-            engine._decay_factors = get_decayed_factors()
+            cache_p = Path(engine.cache_dir) if engine.cache_dir else Path(".aimoon_cache")
+            engine._decay_factors = get_decayed_factors(cache_dir=cache_p)
         except (ValueError, KeyError, RuntimeError):
             logger.debug("Factor decay detection failed")
 

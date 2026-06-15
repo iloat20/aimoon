@@ -24,9 +24,7 @@ from aimoon.ml.label_engine import generate_labels
 
 logger = logging.getLogger(__name__)
 
-_ICIR_CACHE_DIR = Path(".aimoon_cache") / "icir"
 _ICIR_CACHE_TTL_HOURS = 72  # 3 days
-_EWMA_CACHE_FILE = _ICIR_CACHE_DIR / "ewma_weighter.json"
 
 
 def compute_factor_ic_series(
@@ -239,6 +237,7 @@ class EWMAFactorWeighter:
         self._ewma_mean: dict[str, float] = {}
         self._ewma_var: dict[str, float] = {}
         self._n_updates: int = 0
+        self._ic_history: dict[str, list[float]] = {}
 
     @property
     def decay(self) -> float:
@@ -346,6 +345,46 @@ class EWMAFactorWeighter:
 
         return weights
 
+
+    def apply_ic_momentum(self):
+        """Apply IC momentum boost: factors with improving IC get extra weight."""
+        if not hasattr(self, "_ic_history"):
+            return
+        for factor_id, history in self._ic_history.items():
+            if len(history) >= 20:
+                recent_5 = np.mean(history[-5:])
+                recent_20 = np.mean(history[-20:])
+                momentum = recent_5 - recent_20
+                if momentum > 0.01:
+                    current_mean = self._ewma_mean.get(factor_id, 0.0)
+                    self._ewma_mean[factor_id] = current_mean * 1.2
+
+    def apply_cusum_penalty(self, ic_series):
+        """CUSUM fast response: penalize factors with sustained negative IC."""
+        penalties = {}
+        if not hasattr(self, "_ic_history"):
+            return penalties
+        for factor_id, ic_val in ic_series.items():
+            if factor_id not in self._ic_history:
+                self._ic_history[factor_id] = []
+            self._ic_history[factor_id].append(ic_val)
+            history = self._ic_history[factor_id]
+            if len(history) >= 3:
+                last_3 = history[-3:]
+                if all(h < 0 for h in last_3) and sum(last_3) < -0.05:
+                    penalties[factor_id] = 0.3
+                else:
+                    penalties[factor_id] = 1.0
+            else:
+                penalties[factor_id] = 1.0
+        return penalties
+
+    def set_adaptive_decay(self, regime):
+        """Adjust EWMA decay based on market regime."""
+        regime_decays = {"bull": 0.85, "bear": 0.90, "sideways": 0.95, "high_volatility": 0.88, "crisis": 0.85}
+        new_decay = regime_decays.get(regime, 0.95)
+        self._decay = new_decay
+
     def get_icir_values(self) -> dict[str, float]:
         """Return raw ICIR values (not normalized) for diagnostics."""
         result: dict[str, float] = {}
@@ -355,9 +394,17 @@ class EWMAFactorWeighter:
             result[factor_id] = mean / std
         return result
 
-    def save(self, path: Path | None = None) -> None:
-        """Persist state to JSON."""
-        path = path or _EWMA_CACHE_FILE
+    def save(self, path: Path | None = None, cache_dir: Path = Path(".aimoon_cache")) -> None:
+        """Persist state to JSON.
+
+        Parameters
+        ----------
+        path : Path | None
+            Explicit save path. If None, uses cache_dir / "icir" / "ewma_weighter.json".
+        cache_dir : Path
+            Cache directory (ignored if path is provided).
+        """
+        path = path or cache_dir / "icir" / "ewma_weighter.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "timestamp": time.time(),
@@ -371,9 +418,21 @@ class EWMAFactorWeighter:
             json.dump(data, f, indent=2)
 
     @classmethod
-    def load(cls, path: Path | None = None) -> EWMAFactorWeighter | None:
-        """Load state from JSON. Returns None if file missing or corrupt."""
-        path = path or _EWMA_CACHE_FILE
+    def load(
+        cls,
+        path: Path | None = None,
+        cache_dir: Path = Path(".aimoon_cache"),
+    ) -> EWMAFactorWeighter | None:
+        """Load state from JSON. Returns None if file missing or corrupt.
+
+        Parameters
+        ----------
+        path : Path | None
+            Explicit load path. If None, uses cache_dir / "icir" / "ewma_weighter.json".
+        cache_dir : Path
+            Cache directory (ignored if path is provided).
+        """
+        path = path or cache_dir / "icir" / "ewma_weighter.json"
         if not path.exists():
             return None
         try:
@@ -399,6 +458,7 @@ def load_or_compute_ewma(
     decay: float = 0.95,
     cache_ttl_hours: float = _ICIR_CACHE_TTL_HOURS,
     factor_cache: dict[str, pd.DataFrame] | None = None,
+    cache_dir: Path = Path(".aimoon_cache"),
 ) -> dict[str, float]:
     """Load cached EWMA weighter or bootstrap from IC time series.
 
@@ -420,17 +480,22 @@ def load_or_compute_ewma(
         EWMA decay factor.
     cache_ttl_hours : float
         Cache TTL in hours.
+    cache_dir : Path
+        Cache directory path.
 
     Returns
     -------
     dict[str, float]
         factor_id -> normalized weight (sums to 1.0).
     """
+    cache_dir = Path(cache_dir)
+    ewma_cache_file = cache_dir / "icir" / "ewma_weighter.json"
+
     # Try loading cached state
-    weighter = EWMAFactorWeighter.load(_EWMA_CACHE_FILE)
+    weighter = EWMAFactorWeighter.load(ewma_cache_file)
     if weighter is not None and weighter.n_updates > 0:
         try:
-            age_hours = (time.time() - _EWMA_CACHE_FILE.stat().st_mtime) / 3600
+            age_hours = (time.time() - ewma_cache_file.stat().st_mtime) / 3600
             if age_hours < cache_ttl_hours:
                 weights = weighter.get_weights()
                 if weights:
@@ -463,7 +528,7 @@ def load_or_compute_ewma(
 
     weights = weighter.get_weights()
     if weights:
-        weighter.save()
+        weighter.save(ewma_cache_file)
         logger.info(
             "EWMA weighter bootstrapped: %d factors, %d IC observations",
             len(weights),

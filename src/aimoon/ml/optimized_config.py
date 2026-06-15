@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,17 +17,17 @@ logger = logging.getLogger(__name__)
 # XGBoost 优化配置 — 平衡正则化与表达能力
 XGB_OPTIMIZED_PARAMS: dict[str, Any] = {
     # 树结构参数
-    "max_depth": 2,
-    "min_child_weight": 30,
+    "max_depth": 3,
+    "min_child_weight": 10,
     # 学习率和迭代
-    "learning_rate": 0.003,
+    "learning_rate": 0.01,
     "n_estimators": 500,
     # 随机性和正则化
-    "subsample": 0.5,
-    "colsample_bytree": 0.3,
-    "reg_lambda": 8.0,
-    "reg_alpha": 1.0,
-    "gamma": 0.5,
+    "subsample": 0.8,
+    "colsample_bytree": 0.5,
+    "reg_lambda": 2.0,
+    "reg_alpha": 0.5,
+    "gamma": 0.1,
     # 早停
     "early_stopping_rounds": 30,
     # 目标函数 — Huber 对极端值鲁棒
@@ -39,10 +40,10 @@ XGB_OPTIMIZED_PARAMS: dict[str, Any] = {
 # M6: 移除 max_depth=2（与 num_leaves=7 矛盾，num_leaves 优先）
 LGBM_OPTIMIZED_PARAMS: dict[str, Any] = {
     # 树结构参数 — num_leaves 控制复杂度，无需 max_depth
-    "num_leaves": 5,
-    "min_child_samples": 150,
+    "num_leaves": 7,
+    "min_child_samples": 100,
     # 学习率和迭代
-    "learning_rate": 0.003,
+    "learning_rate": 0.01,
     "n_estimators": 500,
     # 随机性和正则化
     "subsample": 0.3,
@@ -73,8 +74,8 @@ TRAINING_CONFIG: dict[str, Any] = {
     # 特征选择 — H3: min_ic 从 0.01 提高到 0.025
     "feature_selection": {
         "enabled": True,
-        "min_ic": 0.015,
-        "max_features": 50,
+        "min_ic": 0.03,
+        "max_features": 80,
         "variance_threshold": 0.01,
         "correlation_threshold": 0.85,
         "use_l1": False,
@@ -179,6 +180,7 @@ def get_xgb_params(
     model_type: str = "xgb",
     regime: str = "all",
     n_trials: int = 50,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     """获取优化的XGBoost参数，支持 hyperopt 覆盖。
 
@@ -208,7 +210,10 @@ def get_xgb_params(
             from aimoon.ml.hyperopt import get_best_params, is_optuna_available
 
             if is_optuna_available():
-                best = get_best_params(model_type=model_type, regime=regime)
+                kwargs: dict[str, Any] = {"model_type": model_type, "regime": regime}
+                if cache_dir is not None:
+                    kwargs["cache_dir"] = cache_dir
+                best = get_best_params(**kwargs)
                 if best:
                     params.update(best)
                     logger.info("Using hyperopt params for %s/%s", model_type, regime)
@@ -226,6 +231,7 @@ def get_lgbm_params(
     model_type: str = "lgbm",
     regime: str = "all",
     n_trials: int = 50,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     """获取优化的LightGBM参数，支持 hyperopt 覆盖。
 
@@ -254,7 +260,10 @@ def get_lgbm_params(
             from aimoon.ml.hyperopt import get_best_params, is_optuna_available
 
             if is_optuna_available():
-                best = get_best_params(model_type=model_type, regime=regime)
+                kwargs_lgbm: dict[str, Any] = {"model_type": model_type, "regime": regime}
+                if cache_dir is not None:
+                    kwargs_lgbm["cache_dir"] = cache_dir
+                best = get_best_params(**kwargs_lgbm)
                 if best:
                     params.update(best)
                     logger.info("Using hyperopt params for %s/%s", model_type, regime)
@@ -298,4 +307,5 @@ if __name__ == "__main__":
     # 使用 hyperopt
     xgb_hyperopt = get_xgb_params(use_hyperopt=True)
     print(f"XGBoost with hyperopt: {xgb_hyperopt}")
+
 
