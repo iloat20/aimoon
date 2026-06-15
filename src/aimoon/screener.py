@@ -84,7 +84,7 @@ def screen_universe(
 
     if cfg.use_alpha and all_klines:
         results = _inject_alpha_signals(results, all_klines)
-        results = _inject_ml_signals(results, all_klines)
+        results = _inject_ml_signals(results, all_klines, cfg.cache_dir)
 
     return results, tails, all_klines
 
@@ -135,6 +135,7 @@ def _inject_alpha_signals(
 def _inject_ml_signals(
     results: list[ScoredStock],
     all_klines: dict[str, pd.DataFrame],
+    cache_dir: str | None = None,
 ) -> list[ScoredStock]:
     """注入 ML 集成模型预测信号到评分结果。"""
     try:
@@ -144,7 +145,7 @@ def _inject_ml_signals(
     except ImportError:
         return results
 
-    predictor = EnsemblePredictor.from_cache()
+    predictor = EnsemblePredictor.from_cache(cache_dir)
     if not predictor.has_any:
         return results
 

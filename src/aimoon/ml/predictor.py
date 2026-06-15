@@ -131,3 +131,39 @@ def predict_alpha_signals(
             signals_by_code[str(code)] = sigs
 
     return signals_by_code
+
+
+def predict_with_stacking(panel, registry=None, sector_map=None, top_k=0, cache_dir=None):
+    """Generate signals using StackingEnsemble instead of simple weighted average."""
+    from aimoon.ml.ensemble import StackingEnsemble
+    stacking = StackingEnsemble.load(cache_dir=cache_dir)
+    if stacking is None or not stacking.is_fitted:
+        return {}
+    if panel is None or "close" not in panel:
+        return {}
+    from aimoon.factors.registry import get_default_registry
+    registry = registry or get_default_registry()
+    from aimoon.ml.feature_pipeline import extract_features
+    features = extract_features(panel, registry, sector_map=sector_map)
+    if features.empty:
+        return {}
+    preds = stacking.predict(features)
+    if preds.empty:
+        return {}
+    ranked = preds.rank(pct=True)
+    signals_by_code = {}
+    for code in preds.index:
+        pct = ranked[code]
+        sigs = []
+        if pct >= 0.90:
+            sigs.append(Signal("stacking_strong", f"Stacking\u5f3a\u70c8\u770b\u591a({pct:.0%})", +5, category="ml"))
+        elif pct >= 0.75:
+            sigs.append(Signal("stacking_bull", f"Stacking\u770b\u591a({pct:.0%})", +3, category="ml"))
+        elif pct <= 0.10:
+            sigs.append(Signal("stacking_bear_strong", f"Stacking\u5f3a\u70c8\u770b\u7a7a({pct:.0%})", -5, category="ml"))
+        elif pct <= 0.25:
+            sigs.append(Signal("stacking_bear", f"Stacking\u770b\u7a7a({pct:.0%})", -3, category="ml"))
+        if sigs:
+            signals_by_code[str(code)] = sigs
+    return signals_by_code
+

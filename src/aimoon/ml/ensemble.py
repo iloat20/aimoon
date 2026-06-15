@@ -25,7 +25,7 @@ from aimoon.models import Signal
 
 logger = logging.getLogger(__name__)
 
-_CACHE_DIR = Path(__file__).resolve().parent.parent.parent.parent / ".aimoon_cache" / "ml"
+_DEFAULT_CACHE_DIR = Path(".aimoon_cache") / "ml"
 
 
 @dataclass
@@ -48,6 +48,7 @@ class EnsemblePredictor:
         en_weight: float = 0.0,
         feature_medians: pd.Series | None = None,  # M5: 用于填充缺失特征
         zoo_factor_ids: list[str] | None = None,  # 训练时因子子集，确保回测一致
+        cache_dir: str | Path | None = None,  # ML 缓存目录
     ):
         self._xgb = xgb_model
         self._lgbm = lgbm_model
@@ -59,6 +60,7 @@ class EnsemblePredictor:
         self._en_weight = en_weight
         self._feature_medians = feature_medians
         self._zoo_factor_ids = zoo_factor_ids
+        self._cache_dir = Path(cache_dir) / "ml" if cache_dir else _DEFAULT_CACHE_DIR
 
     @classmethod
     def from_cache(cls, cache_dir: str | Path | None = None) -> EnsemblePredictor:
@@ -66,7 +68,7 @@ class EnsemblePredictor:
         import lightgbm as lgb
         import xgboost as xgb
 
-        cache = Path(cache_dir or _CACHE_DIR)
+        cache = Path(cache_dir) / "ml" if cache_dir else _DEFAULT_CACHE_DIR
 
         # 优先加载规范特征名文件（合并训练时所有模型使用的特征）
         canonical_fn = cache / "canonical_feature_names.json"
@@ -170,6 +172,7 @@ class EnsemblePredictor:
             lgbm_weight=lgbm_weight,
             en_weight=en_weight,
             zoo_factor_ids=zoo_factor_ids,
+            cache_dir=cache_dir,
         )
 
     def predict(
@@ -339,7 +342,7 @@ class EnsemblePredictor:
             False 时使用前瞻收益（仅回测可用）。
         """
         # 检查缓存
-        cache_file = _CACHE_DIR / "adaptive_weights.json"
+        cache_file = self._cache_dir / "adaptive_weights.json"
         if cache_file.exists():
             try:
                 with open(cache_file, encoding="utf-8") as f:
@@ -439,7 +442,7 @@ class EnsemblePredictor:
         # 温度参数根据 IC 差异动态调整：
         # - IC 差异大时用更低温度（更尖锐），差异小时用更高温度（更平滑）
         ic_diff = abs(avg_ic_xgb - avg_ic_lgbm)
-        temp = max(0.5, 3.0 - ic_diff * 20)
+        temp = max(0.1, 0.5 - ic_diff * 10)
         max_ic = max(avg_ic_xgb, avg_ic_lgbm)
         exp_xgb = np.exp((avg_ic_xgb - max_ic) / temp)
         exp_lgbm = np.exp((avg_ic_lgbm - max_ic) / temp)
@@ -457,7 +460,7 @@ class EnsemblePredictor:
             )
             # 缓存自适应权重，24小时内复用
             try:
-                _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
                 with open(cache_file, "w", encoding="utf-8") as f:
                     json.dump(
                         {
@@ -541,8 +544,6 @@ def ensemble_predict_signals(
 
 # ── Stacking Ensemble ──
 
-_STACKING_CACHE = _CACHE_DIR / "stacking_native"
-
 
 class StackingEnsemble:
     """Two-layer stacking ensemble: XGB + LGBM base → LGBM meta → Isotonic calibration.
@@ -552,13 +553,18 @@ class StackingEnsemble:
     Final output is probability-calibrated via IsotonicRegression.
     """
 
-    def __init__(self):
+    def __init__(self, cache_dir: str | Path | None = None):
         self._xgb_base: Any = None
         self._lgbm_base: Any = None
         self._meta_model: Any = None
         self._calibrator: Any = None
         self._feature_names: list[str] | None = None
         self._is_fitted: bool = False
+        self._cache_dir = (
+            Path(cache_dir) / "ml" / "stacking_native"
+            if cache_dir
+            else _DEFAULT_CACHE_DIR / "stacking_native"
+        )
 
     @property
     def is_fitted(self) -> bool:
@@ -813,7 +819,7 @@ class StackingEnsemble:
         """
         import json as _json
 
-        base = path or _STACKING_CACHE
+        base = path or self._cache_dir
         base.parent.mkdir(parents=True, exist_ok=True)
 
         if self._xgb_base is not None:
@@ -838,18 +844,26 @@ class StackingEnsemble:
         logger.info("StackingEnsemble saved: %s", base)
 
     @classmethod
-    def load(cls, path: Path | None = None) -> StackingEnsemble | None:
+    def load(
+        cls,
+        path: Path | None = None,
+        cache_dir: str | Path | None = None,
+    ) -> StackingEnsemble | None:
         """Load stacking model from native format files (no pickle)."""
         import json as _json
 
-        base = path or _STACKING_CACHE
+        base = path or (
+            Path(cache_dir) / "ml" / "stacking_native"
+            if cache_dir
+            else _DEFAULT_CACHE_DIR / "stacking_native"
+        )
         meta_path = base / "meta.json"
         if not meta_path.exists():
             return None
         try:
             with open(meta_path, encoding="utf-8") as f:
                 meta = _json.load(f)
-            obj = cls()
+            obj = cls(cache_dir=cache_dir)
             obj._feature_names = meta.get("feature_names")
             obj._is_fitted = meta.get("is_fitted", False)
 
