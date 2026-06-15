@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from aimoon.models import ScoredStock, Signal
+from aimoon.scoring import hybrid_score
 
 
 def compute_rps(
@@ -62,6 +63,7 @@ def compute_rps(
                 rps=rps,
                 ml_score=r.ml_score,
                 hybrid_score=r.hybrid_score,
+                total_score=hybrid_score(rps_signals),
             )
         )
     return updated

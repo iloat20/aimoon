@@ -11,7 +11,7 @@ from aimoon.config import Config
 from aimoon.data.history import get_kline
 from aimoon.indicators.technical import TechInd
 from aimoon.models import ScoredStock
-from aimoon.scoring import collect_signals
+from aimoon.scoring import collect_signals, hybrid_score
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +36,13 @@ def screen_stock(
     pe = None
     pb = None
     cap = None
+    total = hybrid_score(signals)
     return ScoredStock(
         code=code, name=name, price=price,
         pct_change=pct, turnover=turnover,
         pe=pe, pb=pb, market_cap_yi=cap,
         signals=tuple(signals),
+        total_score=total,
     )
 
 
@@ -119,11 +121,13 @@ def _inject_alpha_signals(
         extra = alpha_signals.get(scored.code, [])
         if extra:
             new_signals = tuple(list(scored.signals) + extra)
+            new_total = hybrid_score(new_signals)
             scored = ScoredStock(
                 code=scored.code, name=scored.name, price=scored.price,
                 pct_change=scored.pct_change, turnover=scored.turnover,
                 pe=scored.pe, pb=scored.pb, market_cap_yi=scored.market_cap_yi,
                 signals=new_signals, rps=scored.rps,
+                total_score=new_total,
             )
         enhanced.append(scored)
 
@@ -170,11 +174,13 @@ def _inject_ml_signals(
         extra = ml_signals.get(scored.code, [])
         if extra:
             new_signals = tuple(list(scored.signals) + list(extra))
+            new_total = hybrid_score(new_signals)
             scored = ScoredStock(
                 code=scored.code, name=scored.name, price=scored.price,
                 pct_change=scored.pct_change, turnover=scored.turnover,
                 pe=scored.pe, pb=scored.pb, market_cap_yi=scored.market_cap_yi,
                 signals=new_signals, rps=scored.rps,
+                total_score=new_total,
             )
         enhanced.append(scored)
 

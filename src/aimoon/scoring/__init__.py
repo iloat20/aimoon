@@ -8,9 +8,9 @@
 
 from __future__ import annotations
 
-import pandas as pd
-
 from collections.abc import Callable
+
+import pandas as pd
 
 from aimoon.indicators.technical import TechInd
 from aimoon.models import ScoredStock, Signal
@@ -23,10 +23,10 @@ from aimoon.scoring.hybrid_scorer import (
 )
 from aimoon.scoring.kdj import score_kdj
 from aimoon.scoring.macd import score_macd
+from aimoon.scoring.mean_reversion import score_mean_reversion
 from aimoon.scoring.momentum import score_momentum
 from aimoon.scoring.momentum_ext import score_momentum_ext
 from aimoon.scoring.reversal import score_reversal
-from aimoon.scoring.mean_reversion import score_mean_reversion
 from aimoon.scoring.rsi import score_rsi
 from aimoon.scoring.trend import score_trend
 from aimoon.scoring.trend_ext import score_trend_ext
@@ -54,7 +54,7 @@ def collect_signals(
     ti: TechInd, code: str = "", use_reversal: bool = True
 ) -> list[Signal]:
     """Run scoring functions and collect non-empty signals.
-    
+
     Returns signals grouped by scorer, each scorer's signals are averaged
     to produce one composite signal per scorer. This prevents scorers
     that generate many signals from dominating the final score.
@@ -69,7 +69,7 @@ def collect_signals(
         # Use scorer function name as group key
         group = scorer.__name__
         scorer_signals[group].extend(sigs)
-    
+
     # Average signals per scorer group, then flatten
     all_signals: list[Signal] = []
     for group_name, sigs in scorer_signals.items():
@@ -192,6 +192,7 @@ def score_portfolio(
                 signals=tuple(signals),
                 ml_score=ml_scores.get(code) if ml_scores else None,
                 hybrid_score=total,
+                total_score=total,
             )
         )
 

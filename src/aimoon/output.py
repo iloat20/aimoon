@@ -13,6 +13,7 @@ from rich.table import Table
 
 from aimoon.config import Config
 from aimoon.models import ScoredStock
+from aimoon.scoring.hybrid_scorer import get_suggestion
 
 if TYPE_CHECKING:
     from aimoon.factor_eval import FactorEval
@@ -47,7 +48,7 @@ class OutputFormatter:
         for i, r in enumerate(results, 1):
             ps = "green" if r.pct_change >= 0 else "red"
             ts = "bold green" if r.total_score >= 65 else ("yellow" if r.total_score >= 35 else "red")
-            sug, conf = r.suggestion
+            sug, conf = get_suggestion(r.total_score)
             ss = "bold green" if "买" in sug else ("red" if "卖" in sug else "dim")
             # Turtle signal
             plan = (turtle_plans or {}).get(r.code)
@@ -122,7 +123,7 @@ class OutputFormatter:
         filepath = os.path.join(self.cfg.output_dir, filename)
         rows = []
         for r in results:
-            sug, conf = r.suggestion
+            sug, conf = get_suggestion(r.total_score)
             rows.append({
                 "code": r.code, "name": r.name, "price": r.price,
                 "pct_change": r.pct_change, "turnover": r.turnover,
@@ -171,7 +172,7 @@ class OutputFormatter:
                        "|------|------|------|----------|------|"]
             for s in strong_buy:
                 cs = hybrid_score(list(s.signals))
-                sug, conf = s.suggestion
+                sug, conf = get_suggestion(s.total_score)
                 lines.append(f"| {s.code} | {s.name} | {s.price:.2f} | {cs} | {sug} |")
             lines.append("")
 
@@ -181,7 +182,7 @@ class OutputFormatter:
                   "| No. | Code | Name | Price | CapScore | RawScore | Suggestion |",
                   "|-----|------|------|-------|----------|----------|------------|"]
         for i, r in enumerate(ranked, 1):
-            sug, conf = r.suggestion
+            sug, conf = get_suggestion(r.total_score)
             cs = hybrid_score(list(r.signals))
             lines.append(f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |")
 
