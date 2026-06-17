@@ -1,11 +1,10 @@
-"""RPS（相对价格强度）计算"""
+"""RPS（相对价格强度）计算 — 纯信息展示，不参与评分。"""
 
 from __future__ import annotations
 
 import pandas as pd
 
-from aimoon.models import ScoredStock, Signal
-from aimoon.scoring import hybrid_score
+from aimoon.models import ScoredStock
 
 
 def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> list[ScoredStock]:
@@ -34,17 +33,7 @@ def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> l
         }
     updated: list[ScoredStock] = []
     for r in results:
-        rps = {key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]}
-        rps_red = sum(1 for v in rps.values() if v > 90)
-        rps_signals = list(r.signals)
-        if rps_red >= 3:
-            rps_signals.append(
-                Signal("rps_triple", f"RPS三线翻红({rps_red}/4)", +5, category="momentum")
-            )
-        elif rps_red >= 2:
-            rps_signals.append(
-                Signal("rps_double", f"RPS双线红({rps_red}/4)", +3, category="momentum")
-            )
+        rps_vals = {key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]}
         updated.append(
             ScoredStock(
                 code=r.code,
@@ -55,11 +44,10 @@ def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> l
                 pe=r.pe,
                 pb=r.pb,
                 market_cap_yi=r.market_cap_yi,
-                signals=tuple(rps_signals),
-                rps=rps,
+                signals=(),
+                rps=rps_vals,
                 ml_score=r.ml_score,
-                hybrid_score=r.hybrid_score,
-                total_score=hybrid_score(rps_signals),
+                total_score=r.total_score,
             )
         )
     return updated

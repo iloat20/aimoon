@@ -230,46 +230,29 @@ class OutputFormatter:
             f.write("\n".join(lines))
         return filepath
 
-    def display_factor_eval(self, evals: list[FactorEval]) -> None:
-        """显示因子评估报告。"""
-        if not evals:
-            self.console.print("[yellow]No factor evaluations to display[/yellow]")
-            return
-        table = Table(title="Factor Evaluation (IC/ICIR)")
-        table.add_column("Factor", style="cyan", width=25)
-        table.add_column("Mean IC", justify="right", width=10)
-        table.add_column("ICIR", justify="right", width=8)
-        table.add_column("IC>0%", justify="right", width=8)
-        table.add_column("L-S", justify="right", width=8)
-        table.add_column("Tier1", justify="right", width=8)
-        table.add_column("Tier2", justify="right", width=8)
-        table.add_column("Tier3", justify="right", width=8)
-        table.add_column("Tier4", justify="right", width=8)
-        table.add_column("Tier5", justify="right", width=8)
-        table.add_column("Significance", width=12)
-        for e in evals:
-            ic_color = "green" if e.mean_ic > 0.03 else ("yellow" if e.mean_ic > 0 else "red")
-            icir_color = "green" if abs(e.icir) > 0.5 else "dim"
-            sig = (
-                "***"
-                if abs(e.mean_ic) > 0.05 and abs(e.icir) > 0.5
-                else ("**" if abs(e.mean_ic) > 0.03 else ("*" if abs(e.mean_ic) > 0.02 else ""))
-            )
-            tiers = []
-            for t in e.tier_returns:
-                color = "green" if t > 0 else "red"
-                tiers.append(f"[{color}]{t:+.2f}[/{color}]")
-            while len(tiers) < 5:
-                tiers.append("-")
-            table.add_row(
-                e.name,
-                f"[{ic_color}]{e.mean_ic:+.4f}[/{ic_color}]",
-                f"[{icir_color}]{e.icir:+.2f}[/{icir_color}]",
-                f"{e.ic_positive_ratio:.0%}",
-                f"[{'green' if e.long_short > 0 else 'red'}]{e.long_short:+.2f}[/{'green' if e.long_short > 0 else 'red'}]",
-                *tiers[:5],
-                sig,
-            )
+    def display_backtest(self, result) -> None:
+        """显示 ML 分数驱动回测结果。"""
+        table = Table(title="ML-Driven Backtest Results")
+        table.add_column("Metric", style="cyan", width=20)
+        table.add_column("Value", justify="right", width=12)
+
+        metrics = {
+            "Total Return": f"{result.total_return:+.2%}",
+            "Annual Return": f"{result.annual_return:+.2%}",
+            "Sharpe": f"{result.sharpe_ratio:.2f}",
+            "Sortino": f"{result.sortino_ratio:.2f}",
+            "Max Drawdown": f"{result.max_drawdown:.2%}",
+            "Win Rate": f"{result.win_rate:.1%}",
+            "Profit Factor": f"{result.profit_factor:.2f}",
+            "Avg Win": f"{result.avg_win:+.2%}",
+            "Avg Loss": f"{result.avg_loss:+.2%}",
+            "Trade Count": f"{result.trade_count}",
+            "Avg Hold Days": f"{result.avg_hold_days:.0f}",
+            "Benchmark": f"{result.benchmark_return:+.2%}",
+            "Excess Return": f"{result.excess_return:+.2%}",
+        }
+        for k, v in metrics.items():
+            table.add_row(k, v)
         self.console.print(table)
 
     def display_portfolio_backtest(self, result) -> None:

@@ -47,5 +47,4 @@ class ScoredStock:
         """Return a copy with the given fields replaced."""
         from dataclasses import replace as _replace
 
-        return _replace(self, **changes)  # type: ignore[arg-type]
-
+        return _replace(self, **changes)  # type: ignore[arg-type]n

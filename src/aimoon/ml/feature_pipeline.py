@@ -63,23 +63,17 @@ def extract_features(
         return pd.DataFrame()
 
     # 2. 切片目标日期截面作为因子特征
-    factor_rows: dict[str, float] = {}
-    for fid, factor_df in all_factors.items():
-        if date in factor_df.index:
-            row = factor_df.loc[date]
-            for code in close.columns:
-                if code in row.index:
-                    val = row[code]
-                    if pd.notna(val):
-                        factor_rows.setdefault(code, {})[fid] = float(val)
-
     codes_list = list(close.columns)
     result_dict: dict[str, dict[str, float]] = {code: {} for code in codes_list}
 
-    # 填充因子值
-    for code in codes_list:
-        if code in factor_rows:
-            result_dict[code].update(factor_rows[code])
+    for fid, factor_df in all_factors.items():
+        if date in factor_df.index:
+            row = factor_df.loc[date]
+            for code in codes_list:
+                if code in row.index:
+                    val = row[code]
+                    if pd.notna(val):
+                        result_dict[code][fid] = float(val)
 
     # 3. 基础技术统计（6 维）
     if date in close.index:

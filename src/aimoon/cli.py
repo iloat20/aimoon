@@ -1,5 +1,4 @@
 """CLI entry -- thin pipeline."""
-
 from __future__ import annotations
 
 import warnings
@@ -32,12 +31,12 @@ from aimoon.cache import DataCache
 from aimoon.config import Config, load_config
 from aimoon.data import filter_universe, get_spot_for_codes
 from aimoon.data.holdings_pool import get_holdings_pool
+from aimoon.ml.predictor import MLPredictor
 from aimoon.output import OutputFormatter
 from aimoon.scoring.rps import compute_rps
 from aimoon.screener import screen_universe
 
 logging.basicConfig(level=logging.WARNING)
-logging.getLogger("aimoon.factors.registry").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
@@ -66,52 +65,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-csv", action="store_true")
     p.add_argument("--demo", action="store_true")
     p.add_argument("--refresh", action="store_true")
-    p.add_argument("--reversal", action="store_true", help="启用中期反转因子")
-    p.add_argument(
-        "--no-alpha", action="store_true", default=None, help="禁用 Alpha Zoo 截面因子（默认启用）"
-    )
     sub = p.add_subparsers(dest="command")
 
     # backtest
     bt = sub.add_parser("backtest")
     bt.add_argument("--stocks", type=str, default="000001")
-    bt.add_argument("--hold-days", type=int, default=22)
-    bt.add_argument("--max-positions", type=int, default=5)
-    bt.add_argument("--commission", type=float, default=0.0003)
-    bt.add_argument("--slippage", type=float, default=0.001)
-    bt.add_argument("--stamp-tax", type=float, default=0.0005)
+    bt.add_argument("--hold-days", type=int, default=12)
+    bt.add_argument("--max-positions", type=int, default=4)
     bt.add_argument("--top", type=int, default=10)
-    bt.add_argument("--stop-loss", type=float, default=0.05)
-    bt.add_argument("--take-profit", type=float, default=0.20)
+    bt.add_argument("--stop-loss", type=float, default=0.04)
+    bt.add_argument("--take-profit", type=float, default=0.14)
     bt.add_argument("--benchmark", type=str, default="000300")
-    bt.add_argument("--walk-forward", action="store_true")
-    bt.add_argument(
-        "--forward-days", type=int, default=22, help="IC 评估的前瞻天数（5=周度, 22=月度, 默认22）"
-    )
-    bt.add_argument("--no-alpha", action="store_true", default=None, help="禁用 Alpha Zoo 截面因子")
-    bt.add_argument("--no-qf-lib", action="store_true", default=False, help="使用旧版回测引擎（非 QF-Lib）")
-
-    # walk-forward defaults to True when NOT using QF-Lib, but only if explicitly set
-
-    # optimize
-    opt = sub.add_parser("optimize")
-    opt.add_argument("--params", type=str, default="stop_loss_pct,hold_days")
-    opt.add_argument(
-        "--metric", type=str, default="sharpe", choices=["sharpe", "sortino", "return"]
-    )
-    opt.add_argument("--trials", type=int, default=50)
 
     # schedule
     sched = sub.add_parser("schedule")
     sched.add_argument("--time", type=str, default="09:30")
     sched.add_argument("--output-dir", type=str, default="daily_picks/")
     sched.add_argument("--notify", action="store_true")
-
-    # evaluate
-    ev = sub.add_parser("evaluate")
-    ev.add_argument("--stocks", type=str, required=True, help="Comma-separated stock codes")
-    ev.add_argument("--forward-days", type=int, default=5)
-    ev.add_argument("--eval-days", type=int, default=60)
 
     # cache
     cp = sub.add_parser("cache")
@@ -131,48 +101,19 @@ def parse_args() -> argparse.Namespace:
     wl_sub.add_parser("clear")
 
     # train-model
-    tm = sub.add_parser("train-model", help="Train ML model with advanced options")
-    tm.add_argument("--force", action="store_true", help="Force full retrain (ignore cache)")
-    tm.add_argument("--no-warm-start", action="store_true", help="Disable warm-start")
-    tm.add_argument(
-        "--early-stop",
-        action="store_true",
-        help="Enable consecutive-fold early stopping + overfit auto-recovery",
-    )
-    tm.add_argument(
-        "--overfit-threshold",
-        type=float,
-        default=1.5,
-        help="Train/val IC ratio threshold for complexity reduction (default 1.5)",
-    )
-    tm.add_argument(
-        "--optuna", action="store_true", help="Run Optuna hyperparameter search before training"
-    )
-    tm.add_argument(
-        "--optuna-trials", type=int, default=80, help="Number of Optuna trials (default 80)"
-    )
-    tm.add_argument(
-        "--optuna-timeout",
-        type=int,
-        default=None,
-        help="Max seconds for Optuna search (default: no limit)",
-    )
+    tm = sub.add_parser("train-model", help="Train LightGBM model")
+    tm.add_argument("--force", action="store_true", help="Force full retrain")
     tm.add_argument(
         "--n-dates",
         type=int,
-        default=300,
-        help="Number of historical dates for training (default 300)",
+        default=120,
+        help="Number of historical dates for training (default 120)",
     )
     tm.add_argument(
         "--forward-days",
         type=int,
-        default=22,
-        help="Forward return horizon for labels (5=weekly, 22=monthly, default 22)",
-    )
-    tm.add_argument(
-        "--smart-incremental",
-        action="store_true",
-        help="Enable smart incremental learning (A/B dual model + EWC)",
+        default=5,
+        help="Forward return horizon for labels (5=weekly, default 5)",
     )
 
     return p.parse_args()
@@ -183,130 +124,60 @@ def _run_train_model(
     cfg: Config,
     fmt: OutputFormatter,
 ) -> None:
-    """Handle `aimoon train-model` subcommand."""
-    from aimoon.factors.panel import build_panel
-    from aimoon.factors.registry import get_default_registry
-    from aimoon.ml.trainer import train_ensemble
-
-    fmt.console.print("[bold]=== ML Model Training ===[/bold]")
-
-    # Load data
-    if cfg.demo:
-        from aimoon.demo import generate_demo
-
-        fmt.console.print("[dim]Using demo data[/dim]")
-        spot_df, klines = generate_demo(n_stocks=50)
-    else:
-        fmt.console.print("[dim]Loading holdings pool stocks...[/dim]")
-        pool = get_holdings_pool(cfg, cache_dir=Path(cfg.cache_dir))
-        if not pool:
-            fmt.console.print("[red]持仓池为空！无法训练。[/red]")
-            return
-
-        spot_result = get_spot_for_codes(pool, cfg)
-        if spot_result.is_err():
-            fmt.console.print(f"[red]Failed to load spot data: {spot_result.unwrap_err()}[/red]")
-            return
-        spot_df = spot_result.unwrap()
-
-        from aimoon.data.history import get_kline
-
-        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-        klines = {}
-        for code in spot_df["stock_code"].tolist():
-            r = get_kline(code, cfg.history_days, cache)
-            if r.is_ok():
-                klines[code] = r.unwrap()
-
-    if not klines:
-        fmt.console.print("[red]No valid kline data.[/red]")
-        return
-
-    panel = build_panel(klines, min_rows=60)
-    if panel is None:
-        fmt.console.print("[red]Cannot build panel data.[/red]")
-        return
-
-    registry = get_default_registry()
-    save_dir = cfg.cache_dir + "/ml"
-
-    fmt.console.print(f"  Stocks: {len(klines)}, Panel: {panel['close'].shape[0]} days")
-    fmt.console.print(
-        f"  Options: early_stop={args.early_stop}, optuna={args.optuna}, "
-        f"smart_incremental={args.smart_incremental}"
-    )
-
-    result = train_ensemble(
-        panel,
-        klines,
-        registry,
-        n_dates=args.n_dates,
-        forward_days=getattr(args, "forward_days", 22),
-        save_dir=save_dir,
-        warm_start=not args.no_warm_start,
-        smart_incremental=getattr(args, "smart_incremental", False),
-        use_early_stop=args.early_stop,
-        overfit_threshold=args.overfit_threshold,
-        use_optuna=args.optuna,
-        optuna_trials=args.optuna_trials,
-        optuna_timeout=args.optuna_timeout,
-    )
-
-    fmt.console.print("\n[bold]=== Training Complete ===[/bold]")
-    fmt.console.print(f"  XGBoost IC: {result['xgb_result'].ic:.4f}")
-    fmt.console.print(f"  LightGBM IC: {result['lgbm_result'].ic:.4f}")
-    fmt.console.print(f"  Elastic Net IC: {result['en_result'].ic:.4f}")
-    w_xgb = result["xgb_weight"]
-    w_lgbm = result["lgbm_weight"]
-    fmt.console.print(f"  Weights: XGB={w_xgb:.2f}, LGBM={w_lgbm:.2f}")
-    fmt.console.print(f"  Model saved to: {save_dir}")
-
-
-def _run_evaluate(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
-    """Factor evaluation sub-command."""
+    """Handle `aimoon train-model` subcommand — single LightGBM training."""
     from aimoon.data.history import get_kline
-    from aimoon.factor_eval import evaluate_all_scorers
+    from aimoon.factors.ashare import build_panel
+    from aimoon.ml.trainer import train_model
 
-    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+    fmt.console.print("[bold]=== ML Model Training (LightGBM) ===[/bold]")
 
+    fmt.console.print("[dim]Loading holdings pool stocks...[/dim]")
     pool = get_holdings_pool(cfg, cache_dir=Path(cfg.cache_dir))
     if not pool:
-        fmt.console.print("[red]持仓池为空！无法进行因子评估。[/red]")
+        fmt.console.print("[red]持仓池为空！无法训练。[/red]")
         return
 
-    codes = sorted(pool)
-    klines: dict = {}
+    spot_result = get_spot_for_codes(pool, cfg)
+    if spot_result.is_err():
+        fmt.console.print(f"[red]Failed to load spot data: {spot_result.unwrap_err()}[/red]")
+        return
 
-    fmt.console.print(f"[dim]Loading klines for {len(codes)} pool stocks...[/dim]")
-    for code in codes:
+    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+    klines = {}
+    for code in spot_result.unwrap()["stock_code"].tolist():
         r = get_kline(code, cfg.history_days, cache)
         if r.is_ok():
             klines[code] = r.unwrap()
 
     if not klines:
-        fmt.console.print("[red]No valid stock data.[/red]")
+        fmt.console.print("[red]No valid kline data.[/red]")
         return
 
-    fmt.console.print(
-        f"[dim]Evaluating factors ({args.eval_days} days, forward={args.forward_days}d)...[/dim]"
+    save_dir = cfg.cache_dir + "/ml"
+
+    result = train_model(
+        klines,
+        save_dir=save_dir,
+        n_dates=args.n_dates,
+        forward_days=args.forward_days,
+        force=args.force,
     )
-    t0 = time.time()
-    evals = evaluate_all_scorers(klines, args.forward_days, args.eval_days)
-    fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
 
-    if not evals:
-        fmt.console.print("[yellow]Not enough data for factor evaluation.[/yellow]")
+    if result is None:
+        fmt.console.print("[red]Training failed.[/red]")
         return
 
-    fmt.display_factor_eval(evals)
+    fmt.console.print("\n[bold]=== Training Complete ===[/bold]")
+    fmt.console.print(f"  Mean IC: {result['cv_meta'].get('mean_ic', 0):.4f}")
+    fmt.console.print(f"  Val IC:  {result['cv_meta'].get('val_ic', 0):.4f}")
+    fmt.console.print(f"  Stocks:  {result['cv_meta'].get('n_stocks', 0)}")
+    fmt.console.print(f"  Model saved to: {save_dir}")
 
 
 def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
-    """Backtest sub-command -- 先筛选 top 股票，再做回测（默认 QF-Lib 事件驱动引擎）。"""
+    """Backtest — 筛选 → 预计算 ML 分数 → 回测引擎。"""
+    from aimoon.backtest import precompute_scores, run_backtest
     from aimoon.data.history import get_kline
-    from aimoon.scoring.rps import compute_rps
-    from aimoon.qf_backtest import run_qf_backtest, is_qf_lib_available, precompute_ml_scores_by_date
-    from aimoon.qf_backtest.models import QFBacktestConfig
 
     if not _check_network():
         fmt.console.print(
@@ -314,35 +185,30 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
         )
         sys.exit(1)
 
-    use_qf = not getattr(args, "no_qf_lib", False)
+    hold_days = getattr(args, "hold_days", cfg.hold_days)
     max_pos = getattr(args, "max_positions", cfg.max_positions)
-    commission = getattr(args, "commission", 0.0003)
-    slippage = getattr(args, "slippage", 0.001)
-    stamp_tax = getattr(args, "stamp_tax", 0.0005)
     bt_top = getattr(args, "top", 10)
-    stop_loss = cfg.stop_loss_pct
-    take_profit = cfg.take_profit_pct
-    benchmark_code = cfg.benchmark_code
+    stop_loss = getattr(args, "stop_loss", cfg.stop_loss_pct)
+    take_profit = getattr(args, "take_profit", cfg.take_profit_pct)
+    benchmark_code = getattr(args, "benchmark", cfg.benchmark_code)
 
-    engine_name = "QF-Lib" if use_qf else "Enhanced"
     fmt.console.print(
-        f"[bold blue]=== {engine_name} Backtest: top {bt_top}, hold {cfg.hold_days}d,"
+        f"[bold blue]=== ML-Driven Backtest: top {bt_top}, hold {hold_days}d,"
         f" SL {stop_loss:.0%}, TP {take_profit:.0%} ===[/bold blue]"
     )
 
-    # Check QF-Lib availability
-    if use_qf and not is_qf_lib_available():
-        fmt.console.print("[yellow]QF-Lib not installed. Install: uv pip install qf-lib[/yellow]")
-        fmt.console.print("[yellow]Falling back to Enhanced engine.[/yellow]")
-        use_qf = False
-
-    stock_codes = _resolve_backtest_stocks(args, cfg, fmt)
+    stock_codes = _resolve_backtest_stocks(args)
     universe = _load_screening_data(cfg, fmt)
     cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
 
+    # Load predictor (optional — without model, uses fallback ranking)
+    predictor = MLPredictor.load(Path(cfg.cache_dir) / "ml")
+
     fmt.console.print(f"[dim]Scoring {len(universe)} stocks...[/dim]")
     t0 = time.time()
-    results, tails, all_klines = screen_universe(universe, cfg, cache)
+    results, tails, all_klines = screen_universe(
+        universe, cfg, cache, predictor=predictor,
+    )
     fmt.console.print(f"[dim]Scored in {time.time() - t0:.1f}s[/dim]")
 
     if not results:
@@ -363,7 +229,7 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     stock_list = ", ".join(f"{s.code}({s.name})" for s in top_stocks)
     fmt.console.print(f"[dim]Top {len(top_stocks)} stocks: {stock_list}[/dim]")
 
-    # Step 2: Fetch klines + benchmark
+    # Fetch full klines for backtest
     klines: dict[str, pd.DataFrame] = {}
     for code in codes:
         r = get_kline(code, cfg.history_days, cache)
@@ -379,136 +245,104 @@ def _run_backtest(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
         fmt.console.print("[red]No valid kline data.[/red]")
         return
 
-    # Walk-forward branch
-    if getattr(args, "walk_forward", False):
-        from aimoon.optimizer import walk_forward_validate
+    # Precompute per-date ML scores
+    fmt.console.print("[dim]Precomputing per-date ML scores...[/dim]")
+    t1 = time.time()
+    scores_by_date = precompute_scores(klines, predictor=predictor)
+    fmt.console.print(
+        f"[dim]Precomputed {len(scores_by_date)} days in {time.time() - t1:.1f}s[/dim]"
+    )
 
-        wf = walk_forward_validate(
-            klines, names, cfg, cache, train_pct=cfg.train_pct, n_splits=cfg.n_splits
-        )
-        fmt.display_walk_forward(wf)
+    if not scores_by_date:
+        fmt.console.print("[red]No scores could be precomputed.[/red]")
         return
 
-    # ------------------------------------------------------------------
-    # QF-Lib engine (default)
-    # ------------------------------------------------------------------
-    if use_qf:
-        all_dates = sorted({
-            pd.Timestamp(d)
-            for k in klines.values() if not k.empty
-            for d in k.index
-        })
-        valid_dates = [d for d in all_dates if d >= pd.Timestamp(cfg.backtest_start_date)] if all_dates else all_dates
-        sorted_dates = valid_dates if valid_dates else all_dates[-60:] if len(all_dates) >= 60 else all_dates
-        stock_scores = {s.code: s.total_score for s in top_stocks}
-        ml_scores_by_date = {}
-        try:
-            ml_scores_by_date = precompute_ml_scores_by_date(
-                klines, sorted_dates, cache_dir=f"{cfg.cache_dir}/ml", stock_scores=stock_scores,
-            )
-        except Exception as exc:
-            logger.warning("ML score pre-computation failed: %s", exc, exc_info=True)
-
-        if not ml_scores_by_date:
-            fmt.console.print("[yellow]No per-date scores generated. Using score-based fallback.[/yellow]")
-            base_scores = {s.code: s.total_score for s in top_stocks}
-            min_s = min(base_scores.values()) if base_scores else 50
-            max_s = max(base_scores.values()) if base_scores else 50
-            spread = max(max_s - min_s, 10)
-            for idx, d in enumerate(sorted_dates):
-                scores = {}
-                for code, sc in base_scores.items():
-                    jitter = int((idx % 5 - 2) * 2)
-                    scores[code] = max(30, min(100, sc + jitter))
-                ml_scores_by_date[str(d)[:10]] = scores
-
-        qf_cfg = QFBacktestConfig(
-            start_date=cfg.backtest_start_date,
-            initial_cash=1_000_000.0,
-            hold_days=cfg.hold_days,
-            max_positions=max_pos,
-            commission_pct=commission,
-            slippage_pct=slippage,
-            stamp_tax_pct=stamp_tax,
-            entry_threshold=50,
-            stop_loss_pct=stop_loss,
-            take_profit_pct=take_profit,
-            benchmark_code=benchmark_code,
-            regime="sideways",
-            backtest_name="aimoon QF-Lib Backtest",
-        )
-        result = run_qf_backtest(
-            klines=klines,
-            ml_scores_by_date=ml_scores_by_date,
-            names=names,
-            benchmark_code=benchmark_code,
-            config=qf_cfg,
-        )
-        fmt.display_qf_backtest(result)
-        return
-
-    # ------------------------------------------------------------------
-    # Legacy Enhanced engine (when --no-qf-lib)
-    # ------------------------------------------------------------------
-    from aimoon.enhanced_backtest import EnhancedBacktestEngine
-
-    engine = EnhancedBacktestEngine(
-        hold_days=cfg.hold_days,
-        max_positions=max_pos,
-        commission=commission,
-        slippage=slippage,
-        stamp_tax=stamp_tax,
+    # Run backtest
+    fmt.console.print("[dim]Running backtest...[/dim]")
+    result = run_backtest(
+        klines=klines,
+        names=names,
+        scores_by_date=scores_by_date,
+        benchmark_code=benchmark_code,
+        entry_threshold=60,
         stop_loss_pct=stop_loss,
         take_profit_pct=take_profit,
-        benchmark_code=benchmark_code,
-        entry_threshold=50,
-        max_sector_pct=cfg.max_sector_pct,
-        use_reversal=cfg.use_reversal,
-        use_alpha=cfg.use_alpha if getattr(args, "no_alpha", None) is not True else False,
-        use_kelly=False,
-        exit_ratio=0.5,
-        forward_days=getattr(args, "forward_days", 22),
+        hold_days=hold_days,
+        max_positions=max_pos,
     )
-    result = engine.run_portfolio(klines, names)
-    fmt.display_enhanced_backtest(result)
 
-    # Charts (optional matplotlib)
-    try:
-        from aimoon.charts import plot_drawdown, plot_equity_curve, plot_monthly_returns
-
-        os.makedirs(cfg.output_dir, exist_ok=True)
-        eq_path = os.path.join(cfg.output_dir, "equity_curve.png")
-        dd_path = os.path.join(cfg.output_dir, "drawdown.png")
-        mr_path = os.path.join(cfg.output_dir, "monthly_returns.png")
-        plot_equity_curve(
-            list(result.equity_curve) if hasattr(result, "equity_curve") else [],
-            title="Portfolio Equity Curve", filepath=eq_path,
-        )
-        plot_drawdown(
-            result.drawdown_curve if hasattr(result, "drawdown_curve") else [],
-            filepath=dd_path,
-        )
-        plot_monthly_returns(
-            result.trades if hasattr(result, "trades") else [], filepath=mr_path,
-        )
-        fmt.console.print(f"[dim]Charts: {eq_path}, {dd_path}, {mr_path}[/dim]")
-    except ImportError:
-        pass
+    fmt.display_backtest(result)
 
     # Backtest report
-    report_path = fmt.export_backtest_report(result, top_stocks, cfg)
-    fmt.console.print(f"[dim]Report: {report_path}[/dim]")
+    report_path = _export_backtest_report(result, top_stocks, cfg)
+    if report_path:
+        fmt.console.print(f"[dim]Report: {report_path}[/dim]")
 
 
-def _resolve_backtest_stocks(
-    args: argparse.Namespace,
+def _export_backtest_report(
+    result,
+    top_stocks: list,
     cfg: Config,
-    fmt: OutputFormatter,
-) -> list[str] | None:
-    """解析--stocks参数。用户指定时返回股票列表，否则返回None使用池排序。"""
+    filename: str | None = None,
+) -> str | None:
+    """Generate simplified backtest report Markdown."""
+    from datetime import datetime
+
+    try:
+        if not filename:
+            filename = f"backtest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        os.makedirs(cfg.output_dir, exist_ok=True)
+        filepath = os.path.join(cfg.output_dir, filename)
+        top_strs = [f"- {s.code} ({s.name}) ML={s.ml_score}" for s in top_stocks[:10]]
+        lines = [
+            f"# A股量化回测报告 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "",
+            "## 回测参数",
+            f"- history_days: {cfg.history_days}",
+            f"- hold_days: {cfg.hold_days}",
+            f"- max_positions: {cfg.max_positions}",
+            f"- stop_loss: {cfg.stop_loss_pct:.0%}",
+            f"- take_profit: {cfg.take_profit_pct:.0%}",
+            f"- benchmark: {cfg.benchmark_code}",
+            "",
+            "## 筛选股票",
+            *top_strs,
+            "",
+            "## 回测结果",
+            f"- 总收益: {result.total_return:.2%}",
+            f"- 年化收益: {result.annual_return:.2%}",
+            f"- Sharpe: {result.sharpe_ratio:.2f}",
+            f"- Sortino: {result.sortino_ratio:.2f}",
+            f"- 最大回撤: {result.max_drawdown:.2%}",
+            f"- 胜率: {result.win_rate:.1%}",
+            f"- 盈亏比: {result.profit_factor:.2f}",
+            f"- 交易次数: {result.trade_count}",
+            f"- 平均持仓: {result.avg_hold_days:.0f}天",
+            f"- 基准收益: {result.benchmark_return:.2%}",
+            f"- 超额收益: {result.excess_return:.2%}",
+            "",
+            "## 交易记录",
+            "| 股票 | 方向 | 买入日 | 卖出日 | 买入价 | 卖出价 | 收益 | 原因 | 持仓天数 |",
+            "|------|------|--------|--------|--------|--------|------|------|----------|",
+        ]
+        for t in result.trades:
+            lines.append(
+                f"| {t.code}/{t.name} | 做多 | {t.entry_date} | {t.exit_date} | "
+                f"{t.entry_price:.2f} | {t.exit_price:.2f} | {t.return_pct:+.2f}% | "
+                f"{t.exit_reason} | {t.hold_days} |"
+            )
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return filepath
+    except Exception as e:
+        logger.warning("Failed to export backtest report: %s", e)
+        return None
+
+
+def _resolve_backtest_stocks(args: argparse.Namespace) -> list[str] | None:
+    """Parse --stocks argument. Returns None if not explicitly set."""
     import sys as _sys
 
-    # 检测用户是否显式传了 --stocks（通过检查命令行参数）
     has_stocks_arg = any("--stocks" in a for a in _sys.argv)
     if not has_stocks_arg:
         return None
@@ -516,26 +350,16 @@ def _resolve_backtest_stocks(
     if not stocks_str or stocks_str.strip() == "000001":
         return None
     codes = [c.strip() for c in stocks_str.split(",") if c.strip()]
-    if codes:
-        fmt.console.print(f"[dim]Backtest stocks: {', '.join(codes)}[/dim]")
-        return codes
-    return None
+    return codes if codes else None
 
 
-def _load_screening_data(
-    cfg: Config,
-    fmt: OutputFormatter,
-) -> pd.DataFrame:
-    """Load spot data for screening. Returns spot_df.
-
-    强制使用机构持仓池（北向+基金+ROE），不回退到全市场。
-    回测必须基于持仓池股票，确保选股质量约束。
-    """
+def _load_screening_data(cfg: Config, fmt: OutputFormatter) -> pd.DataFrame:
+    """Load spot data for screening. Returns spot_df."""
     fmt.console.print("[dim]Loading holdings pool (cached)...[/dim]")
     pool = get_holdings_pool(cfg, cache_dir=Path(cfg.cache_dir))
     if not pool:
         fmt.console.print(
-            "[red]持仓池为空！无法进行回测。[/red]\n"
+            "[red]持仓池为空！无法进行筛选。[/red]\n"
             "[yellow]请先刷新持仓池: aimoon refresh-pool[/yellow]"
         )
         sys.exit(1)
@@ -556,62 +380,12 @@ def _load_screening_data(
 
     if len(universe) < 5:
         fmt.console.print(
-            f"[red]过滤后只剩 {len(universe)} 只持仓池股票，数量不足无法回测。[/red]\n"
-            "[yellow]请放宽过滤参数 (如 max_pe_ttm, min_dividend_yield) 或刷新持仓池[/yellow]"
+            f"[red]过滤后只剩 {len(universe)} 只持仓池股票，数量不足。[/red]\n"
+            "[yellow]请放宽过滤参数或刷新持仓池[/yellow]"
         )
         sys.exit(1)
 
     return universe
-
-
-def _run_optimize(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
-    """Parameter optimization sub-command."""
-    from aimoon.data.history import get_kline
-    from aimoon.optimizer import _PARAM_RANGES, grid_search
-    from aimoon.scoring.rps import compute_rps
-
-    bt_top = getattr(args, "top", cfg.top_n)
-    metric = getattr(args, "metric", "sharpe")
-    max_trials = getattr(args, "trials", 50)
-    param_names = getattr(args, "params", "stop_loss_pct,hold_days").split(",")
-    param_ranges = {k: v for k, v in _PARAM_RANGES.items() if k in param_names}
-
-    fmt.console.print(
-        f"[bold blue]=== Optimize: metric={metric}, trials={max_trials},"
-        f" params={list(param_ranges.keys())} ===[/bold blue]"
-    )
-
-    universe = _load_screening_data(cfg, fmt)
-    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-
-    fmt.console.print(f"[dim]Scoring {len(universe)} stocks...[/dim]")
-    results, tails, all_klines = screen_universe(universe, cfg, cache)
-    if not results:
-        fmt.console.print("[red]No stocks passed screening.[/red]")
-        return
-
-    results = compute_rps(results, tails)
-    top_stocks = sorted(results, key=lambda s: s.total_score, reverse=True)[:bt_top]
-    codes = [s.code for s in top_stocks]
-    names = {s.code: s.name for s in top_stocks}
-
-    klines: dict[str, pd.DataFrame] = {}
-    for code in codes:
-        r = get_kline(code, cfg.history_days, cache)
-        if r.is_ok():
-            klines[code] = r.unwrap()
-
-    if not klines:
-        fmt.console.print("[red]No valid kline data.[/red]")
-        return
-
-    fmt.console.print(f"[dim]Running grid search ({max_trials} trials)...[/dim]")
-    t0 = time.time()
-    opt_results = grid_search(
-        klines, names, cfg, cache, param_ranges=param_ranges, metric=metric, max_trials=max_trials
-    )
-    fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
-    fmt.display_optimize(opt_results)
 
 
 def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -> None:
@@ -628,21 +402,14 @@ def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
     fmt.console.print("[dim]Press Ctrl+C to stop[/dim]")
 
     def _run_once() -> None:
-        from aimoon.scoring.rps import compute_rps
-
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
-            if cfg.demo:
-                from aimoon.demo import generate_demo
-
-                spot_df, klines = generate_demo()
-                cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-                results, tails, all_klines = screen_universe(spot_df, cfg, cache, klines=klines)
-            else:
-                universe = _load_screening_data(cfg, fmt)
-                cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-                results, tails, all_klines = screen_universe(universe, cfg, cache)
-
+            predictor = MLPredictor.load(Path(cfg.cache_dir) / "ml")
+            universe = _load_screening_data(cfg, fmt)
+            cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
+            results, tails, all_klines = screen_universe(
+                universe, cfg, cache, predictor=predictor,
+            )
             results = compute_rps(results, tails)
             top = sorted(results, key=lambda s: s.total_score, reverse=True)[: cfg.top_n]
 
@@ -653,16 +420,15 @@ def _run_schedule(args: argparse.Namespace, cfg: Config, fmt: OutputFormatter) -
             if notify:
                 summary = ", ".join(f"{s.name}({s.total_score})" for s in top[:5])
                 fmt.console.print(f"[dim]Top 5: {summary}[/dim]")
-
-            h, m = map(int, target_time.split(":"))
-            tomorrow = _dt.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
-            if _dt.datetime.now() >= tomorrow:
-                tomorrow += _dt.timedelta(days=1)
-            wait = (tomorrow - _dt.datetime.now()).total_seconds()
-            scheduler.enter(wait, 1, _run_once)
         except Exception as e:
             logger.error("Scheduled screen failed: %s", e)
-            scheduler.enter(300, 1, _run_once)  # retry in 5 min
+
+        h, m = map(int, target_time.split(":"))
+        tomorrow = _dt.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
+        if _dt.datetime.now() >= tomorrow:
+            tomorrow += _dt.timedelta(days=1)
+        wait = (tomorrow - _dt.datetime.now()).total_seconds()
+        scheduler.enter(wait, 1, _run_once)
 
     now = _dt.datetime.now()
     h, m = map(int, target_time.split(":"))
@@ -753,11 +519,6 @@ def main() -> None:
                 sys.exit(1)
         return
 
-    # Factor evaluation
-    if cfg.command == "evaluate":
-        _run_evaluate(args, cfg, fmt)
-        return
-
     # Train-model
     if cfg.command == "train-model":
         _run_train_model(args, cfg, fmt)
@@ -768,91 +529,34 @@ def main() -> None:
         _run_backtest(args, cfg, fmt)
         return
 
-    # Optimize
-    if cfg.command == "optimize":
-        _run_optimize(args, cfg, fmt)
-        return
-
     # Schedule
     if cfg.command == "schedule":
         _run_schedule(args, cfg, fmt)
         return
 
-    # Demo mode
-    if cfg.demo:
-        from aimoon.demo import generate_demo
+    # Default: screening pipeline
+    predictor = MLPredictor.load(Path(cfg.cache_dir) / "ml")
+    universe = _load_screening_data(cfg, fmt)
+    cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
 
-        spot_df, klines = generate_demo()
-        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-        results, tails, all_klines = screen_universe(spot_df, cfg, cache, klines=klines)
-    else:
-        # Real screening pipeline with automatic fallback
-        universe = _load_screening_data(cfg, fmt)
-        cache = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-        fmt.console.print(f"[dim]Analyzing {len(universe)} stocks...[/dim]")
-        t0 = time.time()
-        results, tails, all_klines = screen_universe(universe, cfg, cache)
-        fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
+    fmt.console.print(f"[dim]Analyzing {len(universe)} stocks...[/dim]")
+    t0 = time.time()
+    results, tails, all_klines = screen_universe(
+        universe, cfg, cache, predictor=predictor,
+    )
+    fmt.console.print(f"[dim]Done in {time.time() - t0:.1f}s[/dim]")
+
+    if not results:
+        fmt.console.print("[red]No stocks passed screening.[/red]")
+        return
 
     # RPS + sort + output
     results = compute_rps(results, tails)
-    regime = None
-    if cfg.command is None and not cfg.demo:
-        from aimoon.data.history import get_kline as _get_kline
-        from aimoon.regime_enhanced import detect_regime
-        from aimoon.scoring.adaptive_weight import apply_regime_to_list
-
-        _c = DataCache.get_global(cfg.cache_dir, cfg.cache_ttl_hours)
-        bench_code = "000001"
-        br = _get_kline(bench_code, cfg.history_days, _c)
-        if br.is_ok():
-            regime = detect_regime(br.unwrap())
-            fmt.console.print(f"[dim]Market regime: {regime}[/dim]")
-            results = apply_regime_to_list(results, regime)
-
-    # ── Super Turtle 策略信号 ──
-    from aimoon.risk import PortfolioState, Position, RiskLimits, check_risk_limits
-    from aimoon.scoring.turtle import generate_turtle_plan
-
-    turtle_plans: dict = {}
-    for r in results:
-        kdf = all_klines.get(r.code)
-        if kdf is not None and len(kdf) >= 25:
-            plan = generate_turtle_plan(kdf, r.code, r.name)
-            if plan is not None:
-                turtle_plans[r.code] = plan
-
-    # Risk warnings
-    limits = RiskLimits(
-        max_position_pct=cfg.max_position_pct,
-        max_sector_pct=cfg.max_sector_pct,
-        max_drawdown_limit=cfg.max_drawdown_limit,
-        target_volatility=cfg.target_volatility,
-    )
-    ps = PortfolioState()
-    weight_each = 1.0 / max(len(results), 1)
-    for r in results[: cfg.top_n]:
-        ps.positions[r.code] = Position(
-            code=r.code,
-            name=r.name,
-            weight=weight_each,
-            entry_price=r.price,
-            sector="",
-        )
-    violations = check_risk_limits(ps, limits)
-    if violations:
-        fmt.console.print(f"[yellow]Risk warnings ({len(violations)}):[/yellow]")
-        for v in violations:
-            fmt.console.print(f"  [dim]{v[0]}: {v[1:]}[/dim]")
-
     top = sorted(results, key=lambda s: s.total_score, reverse=True)[: cfg.top_n]
-    fmt.display(top, turtle_plans=turtle_plans)
-    if turtle_plans:
-        fmt.display_turtle_plans(turtle_plans)
+    fmt.display(top)
+
     if not cfg.no_csv and top:
         fmt.console.print(f"[dim]Exported: {fmt.export_csv(top)}[/dim]")
-        regime_str = str(regime) if regime else None
-        fmt.console.print(f"[dim]Exported: {fmt.export_markdown(top, regime=regime_str)}[/dim]")
 
 
 if __name__ == "__main__":
