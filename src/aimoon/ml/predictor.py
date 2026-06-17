@@ -1,204 +1,162 @@
-"""ML model inference -> Signal injection."""
+"""ML predictor — single LightGBM inference.
+
+Minimal MLPredictor class: load saved model, run inference,
+return percentile-ranked ml_score (0-100).
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
-import xgboost as xgb
-
-from aimoon.factors.registry import Registry, get_default_registry
-from aimoon.ml.feature_pipeline import extract_features
-from aimoon.models import Signal
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CACHE_DIR = Path(".aimoon_cache") / "ml"
 
+class MLPredictor:
+    """Single LightGBM predictor.
 
-def predict_alpha_signals(
-    model: xgb.Booster,
-    panel: dict[str, pd.DataFrame],
-    registry: Registry | None = None,
-    sector_map: dict[str, str] | None = None,
-    top_k: int = 0,
-    cache_dir: Path = _DEFAULT_CACHE_DIR,
-) -> dict[str, list[Signal]]:
-    """Generate stock Signals from trained XGBoost model.
+    Usage::
 
-    Uses the model to predict forward returns from current cross-sectional data,
-    then maps predictions to Signal objects with scores based on percentile rank.
-
-    Parameters
-    ----------
-    model : xgb.Booster
-        Trained XGBoost model.
-    panel : dict[str, pd.DataFrame]
-        Alpha Zoo panel data.
-    registry : Registry | None
-        Factor registry.
-    sector_map : dict[str, str] | None
-        Stock -> sector mapping for neutralization.
-    top_k : int
-        If > 0, only return top_k stocks by prediction.
-    cache_dir : Path
-        Cache directory for feature names files.
-
-    Returns
-    -------
-    dict[str, list[Signal]]
-        code -> [Signal, ...]. Empty dict if inference fails.
+        predictor = MLPredictor.load(cache_dir)
+        if predictor is None:
+            # no model available
+            return {}
+        scores = predictor.predict(panel, sector_map=..., fundamentals=...)
     """
-    if panel is None or "close" not in panel:
-        return {}
 
-    registry = registry or get_default_registry()
-    features = extract_features(panel, registry, sector_map=sector_map)
+    def __init__(self) -> None:
+        self.model: Any = None
+        self.feature_names: list[str] = []
+        self.feature_medians: dict[str, float] = {}
 
-    if features.empty:
-        logger.warning("ML predict: no features extracted")
-        return {}
+    @classmethod
+    def load(cls, cache_dir: str | Path) -> MLPredictor | None:
+        """Load LightGBM model + feature_names + feature_medians from disk.
 
-    # Ensure feature columns match model expectation
-    cache_dir = Path(cache_dir)
-    canonical = cache_dir / "canonical_feature_names.json"
-    xgb_fn = cache_dir / "xgb_feature_names.json"
-    feature_names_path = canonical if canonical.exists() else xgb_fn
-    if not feature_names_path.exists():
-        logger.warning("ML predict: feature_names.json not found at %s", feature_names_path)
-        return {}
+        Returns None if the model file is missing.
+        """
+        cache_path = Path(cache_dir)
+        model_path = cache_path / "lgbm_model.txt"
+        fn_path = cache_path / "lgbm_feature_names.json"
+        fm_path = cache_path / "lgbm_feature_medians.json"
 
-    with open(feature_names_path, encoding="utf-8") as f:
-        expected_features = json.load(f)
+        if not model_path.exists():
+            logger.info("No LightGBM model found at %s", model_path)
+            return None
 
-    missing = set(expected_features) - set(features.columns)
-    extra = set(features.columns) - set(expected_features)
-    if missing:
-        logger.debug(
-            "ML predict: %d missing features (filled with 0), %d extra (dropped)",
-            len(missing),
-            len(extra),
+        try:
+            import lightgbm as lgb  # noqa: PLC0415
+
+            instance = cls()
+            instance.model = lgb.Booster(model_file=str(model_path))
+
+            if fn_path.exists():
+                with open(fn_path, encoding="utf-8") as f:
+                    instance.feature_names = json.load(f)
+            if fm_path.exists():
+                with open(fm_path, encoding="utf-8") as f:
+                    instance.feature_medians = json.load(f)
+
+            logger.info(
+                "MLPredictor loaded: %d features, %d medians",
+                len(instance.feature_names),
+                len(instance.feature_medians),
+            )
+            return instance
+        except Exception as e:
+            logger.warning("Failed to load MLPredictor: %s", e)
+            return None
+
+    def predict(
+        self,
+        panel: dict[str, pd.DataFrame],
+        sector_map: dict[str, str] | None = None,
+        fundamentals: dict[str, pd.DataFrame] | None = None,
+    ) -> dict[str, int]:
+        """Run inference and return percentile-ranked scores (0-100).
+
+        Args:
+            panel: {field: DataFrame(日期 x 股票)} from build_panel.
+            sector_map: {code: sector_name} for sector_mom_20d.
+            fundamentals: {pe|pb|dividend: DataFrame(日期 x 股票)}.
+
+        Returns:
+            dict[code, ml_score (0-100 int)].
+            Empty dict if prediction fails.
+        """
+        from aimoon.ml.feature_pipeline import extract_features  # noqa: PLC0415
+
+        features = extract_features(
+            panel,
+            sector_map=sector_map,
+            fundamentals=fundamentals,
+            feature_medians=pd.Series(self.feature_medians) if self.feature_medians else None,
         )
-    X = features.reindex(columns=expected_features, fill_value=0.0)
+        if features.empty:
+            return {}
 
-    dmatrix = xgb.DMatrix(X)
-    try:
-        preds = model.predict(dmatrix)
-    except Exception as e:
-        logger.warning("ML predict failed: %s", e)
-        return {}
+        # Reindex to match training feature order, fill missing with 0
+        X = features.reindex(columns=self.feature_names, fill_value=0.0).astype(float)
 
-    pred_series = pd.Series(preds, index=X.index).dropna()
-    if len(pred_series) < 5:
-        return {}
+        try:
+            import lightgbm as lgb  # noqa: PLC0415
 
-    if top_k > 0 and top_k < len(pred_series):
-        threshold = pred_series.nlargest(top_k).iloc[-1]
-        pred_series = pred_series[pred_series >= threshold]
+            raw = self.model.predict(X.values)
+        except Exception as e:
+            logger.warning("ML predict failed: %s", e)
+            return {}
 
-    ranked = pred_series.rank(pct=True)
-    signals_by_code: dict[str, list[Signal]] = {}
+        pred_series = pd.Series(raw, index=X.index).dropna()
+        if pred_series.empty:
+            return {}
 
-    for code in pred_series.index:
-        pct = ranked[code]
-        sigs: list[Signal] = []
+        # Percentile rank (0-100)
+        ranked = pred_series.rank(pct=True, method="average")
+        result: dict[str, int] = {}
+        for code in ranked.index:
+            result[str(code)] = int(round(ranked[code] * 100))
 
-        if pct >= 0.90:
-            sigs.append(
-                Signal(
-                    "ml_alpha_strong",
-                    f"ML因子强烈看多({pct:.0%})",
-                    +5,
-                    category="ml",
-                )
-            )
-        elif pct >= 0.75:
-            sigs.append(
-                Signal(
-                    "ml_alpha",
-                    f"ML因子看多({pct:.0%})",
-                    +3,
-                    category="ml",
-                )
-            )
-        elif pct <= 0.10:
-            sigs.append(
-                Signal(
-                    "ml_alpha_bear_strong",
-                    f"ML因子强烈看空({pct:.0%})",
-                    -5,
-                    category="ml",
-                )
-            )
-        elif pct <= 0.25:
-            sigs.append(
-                Signal(
-                    "ml_alpha_bear",
-                    f"ML因子看空({pct:.0%})",
-                    -3,
-                    category="ml",
-                )
-            )
+        return result
 
-        if sigs:
-            signals_by_code[str(code)] = sigs
+    def predict_prob(
+        self,
+        panel: dict[str, pd.DataFrame],
+        sector_map: dict[str, str] | None = None,
+        fundamentals: dict[str, pd.DataFrame] | None = None,
+    ) -> dict[str, float]:
+        """Run inference and return raw predictions.
 
-    return signals_by_code
+        Same as predict() but returns raw float predictions instead of
+        percentile-ranked scores.
 
+        Returns:
+            dict[code, raw_prediction (float)].
+            Empty dict if prediction fails.
+        """
+        from aimoon.ml.feature_pipeline import extract_features  # noqa: PLC0415
 
-def predict_with_stacking(panel, registry=None, sector_map=None, top_k=0, cache_dir=None):
-    """Generate signals using StackingEnsemble instead of simple weighted average."""
-    from aimoon.ml.ensemble import StackingEnsemble
+        features = extract_features(
+            panel,
+            sector_map=sector_map,
+            fundamentals=fundamentals,
+            feature_medians=pd.Series(self.feature_medians) if self.feature_medians else None,
+        )
+        if features.empty:
+            return {}
 
-    stacking = StackingEnsemble.load(cache_dir=cache_dir)
-    if stacking is None or not stacking.is_fitted:
-        return {}
-    if panel is None or "close" not in panel:
-        return {}
-    from aimoon.factors.registry import get_default_registry
+        X = features.reindex(columns=self.feature_names, fill_value=0.0).astype(float)
 
-    registry = registry or get_default_registry()
-    from aimoon.ml.feature_pipeline import extract_features
+        try:
+            import lightgbm as lgb  # noqa: PLC0415
 
-    features = extract_features(panel, registry, sector_map=sector_map)
-    if features.empty:
-        return {}
-    preds = stacking.predict(features)
-    if preds.empty:
-        return {}
-    ranked = preds.rank(pct=True)
-    signals_by_code = {}
-    for code in preds.index:
-        pct = ranked[code]
-        sigs = []
-        if pct >= 0.90:
-            sigs.append(
-                Signal(
-                    "stacking_strong",
-                    f"Stacking\u5f3a\u70c8\u770b\u591a({pct:.0%})",
-                    +5,
-                    category="ml",
-                )
-            )
-        elif pct >= 0.75:
-            sigs.append(
-                Signal("stacking_bull", f"Stacking\u770b\u591a({pct:.0%})", +3, category="ml")
-            )
-        elif pct <= 0.10:
-            sigs.append(
-                Signal(
-                    "stacking_bear_strong",
-                    f"Stacking\u5f3a\u70c8\u770b\u7a7a({pct:.0%})",
-                    -5,
-                    category="ml",
-                )
-            )
-        elif pct <= 0.25:
-            sigs.append(
-                Signal("stacking_bear", f"Stacking\u770b\u7a7a({pct:.0%})", -3, category="ml")
-            )
-        if sigs:
-            signals_by_code[str(code)] = sigs
-    return signals_by_code
+            raw = self.model.predict(X.values)
+        except Exception as e:
+            logger.warning("ML predict_prob failed: %s", e)
+            return {}
+
+        pred_series = pd.Series(raw, index=X.index).dropna()
+        return {str(code): float(val) for code, val in pred_series.items()}
