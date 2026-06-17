@@ -3,44 +3,28 @@
 Formula (verbatim from the report):
     (SUM(CLOSE-DELAY(CLOSE,1) if up else 0,12) - SUM(ABS if down else 0,12)) / (SUM up + SUM down) * 100
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_112"
 
 __alpha_meta__ = {
-    'id': 'gtja191_112',
-    'theme': ['momentum'],
-    'formula_latex': '(sum_up(12)-sum_down(12))/(sum_up(12)+sum_down(12))*100',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 12,
-    'min_warmup_bars': 13,
-    'notes': '',
+    "id": "gtja191_112",
+    "theme": ["momentum"],
+    "formula_latex": "(sum_up(12)-sum_down(12))/(sum_up(12)+sum_down(12))*100",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 12,
+    "min_warmup_bars": 13,
+    "notes": "",
 }
 
 

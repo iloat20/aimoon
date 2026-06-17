@@ -14,34 +14,26 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_093"
 
 __alpha_meta__ = {
-    'id': 'alpha101_093',
-    'nickname': 'Kakushadze Alpha #93',
-    'theme': ['volume'],
-    'formula_latex': 'Ts_Rank(decay_linear(correlation(IndNeutralize(vwap, industry), adv81, 17), 20), 8) / rank(decay_linear(delta(0.524*close+0.476*vwap, 3), 16))',
-    'columns_required': ['close', 'volume', 'vwap'],
-    'extras_required': [],
-    'requires_sector': True,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 123,
-    'notes': "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
+    "id": "alpha101_093",
+    "nickname": "Kakushadze Alpha #93",
+    "theme": ["volume"],
+    "formula_latex": "Ts_Rank(decay_linear(correlation(IndNeutralize(vwap, industry), adv81, 17), 20), 8) / rank(decay_linear(delta(0.524*close+0.476*vwap, 3), 16))",
+    "columns_required": ["close", "volume", "vwap"],
+    "extras_required": [],
+    "requires_sector": True,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 123,
+    "notes": "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
 }
 
 

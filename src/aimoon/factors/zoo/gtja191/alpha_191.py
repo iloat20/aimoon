@@ -3,44 +3,29 @@
 Formula (verbatim from the report):
     ((CORR(MEAN(VOLUME,20), LOW, 5) + ((HIGH + LOW) / 2)) - CLOSE)
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_191"
 
 __alpha_meta__ = {
-    'id': 'gtja191_191',
-    'theme': ['volume'],
-    'formula_latex': 'see body',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 25,
-    'notes': '',
+    "id": "gtja191_191",
+    "theme": ["volume"],
+    "formula_latex": "see body",
+    "columns_required": ["open", "high", "low", "close", "volume"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 25,
+    "notes": "",
 }
 
 

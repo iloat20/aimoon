@@ -10,38 +10,26 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
     ts_std,
 )
 
 ALPHA_ID = "alpha101_021"
 
 __alpha_meta__ = {
-    'id': 'alpha101_021',
-    'nickname': 'Kakushadze Alpha #21',
-    'theme': ['momentum', 'volatility'],
-    'formula_latex': 'complex piecewise; see paper',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 20,
-    'notes': '',
+    "id": "alpha101_021",
+    "nickname": "Kakushadze Alpha #21",
+    "theme": ["momentum", "volatility"],
+    "formula_latex": "complex piecewise; see paper",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 20,
+    "notes": "",
 }
 
 
@@ -68,7 +56,11 @@ def _where_ternary(cond, a, b):
         b_arr = np.full_like(cond.to_numpy(dtype=np.float64), float(b))
     else:
         b_arr = b.to_numpy(dtype=np.float64, na_value=np.nan)
-    cond_arr = cond.to_numpy(dtype=bool, na_value=False) if hasattr(cond, "to_numpy") else np.asarray(cond, dtype=bool)
+    cond_arr = (
+        cond.to_numpy(dtype=bool, na_value=False)
+        if hasattr(cond, "to_numpy")
+        else np.asarray(cond, dtype=bool)
+    )
     out = np.where(cond_arr, a_arr, b_arr)
     out = np.where(np.isfinite(out), out, np.nan)
     idx = cond.index if hasattr(cond, "index") else a.index
@@ -92,7 +84,11 @@ def compute(panel: dict) -> pd.DataFrame:
     v_adv = safe_div(volume, adv20)
     cond_a = (m8 + s8) < m2
     cond_b = m2 < (m8 - s8)
-    cond_c = (v_adv >= 1.0)
+    cond_c = v_adv >= 1.0
     one = make_one(close)
-    out = where_ternary(cond_a, -1.0 * one, where_ternary(cond_b, one, where_ternary(cond_c, one, -1.0 * one)))
+    out = where_ternary(
+        cond_a,
+        -1.0 * one,
+        where_ternary(cond_b, one, where_ternary(cond_c, one, -1.0 * one)),
+    )
     return out

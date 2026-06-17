@@ -10,38 +10,26 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
     ts_max,
-    ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_084"
 
 __alpha_meta__ = {
-    'id': 'alpha101_084',
-    'nickname': 'Kakushadze Alpha #84',
-    'theme': ['momentum'],
-    'formula_latex': 'SignedPower(Ts_Rank(vwap-ts_max(vwap,15), 21), delta(close,5))',
-    'columns_required': ['close', 'vwap'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 35,
-    'notes': "SignedPower with a delta(close,5) exponent can produce non-finite values when the exponent is large; non-finite outputs are clipped to NaN to satisfy the registry's no-inf invariant.",
+    "id": "alpha101_084",
+    "nickname": "Kakushadze Alpha #84",
+    "theme": ["momentum"],
+    "formula_latex": "SignedPower(Ts_Rank(vwap-ts_max(vwap,15), 21), delta(close,5))",
+    "columns_required": ["close", "vwap"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 35,
+    "notes": "SignedPower with a delta(close,5) exponent can produce non-finite values when the exponent is large; non-finite outputs are clipped to NaN to satisfy the registry's no-inf invariant.",
 }
 
 
@@ -49,7 +37,6 @@ def compute(panel: dict) -> pd.DataFrame:
     """Compute the alpha on the OHLCV+ panel and return a wide DataFrame."""
     close = panel["close"]
     vwap = panel["vwap"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     base = ts_rank(vwap - ts_max(vwap, 15), 21)

@@ -17,4 +17,3 @@ def score_kdj(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> list[S
     if ti.kdj_overbought():
         signals.append(Signal("kdj_overbought", "KDJ超买", -1, category="reversal"))
     return signals
-

@@ -10,38 +10,29 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
     scale,
-    signed_power,
-    ts_argmax,
     ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_100"
 
 __alpha_meta__ = {
-    'id': 'alpha101_100',
-    'nickname': 'Kakushadze Alpha #100',
-    'theme': ['volume', 'momentum'],
-    'formula_latex': '0 - 1*((1.5*scale(IN(IN(rank(((close-low)-(high-close))/(high-low)*volume), subind), subind)) - scale(IN(correlation(close, rank(adv20), 5) - rank(ts_argmin(close,30)), subind))) * (volume/adv20))',
-    'columns_required': ['high', 'low', 'close', 'volume'],
-    'extras_required': [],
-    'requires_sector': True,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 30,
-    'notes': "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
+    "id": "alpha101_100",
+    "nickname": "Kakushadze Alpha #100",
+    "theme": ["volume", "momentum"],
+    "formula_latex": "0 - 1*((1.5*scale(IN(IN(rank(((close-low)-(high-close))/(high-low)*volume), subind), subind)) - scale(IN(correlation(close, rank(adv20), 5) - rank(ts_argmin(close,30)), subind))) * (volume/adv20))",
+    "columns_required": ["high", "low", "close", "volume"],
+    "extras_required": [],
+    "requires_sector": True,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 30,
+    "notes": "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
 }
 
 

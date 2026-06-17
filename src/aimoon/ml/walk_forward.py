@@ -68,7 +68,7 @@ class WalkForwardValidator:
         self,
         panel: dict[str, pd.DataFrame],
         klines: dict[str, pd.DataFrame],
-        forward_days: int = 5,
+        forward_days: int = 22,
     ) -> WalkForwardResult:
         """执行 Walk-Forward 验证。
 
@@ -126,9 +126,7 @@ class WalkForwardValidator:
 
             # 训练模型
             try:
-                X_train, y_train = self._prepare_data(
-                    panel, klines, train_dates, forward_days
-                )
+                X_train, y_train = self._prepare_data(panel, klines, train_dates, forward_days)
                 if len(X_train) < 10:
                     logger.warning(
                         f"Window {window_idx + 1}: insufficient training data ({len(X_train)} samples)"
@@ -142,9 +140,7 @@ class WalkForwardValidator:
 
             # 测试模型
             try:
-                X_test, y_test = self._prepare_data(
-                    panel, klines, test_dates, forward_days
-                )
+                X_test, y_test = self._prepare_data(panel, klines, test_dates, forward_days)
                 if len(X_test) < 5:
                     logger.warning(
                         f"Window {window_idx + 1}: insufficient test data ({len(X_test)} samples)"
@@ -181,9 +177,7 @@ class WalkForwardValidator:
                     }
                 )
 
-                logger.info(
-                    f"Window {window_idx + 1}: IC={window_ic:.4f}, samples={len(X_test)}"
-                )
+                logger.info(f"Window {window_idx + 1}: IC={window_ic:.4f}, samples={len(X_test)}")
 
             except Exception as e:
                 logger.error(f"Window {window_idx + 1}: testing failed: {e}")
@@ -220,14 +214,10 @@ class WalkForwardValidator:
             "n_windows": float(len(window_metrics)),
             "n_predictions": float(len(all_predictions)),
             "avg_window_ic": (
-                float(np.mean([m["ic"] for m in window_metrics]))
-                if window_metrics
-                else 0.0
+                float(np.mean([m["ic"] for m in window_metrics])) if window_metrics else 0.0
             ),
             "std_window_ic": (
-                float(np.std([float(m["ic"]) for m in window_metrics]))
-                if window_metrics
-                else 0.0
+                float(np.std([float(m["ic"]) for m in window_metrics])) if window_metrics else 0.0
             ),
         }
 
@@ -277,7 +267,12 @@ class WalkForwardValidator:
         X = pd.concat(features_list, axis=0)
         y = pd.concat(labels_list, axis=0)
 
-        # 去重（同一股票可能在多个日期出现）
+        # Ensure MultiIndex (date, code) to preserve time series
+        if not isinstance(X.index, pd.MultiIndex):
+            X.index = pd.MultiIndex.from_arrays([pd.RangeIndex(len(X)), X.index])
+            y.index = pd.MultiIndex.from_arrays([pd.RangeIndex(len(y)), y.index])
+
+        # Remove duplicates within same (date, code) pair
         X = X[~X.index.duplicated(keep="last")]
         y = y[~y.index.duplicated(keep="last")]
 
@@ -288,9 +283,7 @@ class WalkForwardValidator:
 
         return X, y
 
-    def _calculate_ic(
-        self, predictions: np.ndarray, actual_returns: np.ndarray
-    ) -> float:
+    def _calculate_ic(self, predictions: np.ndarray, actual_returns: np.ndarray) -> float:
         """计算信息系数（IC）。"""
         from scipy.stats import spearmanr
 
@@ -307,3 +300,39 @@ class WalkForwardValidator:
             return float(ic) if not np.isnan(ic) else 0.0
         except Exception:
             return 0.0
+
+
+@dataclass(frozen=True)
+class WalkForwardConfig:
+    """Enhanced walk-forward configuration: 24m train, 6m test, monthly roll."""
+
+    train_months: int = 24
+    test_months: int = 6
+    step_months: int = 1
+    purge_days: int = 5
+    embargo_days: int = 10
+
+    @property
+    def train_size(self) -> int:
+        return self.train_months * 20
+
+    @property
+    def test_size(self) -> int:
+        return self.test_months * 20
+
+    @property
+    def step_size(self) -> int:
+        return self.step_months * 20
+
+
+def create_default_wf_validator(model, feature_extractor, config=None):
+    """Create a WalkForwardValidator with report-recommended settings."""
+    cfg = config or WalkForwardConfig()
+    return WalkForwardValidator(
+        model=model,
+        feature_extractor=feature_extractor,
+        train_size=cfg.train_size,
+        test_size=cfg.test_size,
+        step_size=cfg.step_size,
+        purge_days=cfg.purge_days,
+    )

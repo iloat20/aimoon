@@ -1,0 +1,63 @@
+/* Special Weasyprint styling
+Thi sets up the layout of the PDF and adds some header and footer info */
+@page {
+  margin: 0.8cm 0.7cm;
+
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    color: #7d7d7d;
+  }
+
+  border-bottom: 1px solid #5d5d5d;
+  padding-bottom: 20pt;
+}
+
+/* General settings for the whole document */
+* {
+  font-family: "Trebuchet MS", Helvetica, sans-serif;
+  font-size: 12px; /* All em measurements are relative to this */
+  line-height: 13px;
+  padding: 0;
+  margin: 0;
+}
+
+/* Header text styling */
+h1 {
+  page-break-before: auto !important;
+  margin-top: 7px;
+  margin-bottom: 7px;
+  font-size: 1.8em;
+}
+
+h2 {
+  margin-top: 7px;
+  margin-bottom: 7px;
+  font-size: 1.5em;
+}
+
+/* Create a breakpage */
+.page {
+  page-break-after: always !important;
+}
+
+/* Sets the footer styling */
+.page > .footer {
+  border-top: 0.5px solid #5d5d5d;
+  position: absolute;
+  bottom: -20px;
+  width: 100%;
+}
+
+p.comment {
+  font-size: 0.5em;
+  padding: 0 0.15em;
+}
+
+p.centered-text {
+    text-align: center;
+}
+
+div.list ul {
+  list-style-type: circle;
+  margin: 5px 10px;
+}

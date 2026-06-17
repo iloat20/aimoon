@@ -56,7 +56,3 @@ def _get_float(row, key: str) -> float:
         return float(val) if val is not None and val == val else 0.0
     except (TypeError, ValueError):
         return 0.0
-
-
-
-

@@ -1,0 +1,25 @@
+{
+  "company_name": "CERN Pension Fund",
+  "bloomberg": {
+    "host": "localhost",
+    "port": 8194
+  },
+  "input_directory": "input",
+  "logo_path": "input/images/cern_logo.png",
+  "output_directory": "output",
+  "logs_directory": "logs",
+  "smtp": {
+    "host": "smtp.cern.ch",
+    "port": 587,
+    "domain": "CERN",
+    "tls": true
+  },
+  "haver_path": "XXX",
+  "hapi_credentials": {
+    "client_id": "XXX",
+    "name":"ctadatafeed",
+    "scopes":["eap","beapData","reportingapi"],
+    "expiration_date": "XXX",
+    "created_date": "XXX"
+  }
+}

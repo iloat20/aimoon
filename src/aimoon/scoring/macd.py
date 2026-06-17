@@ -17,4 +17,3 @@ def score_macd(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> list[
     else:
         signals.append(Signal("macd_below_zero", "MACD零轴下方", -1, category="reversal"))
     return signals
-

@@ -10,38 +10,25 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_019"
 
 __alpha_meta__ = {
-    'id': 'alpha101_019',
-    'nickname': 'Kakushadze Alpha #19',
-    'theme': ['momentum'],
-    'formula_latex': '(-1*sign((close-delay(close,7))+delta(close,7))) * (1+rank(1+sum(returns,250)))',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 250,
-    'notes': 'Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.',
+    "id": "alpha101_019",
+    "nickname": "Kakushadze Alpha #19",
+    "theme": ["momentum"],
+    "formula_latex": "(-1*sign((close-delay(close,7))+delta(close,7))) * (1+rank(1+sum(returns,250)))",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 250,
+    "notes": "Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.",
 }
 
 
@@ -61,10 +48,11 @@ def compute(panel: dict) -> pd.DataFrame:
     """Compute the alpha on the OHLCV+ panel and return a wide DataFrame."""
     close = panel["close"]
 
-
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum
     delay = _delay
-    out = (-1.0 * np.sign((close - delay(close, 7)) + delta(close, 7))) * (1.0 + rank(1.0 + rolling_sum(returns, 250)))
+    out = (-1.0 * np.sign((close - delay(close, 7)) + delta(close, 7))) * (
+        1.0 + rank(1.0 + rolling_sum(returns, 250))
+    )
     return out

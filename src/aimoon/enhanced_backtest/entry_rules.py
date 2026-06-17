@@ -54,8 +54,14 @@ def phase4_open_replacements(
     recent_exits = recent_exits or {}
     stop_loss_count = stop_loss_count or {}
 
+    # 当前 bar 的入场信号基于上一个交易日的评分（避免使用当日未完结数据）
+    # 首 bar 时 prev_date 为 None，使用 bar_date 作为回退（评分窗口只看 [:idx+1]）
     alpha_query_date = prev_date if prev_date is not None else bar_date
-    alpha_sigs = engine._get_alpha_signals_for_date(alpha_signals, alpha_query_date) if alpha_signals else None
+    alpha_sigs = (
+        engine._get_alpha_signals_for_date(alpha_signals, alpha_query_date)
+        if alpha_signals
+        else None
+    )
     sector_exposure: dict[str, float] = {}
     for pos in positions.values():
         sec = pos.sector if pos.sector else ""
@@ -70,7 +76,8 @@ def phase4_open_replacements(
         sorted_by_ml = sorted(ml_sigs.items(), key=lambda x: x[1], reverse=True)
         candidate_codes = [code for code, _ in sorted_by_ml[:30]]
     else:
-        candidate_codes = list(klines.keys())
+        # 无 ML 预筛选时限制候选池，避免对全部股票评分（可数千只）
+        candidate_codes = list(klines.keys())[:50]
 
     for code in candidate_codes:
         df = klines.get(code)
@@ -106,10 +113,40 @@ def phase4_open_replacements(
         except (IndexError, KeyError):
             pass
 
+        # ── 核心趋势过滤器：强制均线多头排列方可开仓 ──
+        try:
+            if len(window) >= 60:
+                close_s = window["close"].dropna()
+                ma20 = close_s.rolling(20).mean()
+                ma60 = close_s.rolling(60).mean()
+                last_close = close_s.iloc[-1]
+                last_ma20 = ma20.iloc[-1]
+                last_ma60 = ma60.iloc[-1]
+                if pd.isna(last_ma60) or pd.isna(last_ma20):
+                    # 历史不足以计算MA60，放行
+                    pass
+                elif last_close < last_ma60 or last_ma20 < last_ma60:
+                    # 价格 < MA60 或 MA20 < MA60 → 空头排列，禁止开仓
+                    logger.debug(
+                        "Trend filter blocked %s: close=%.2f<MA60=%.2f or MA20=%.2f<MA60=%.2f",
+                        code,
+                        last_close,
+                        last_ma60,
+                        last_ma20,
+                        last_ma60,
+                    )
+                    continue
+        except (IndexError, KeyError, ValueError):
+            pass
+
         score = engine._score_stock(
-            code, names.get(code, code), window,
-            ctx=sector_ctx, alpha_signals=alpha_sigs,
-            ml_scores=ml_sigs, regime=current_regime,
+            code,
+            names.get(code, code),
+            window,
+            ctx=sector_ctx,
+            alpha_signals=alpha_sigs,
+            ml_scores=ml_sigs,
+            regime=current_regime,
         )
         if score is not None and score >= effective_threshold:
             scored_candidates.append((code, names.get(code, code), score))
@@ -128,7 +165,9 @@ def phase4_open_replacements(
             rocs: dict[int, float] = {}
             for period in [5, 10, 20]:
                 if len(close) > period and close.iloc[-period - 1] > 0:
-                    rocs[period] = float((close.iloc[-1] - close.iloc[-period - 1]) / close.iloc[-period - 1] * 100)
+                    rocs[period] = float(
+                        (close.iloc[-1] - close.iloc[-period - 1]) / close.iloc[-period - 1] * 100
+                    )
             if rocs:
                 roc_data[code] = rocs
         for period in [5, 10, 20]:
@@ -191,18 +230,26 @@ def phase4_open_replacements(
             scores[code] += bonus
 
     if scores:
-        historical_trades = [t for t in trades if pd.Timestamp(t.entry_date) < pd.Timestamp(bar_date)]
+        historical_trades = [
+            t for t in trades if pd.Timestamp(t.entry_date) < pd.Timestamp(bar_date)
+        ]
         weights = compute_position_weights(
-            trades=historical_trades, max_positions=effective_positions,
-            klines=klines, scores=scores, use_kelly=engine.use_kelly, regime=current_regime,
+            trades=historical_trades,
+            max_positions=effective_positions,
+            klines=klines,
+            scores=scores,
+            use_kelly=engine.use_kelly,
+            regime=current_regime,
         )
+        # 加权仓位分配：按排名分配，第1名40%、第2名30%、第3-4名各15%
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        rank_weights = [0.40, 0.30, 0.15, 0.15]
         slots = int(effective_positions) - len(positions)
-        for code, score in ranked:
+        for idx, (code, score) in enumerate(ranked):
             if slots <= 0:
                 break
             sector = sector_map.get(code, "")
-            weight = weights.get(code, 1.0 / effective_positions)
+            weight = rank_weights[idx] if idx < 4 else weights.get(code, 1.0 / effective_positions)
             if sector:
                 cur_sec = sector_exposure.get(sector, 0.0)
                 if cur_sec + weight > engine.max_sector_pct:
@@ -210,7 +257,10 @@ def phase4_open_replacements(
                 sector_exposure[sector] = cur_sec + weight
 
             pending_entries[code] = {
-                "name": names.get(code, code), "weight": weight,
-                "sector": sector, "score": score, "signal_date": bar_date,
+                "name": names.get(code, code),
+                "weight": weight,
+                "sector": sector,
+                "score": score,
+                "signal_date": bar_date,
             }
             slots -= 1

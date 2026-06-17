@@ -8,9 +8,7 @@ from aimoon.models import ScoredStock, Signal
 from aimoon.scoring import hybrid_score
 
 
-def compute_rps(
-    results: list[ScoredStock], tails: dict[str, pd.DataFrame]
-) -> list[ScoredStock]:
+def compute_rps(results: list[ScoredStock], tails: dict[str, pd.DataFrame]) -> list[ScoredStock]:
     """计算 RPS 并返回新的 ScoredStock 列表（不可变更新）。"""
     if not results:
         return results
@@ -36,9 +34,7 @@ def compute_rps(
         }
     updated: list[ScoredStock] = []
     for r in results:
-        rps = {
-            key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]
-        }
+        rps = {key: rank_maps[key][r.code] for key in rank_maps if r.code in rank_maps[key]}
         rps_red = sum(1 for v in rps.values() if v > 90)
         rps_signals = list(r.signals)
         if rps_red >= 3:

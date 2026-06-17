@@ -9,35 +9,24 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
     ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_004",
-    "theme": ['momentum', 'volume'],
-    "formula_latex": '((((SUM(CLOSE,8)/8)+STD(CLOSE,8))<(SUM(CLOSE,2)/2))?(-1):((SUM(CLOSE,2)/2<(SUM(CLOSE,8)/8-STD(CLOSE,8)))?1:((1<(VOLUME/MEAN(VOLUME,20)))?1:(-1))))',
-    "columns_required": ['close', 'volume'],
+    "theme": ["momentum", "volume"],
+    "formula_latex": "((((SUM(CLOSE,8)/8)+STD(CLOSE,8))<(SUM(CLOSE,2)/2))?(-1):((SUM(CLOSE,2)/2<(SUM(CLOSE,8)/8-STD(CLOSE,8)))?1:((1<(VOLUME/MEAN(VOLUME,20)))?1:(-1))))",
+    "columns_required": ["close", "volume"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 8,
     "min_warmup_bars": 20,
-    "notes": 'Breakout signal: short-MA vs long-MA +/- 1 std, volume-relative tiebreaker. Output in {-1, +1}.',
+    "notes": "Breakout signal: short-MA vs long-MA +/- 1 std, volume-relative tiebreaker. Output in {-1, +1}.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     c = panel["close"]
@@ -51,7 +40,5 @@ def compute(panel: dict) -> pd.DataFrame:
     cond_top = upper < ma2
     cond_bot = ma2 < lower
     vol_strong = (v / vmean20) > 1.0
-    res = np.where(cond_top, -1.0,
-                   np.where(cond_bot, 1.0,
-                            np.where(vol_strong, 1.0, -1.0)))
+    res = np.where(cond_top, -1.0, np.where(cond_bot, 1.0, np.where(vol_strong, 1.0, -1.0)))
     return pd.DataFrame(res, index=c.index, columns=c.columns).astype(float)

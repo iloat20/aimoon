@@ -153,7 +153,21 @@ def select_factors_by_icir(
         return _select_factor_subset(registry, max_count)
 
     try:
-        future_ret = close.pct_change(5).shift(-5)
+        # Use open-to-open forward returns to match label_engine.generate_labels
+        # (labels use open[T+1] to open[T+1+forward_days]).
+        # Original close.pct_change().shift(-5) computed close-to-close,
+        # creating a basis mismatch between IC selection and training labels.
+        open_panel = panel.get("open")
+        if open_panel is not None:
+            future_ret = open_panel.pct_change(5).shift(-5)
+        else:
+            # Fallback: close-to-close收益与label的open-to-open不一致
+            # 仅影响ICIR排序（相对顺序），不直接影响模型训练
+            logger.warning(
+                "ICIR selection: open panel not available, falling back to close-to-close "
+                "returns (basis mismatch with training labels)"
+            )
+            future_ret = close.pct_change(5).shift(-5)
         n_days = min(90, len(close) - 10)
         if n_days < 30:
             return _select_factor_subset(registry, max_count)
@@ -186,7 +200,7 @@ def select_factors_by_icir(
                     n = len(f_rank)
                     if n < 3:
                         continue
-                    ic = 1.0 - 6.0 * np.sum((f_rank - r_rank) ** 2) / (n * (n ** 2 - 1))
+                    ic = 1.0 - 6.0 * np.sum((f_rank - r_rank) ** 2) / (n * (n**2 - 1))
                     ic_values.append(ic)
 
                 if len(ic_values) < 10:
@@ -208,7 +222,10 @@ def select_factors_by_icir(
         result = sorted(selected)[:max_count]
         logger.info(
             "ICIR factor selection: %d -> %d (IC>%.3f, ICIR>%.3f)",
-            len(all_ids), len(result), icir_min, icir_threshold,
+            len(all_ids),
+            len(result),
+            icir_min,
+            icir_threshold,
         )
         return result
 
@@ -322,12 +339,39 @@ def _neutralize_zoo_batch(
     return neutralized
 
 
+def orthogonalize_features(features, variance_threshold=0.95):
+    """Orthogonalize features via SVD to remove factor collinearity."""
+    import numpy as np
+
+    if features.shape[1] < 3:
+        return features
+    X = features.fillna(0).values
+    n_stocks, n_features = X.shape
+    if n_stocks < n_features:
+        return features
+    try:
+        U, S, Vt = np.linalg.svd(X, full_matrices=False)
+        explained_var = (S**2) / (S**2).sum()
+        cumvar = np.cumsum(explained_var)
+        n_components = int(np.searchsorted(cumvar, variance_threshold) + 1)
+        n_components = max(2, min(n_components, n_features))
+        X_reduced = U[:, :n_components] * S[:n_components]
+        cols = ["ortho_" + str(i) for i in range(n_components)]
+        result = pd.DataFrame(X_reduced, index=features.index, columns=cols)
+        logger.info("SVD orthogonalization: %d -> %d components", n_features, n_components)
+        return result
+    except Exception as e:
+        logger.warning("SVD orthogonalization failed: %s", e)
+        return features
+
+
 def extract_features(
     panel: dict[str, pd.DataFrame],
     registry: Registry | None = None,
     target_date: pd.Timestamp | None = None,
     sector_map: dict[str, str] | None = None,
     zoo_factor_ids: list[str] | None = None,
+    feature_medians: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Extract feature matrix for ML training/inference.
 
@@ -341,6 +385,9 @@ def extract_features(
     zoo_factor_ids : list[str] | None
         If provided, use these exact factor IDs (deterministic).
         If None, falls back to random subset selection.
+    feature_medians : pd.Series | None
+        Training-time feature medians for NaN filling during inference.
+        When None (training), uses cross-sectional median (safe).
     """
     if panel is None or "close" not in panel:
         return pd.DataFrame()
@@ -373,7 +420,12 @@ def extract_features(
                     feature_dicts[code][f"tech_return_{suffix}"] = float(recent_ret.mean())
 
     result = pd.DataFrame.from_dict(feature_dicts, orient="index")
-    result = result.fillna(result.median())
+    # 推理时使用训练中位数填充NaN（防止推理截面中位数偏差）
+    if feature_medians is not None:
+        medians = feature_medians.reindex(result.columns, fill_value=0.0)
+        result = result.fillna(medians)
+    else:
+        result = result.fillna(result.median())
 
     # 2. Alpha360 time-series features
     try:
@@ -384,14 +436,31 @@ def extract_features(
     except Exception as e:
         logger.warning("Alpha360 feature extraction failed: %s", e)
 
+    # 2b. A-share robust time-series features (winsorized, asymmetric vol, chip, regime)
+    try:
+        from aimoon.ml.alpha360_robust import extract_robust_features
+
+        robust = extract_robust_features(panel, target_date=target_date)
+        result = _merge_feature_block(result, robust, "RobustFeatures")
+    except Exception as e:
+        logger.warning("Robust feature extraction failed: %s", e)
+
     # 3. Alpha Zoo cross-sectional factors
     if registry is not None and target_date is not None:
         try:
             if zoo_factor_ids is not None:
-                zoo_features = _extract_zoo_factors_with_ids(panel, registry, target_date, zoo_factor_ids)
+                zoo_features = _extract_zoo_factors_with_ids(
+                    panel, registry, target_date, zoo_factor_ids
+                )
             else:
                 zoo_features = _extract_zoo_factors(panel, registry, target_date)
             if not zoo_features.empty:
+                if sector_map and zoo_features.shape[1] > 10:
+                    zoo_features = _neutralize_zoo_batch(
+                        zoo_features, panel, target_date, sector_map
+                    )
+                if zoo_features.shape[1] > 20:
+                    zoo_features = orthogonalize_features(zoo_features, variance_threshold=0.95)
                 result = _merge_feature_block(result, zoo_features, "ZooFactors")
         except Exception as e:
             logger.debug("Zoo factor extraction failed: %s", e)

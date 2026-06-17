@@ -1,6 +1,7 @@
 """Tests for screener"""
 import numpy as np
 import pandas as pd
+
 from aimoon.models import ScoredStock
 from aimoon.screener import screen_stock
 

@@ -1,4 +1,5 @@
 """输出格式化 — Rich 表格 + CSV + Markdown"""
+
 from __future__ import annotations
 
 import os
@@ -19,12 +20,12 @@ if TYPE_CHECKING:
     from aimoon.factor_eval import FactorEval
 
 
-
 def _color_value(v: float, invert: bool = False) -> str:
     """Return 'green' or 'red' Rich color tag based on value sign."""
     if invert:
         return "green" if v < 0 else "red"
     return "green" if v > 0 else "red"
+
 
 class OutputFormatter:
     def __init__(self, cfg: Config | None = None) -> None:
@@ -47,7 +48,11 @@ class OutputFormatter:
         table.add_column("Conf.", width=6)
         for i, r in enumerate(results, 1):
             ps = "green" if r.pct_change >= 0 else "red"
-            ts = "bold green" if r.total_score >= 65 else ("yellow" if r.total_score >= 35 else "red")
+            ts = (
+                "bold green"
+                if r.total_score >= 65
+                else ("yellow" if r.total_score >= 35 else "red")
+            )
             sug, conf = get_suggestion(r.total_score)
             ss = "bold green" if "买" in sug else ("red" if "卖" in sug else "dim")
             # Turtle signal
@@ -65,11 +70,15 @@ class OutputFormatter:
             else:
                 turtle_str = "[dim]─[/dim]"
             table.add_row(
-                str(i), r.code, r.name, f"{r.price:.2f}",
+                str(i),
+                r.code,
+                r.name,
+                f"{r.price:.2f}",
                 f"[{ps}]{r.pct_change:+.2f}[/{ps}]",
                 f"[{ts}]{r.total_score}[/{ts}]",
                 turtle_str,
-                f"[{ss}]{sug}[/{ss}]", conf,
+                f"[{ss}]{sug}[/{ss}]",
+                conf,
             )
         self.console.print(table)
         self.console.print(f"\n[dim]Total: {len(results)} stocks[/dim]")
@@ -94,14 +103,23 @@ class OutputFormatter:
         table.add_column("每单位", justify="right", width=8)
 
         for code, plan in turtle_plans.items():
-            sig_color = "bold green" if plan.signal_type == "buy" else ("red" if plan.signal_type == "close" else "dim")
-            sig_text = "▲买入" if plan.signal_type == "buy" else ("▼卖出" if plan.signal_type == "close" else "─")
+            sig_color = (
+                "bold green"
+                if plan.signal_type == "buy"
+                else ("red" if plan.signal_type == "close" else "dim")
+            )
+            sig_text = (
+                "▲买入"
+                if plan.signal_type == "buy"
+                else ("▼卖出" if plan.signal_type == "close" else "─")
+            )
 
             add_str = ",".join(f"{p:.1f}" for p in plan.add_prices) if plan.add_prices else "-"
             chandelier_str = f"{plan.chandelier_stop:.2f}" if plan.chandelier_stop > 0 else "-"
 
             table.add_row(
-                plan.code, plan.name,
+                plan.code,
+                plan.name,
                 f"[{sig_color}]{sig_text}[/{sig_color}]",
                 f"{plan.current_price:.2f}",
                 f"{plan.entry_price:.2f}",
@@ -124,19 +142,30 @@ class OutputFormatter:
         rows = []
         for r in results:
             sug, conf = get_suggestion(r.total_score)
-            rows.append({
-                "code": r.code, "name": r.name, "price": r.price,
-                "pct_change": r.pct_change, "turnover": r.turnover,
-                "pe": r.pe, "pb": r.pb, "market_cap_yi": r.market_cap_yi,
-                "total_score": r.total_score, "suggestion": sug, "confidence": conf,
-                **r.rps,
-            })
+            rows.append(
+                {
+                    "code": r.code,
+                    "name": r.name,
+                    "price": r.price,
+                    "pct_change": r.pct_change,
+                    "turnover": r.turnover,
+                    "pe": r.pe,
+                    "pb": r.pb,
+                    "market_cap_yi": r.market_cap_yi,
+                    "total_score": r.total_score,
+                    "suggestion": sug,
+                    "confidence": conf,
+                    **r.rps,
+                }
+            )
         pd.DataFrame(rows).to_csv(filepath, index=False, encoding="utf-8-sig")
         return filepath
 
-    def export_markdown(self, results: list[ScoredStock], filename: str | None = None,
-                        regime: str | None = None) -> str:
+    def export_markdown(
+        self, results: list[ScoredStock], filename: str | None = None, regime: str | None = None
+    ) -> str:
         from aimoon.scoring import hybrid_score
+
         if not filename:
             filename = f"aimoon_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         os.makedirs(self.cfg.output_dir, exist_ok=True)
@@ -156,8 +185,10 @@ class OutputFormatter:
         if top1:
             top1_score = hybrid_score(list(top1.signals))
             lines += [
-                "## 交易建议", "",
-                "### 首选买入", "",
+                "## 交易建议",
+                "",
+                "### 首选买入",
+                "",
                 f"**{top1.code} {top1.name}** — 价格 {top1.price:.2f}，分类评分 {top1_score}",
                 "",
                 f"- 止损：{self.cfg.stop_loss_pct:.0%}  止盈：{self.cfg.take_profit_pct:.0%}  持仓上限：{self.cfg.hold_days}天",
@@ -167,9 +198,12 @@ class OutputFormatter:
         # Strong buy candidates (top 5)
         strong_buy = [s for s in ranked if hybrid_score(list(s.signals)) >= 15][:5]
         if len(strong_buy) > 1:
-            lines += ["### 强势候选（前5）", "",
-                       "| 代码 | 名称 | 价格 | 分类评分 | 建议 |",
-                       "|------|------|------|----------|------|"]
+            lines += [
+                "### 强势候选（前5）",
+                "",
+                "| 代码 | 名称 | 价格 | 分类评分 | 建议 |",
+                "|------|------|------|----------|------|",
+            ]
             for s in strong_buy:
                 cs = hybrid_score(list(s.signals))
                 sug, conf = get_suggestion(s.total_score)
@@ -177,14 +211,20 @@ class OutputFormatter:
             lines.append("")
 
         # Full ranked table
-        lines += ["## 完整筛选结果", "",
-                  f"共筛选 {len(ranked)} 只股票（按分类评分排序）", "",
-                  "| No. | Code | Name | Price | CapScore | RawScore | Suggestion |",
-                  "|-----|------|------|-------|----------|----------|------------|"]
+        lines += [
+            "## 完整筛选结果",
+            "",
+            f"共筛选 {len(ranked)} 只股票（按分类评分排序）",
+            "",
+            "| No. | Code | Name | Price | CapScore | RawScore | Suggestion |",
+            "|-----|------|------|-------|----------|----------|------------|",
+        ]
         for i, r in enumerate(ranked, 1):
             sug, conf = get_suggestion(r.total_score)
             cs = hybrid_score(list(r.signals))
-            lines.append(f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |")
+            lines.append(
+                f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |"
+            )
 
         lines += ["", f"---\n\n*报告生成时间: {now}*"]
         with open(filepath, "w", encoding="utf-8") as f:
@@ -211,7 +251,11 @@ class OutputFormatter:
         for e in evals:
             ic_color = "green" if e.mean_ic > 0.03 else ("yellow" if e.mean_ic > 0 else "red")
             icir_color = "green" if abs(e.icir) > 0.5 else "dim"
-            sig = "***" if abs(e.mean_ic) > 0.05 and abs(e.icir) > 0.5 else ("**" if abs(e.mean_ic) > 0.03 else ("*" if abs(e.mean_ic) > 0.02 else ""))
+            sig = (
+                "***"
+                if abs(e.mean_ic) > 0.05 and abs(e.icir) > 0.5
+                else ("**" if abs(e.mean_ic) > 0.03 else ("*" if abs(e.mean_ic) > 0.02 else ""))
+            )
             tiers = []
             for t in e.tier_returns:
                 color = "green" if t > 0 else "red"
@@ -234,12 +278,85 @@ class OutputFormatter:
         table = Table(title="Portfolio Backtest Results")
         table.add_column("Metric", style="cyan", width=20)
         table.add_column("Value", justify="right", width=12)
+        metrics = {
+            "Total Return": f"{getattr(result, 'total_return', 0):+.2%}",
+            "Sharpe": f"{getattr(result, 'sharpe', 0):.2f}",
+            "Max Drawdown": f"{getattr(result, 'max_drawdown', 0):.2%}",
+            "Win Rate": f"{getattr(result, 'win_rate', 0):.1%}",
+        }
+        for k, v in metrics.items():
+            table.add_row(k, v)
+        self.console.print(table)
+
+    def display_qf_backtest(self, result) -> None:
+        """显示 QF-Lib 事件驱动回测报告。"""
+        table = Table(title="QF-Lib Event-Driven Backtest")
+        table.add_column("Metric", style="cyan", width=20)
+        table.add_column("Value", justify="right", width=12)
+
+        metrics = {
+            "Total Return": f"{getattr(result, 'total_return_pct', 0):+.2f}%",
+            "Annual Return": f"{getattr(result, 'annual_return_pct', 0):+.2f}%",
+            "Sharpe": f"{getattr(result, 'sharpe_ratio', 0):.2f}",
+            "Sortino": f"{getattr(result, 'sortino_ratio', 0):.2f}",
+            "Max Drawdown": f"{getattr(result, 'max_drawdown_pct', 0):.2f}%",
+            "Win Rate": f"{getattr(result, 'win_rate', 0):.1f}%",
+            "Profit Factor": f"{getattr(result, 'profit_factor', 0):.2f}",
+            "Avg Win": f"{getattr(result, 'avg_win_pct', 0):+.2f}%",
+            "Avg Loss": f"{getattr(result, 'avg_loss_pct', 0):+.2f}%",
+            "Trade Count": f"{getattr(result, 'trade_count', 0)}",
+            "Calmar Ratio": f"{getattr(result, 'calmar_ratio', 0):.2f}",
+        }
+        # IC tracking
+        ic_mean = getattr(result, "ic_mean", 0.0)
+        ic_std = getattr(result, "ic_std", 0.0)
+        ic_pos = getattr(result, "ic_positive_pct", 0.0)
+        if ic_mean != 0.0 or ic_std != 0.0:
+            metrics["IC Mean"] = f"{ic_mean:.4f}"
+            metrics["IC Std"] = f"{ic_std:.4f}"
+            metrics["IC > 0 %"] = f"{ic_pos:.1f}%"
+            icir = ic_mean / ic_std if ic_std > 1e-10 else 0.0
+            metrics["ICIR"] = f"{icir:.2f}"
+        for k, v in metrics.items():
+            table.add_row(k, v)
+        self.console.print(table)
 
     def display_enhanced_backtest(self, result) -> None:
         """显示增强回测报告（Sortino/盈亏比/基准对比）。"""
         table = Table(title="Enhanced Portfolio Backtest")
         table.add_column("Metric", style="cyan", width=20)
         table.add_column("Value", justify="right", width=12)
+        # IC 指标（评分系统的预测力评估）
+        ic_series = getattr(result, "ic_series", ())
+        avg_ic = sum(ic_series) / len(ic_series) if ic_series else 0.0
+        icir = (
+            avg_ic / (sum((x - avg_ic) ** 2 for x in ic_series) / max(len(ic_series) - 1, 1)) ** 0.5
+            if len(ic_series) > 1
+            else 0.0
+        )
+
+        metrics = {
+            "Total Return": f"{getattr(result, 'total_return', 0):+.2%}",
+            "Annual Return": f"{getattr(result, 'annual_return', 0):+.2%}",
+            "Sharpe": f"{getattr(result, 'sharpe_ratio', 0):.2f}",
+            "Sortino": f"{getattr(result, 'sortino_ratio', 0):.2f}",
+            "Max Drawdown": f"{getattr(result, 'max_drawdown', 0):.2%}",
+            "Win Rate": f"{getattr(result, 'win_rate', 0):.1%}",
+            "Profit Factor": f"{getattr(result, 'profit_factor', 0):.2f}",
+            "Avg Win": f"{getattr(result, 'avg_win', 0):+.2%}",
+            "Avg Loss": f"{getattr(result, 'avg_loss', 0):+.2%}",
+            "Trade Count": f"{getattr(result, 'trade_count', 0)}",
+            "Avg Hold Days": f"{getattr(result, 'avg_hold_days', 0):.0f}",
+        }
+        # 预测力指标（仅当有 IC 数据时显示）
+        if ic_series:
+            ic_color = "green" if avg_ic > 0.03 else ("yellow" if avg_ic > 0 else "red")
+            metrics["Avg IC (Pred)"] = f"[{ic_color}]{avg_ic:+.4f}[/{ic_color}]"
+            metrics["ICIR (Pred)"] = f"[{ic_color}]{icir:+.2f}[/{ic_color}]"
+            metrics["IC Samples"] = str(len(ic_series))
+        for k, v in metrics.items():
+            table.add_row(k, v)
+        self.console.print(table)
 
     def display_optimize(self, results) -> None:
         """显示参数优化结果。"""
@@ -260,7 +377,8 @@ class OutputFormatter:
             sc = "green" if r.sharpe > 0 else "red"
             rc = "green" if r.total_return > 0 else "red"
             table.add_row(
-                str(i), params_str,
+                str(i),
+                params_str,
                 f"[{sc}]{r.sharpe:+.2f}[/{sc}]",
                 f"{r.sortino:+.2f}",
                 f"[{rc}]{r.total_return:+.2f}[/{rc}]",
@@ -422,13 +540,21 @@ class OutputFormatter:
             "|--------|----------|------|",
         ]
         if result.win_rate < 0.45:
-            lines.append(f"| 胜率 {result.win_rate:.0%} | 提高入场阈值 | 胜率偏低，考虑提高 entry_threshold |")
+            lines.append(
+                f"| 胜率 {result.win_rate:.0%} | 提高入场阈值 | 胜率偏低，考虑提高 entry_threshold |"
+            )
         if result.max_drawdown > 15:
-            lines.append(f"| 回撤 {result.max_drawdown:.1f}% | 收紧止损 | 回撤偏大，考虑降低 stop_loss_pct |")
+            lines.append(
+                f"| 回撤 {result.max_drawdown:.1f}% | 收紧止损 | 回撤偏大，考虑降低 stop_loss_pct |"
+            )
         if result.profit_factor < 1.5:
-            lines.append(f"| 盈亏比 {result.profit_factor:.2f} | 调整止盈/止损 | 盈亏比偏低，考虑扩大 take_profit 或收紧 stop_loss |")
+            lines.append(
+                f"| 盈亏比 {result.profit_factor:.2f} | 调整止盈/止损 | 盈亏比偏低，考虑扩大 take_profit 或收紧 stop_loss |"
+            )
         if result.sortino_ratio < 1.0:
-            lines.append(f"| Sortino {result.sortino_ratio:.2f} | 减少下行风险 | Sortino 偏低，下行波动较大 |")
+            lines.append(
+                f"| Sortino {result.sortino_ratio:.2f} | 减少下行风险 | Sortino 偏低，下行波动较大 |"
+            )
         if result.win_rate >= 0.55 and result.profit_factor >= 2.0:
             lines.append("| - | 参数较优 | 胜率>55%且盈亏比>2.0，当前参数组合表现良好 |")
 

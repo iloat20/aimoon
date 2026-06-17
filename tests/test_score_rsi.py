@@ -1,6 +1,7 @@
 """Tests for RSI scoring"""
 import numpy as np
 import pandas as pd
+
 from aimoon.indicators.technical import TechInd
 from aimoon.scoring.rsi import score_rsi
 

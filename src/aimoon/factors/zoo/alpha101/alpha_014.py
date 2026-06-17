@@ -6,42 +6,29 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 14.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_014"
 
 __alpha_meta__ = {
-    'id': 'alpha101_014',
-    'nickname': 'Kakushadze Alpha #14',
-    'theme': ['volume', 'momentum'],
-    'formula_latex': '(-1*rank(delta(returns,3))) * correlation(open, volume, 10)',
-    'columns_required': ['open', 'close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 10,
-    'notes': '',
+    "id": "alpha101_014",
+    "nickname": "Kakushadze Alpha #14",
+    "theme": ["volume", "momentum"],
+    "formula_latex": "(-1*rank(delta(returns,3))) * correlation(open, volume, 10)",
+    "columns_required": ["open", "close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 10,
+    "notes": "",
 }
 
 
@@ -51,7 +38,7 @@ def compute(panel: dict) -> pd.DataFrame:
     open_ = panel["open"]
     volume = panel["volume"]
 
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     # Helper aliases (local closures keep the file standalone & purity-safe).
     out = (-1.0 * rank(delta(returns, 3))) * ts_corr(open_, volume, 10)
     return out

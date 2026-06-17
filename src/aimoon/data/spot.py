@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 import time
+import warnings
 from pathlib import Path
 
 import httpx
@@ -21,15 +22,11 @@ _DEFAULT_HEADERS = {
 _SPOT_CACHE_TTL = 300  # 5 minutes — real-time data must be fresh
 
 
-def _em_get(
-    url: str, params: dict, timeout: int = 15, max_retries: int = 3
-) -> httpx.Response:
+def _em_get(url: str, params: dict, timeout: int = 15, max_retries: int = 3) -> httpx.Response:
     last_exc = None
     for attempt in range(max_retries):
         try:
-            r = httpx.get(
-                url, params=params, headers=_DEFAULT_HEADERS, timeout=timeout
-            )
+            r = httpx.get(url, params=params, headers=_DEFAULT_HEADERS, timeout=timeout)
             r.raise_for_status()
             return r
         except (httpx.HTTPError, ValueError) as exc:
@@ -39,9 +36,7 @@ def _em_get(
     raise last_exc  # type: ignore[misc]
 
 
-def _em_fetch_all_pages(
-    base_url: str, base_params: dict, timeout: int = 15
-) -> pd.DataFrame:
+def _em_fetch_all_pages(base_url: str, base_params: dict, timeout: int = 15) -> pd.DataFrame:
     r = _em_get(base_url, base_params, timeout=timeout)
     data = r.json()
     inner = data.get("data")
@@ -65,9 +60,7 @@ def _em_fetch_all_pages(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def get_spot(
-    cfg: Config, cache_dir: Path | None = None
-) -> Result[pd.DataFrame, str]:
+def get_spot(cfg: Config, cache_dir: Path | None = None) -> Result[pd.DataFrame, str]:
     """从东财获取全市场实时行情。磁盘缓存 5 分钟。"""
     cache_dir = cache_dir or Path(cfg.cache_dir)
     spot_file = cache_dir / "_spot.json"
@@ -75,7 +68,9 @@ def get_spot(
         age = time.time() - spot_file.stat().st_mtime
         if age < _SPOT_CACHE_TTL:
             try:
-                df = pd.read_json(spot_file, orient="records", lines=True)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Could not infer format")
+                    df = pd.read_json(spot_file, orient="records", lines=True)
                 return Ok(df)
             except Exception:
                 pass
@@ -154,9 +149,7 @@ _RENAME_MAP = {
     "f37": "roe",
 }
 
-_FIELDS = (
-    "f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f26,f37"
-)
+_FIELDS = "f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f14,f15,f16,f17,f18,f20,f21,f23,f24,f25,f26,f37"
 
 
 def get_spot_for_codes(
@@ -165,10 +158,7 @@ def get_spot_for_codes(
     """批量获取指定股票的实时行情（每批 500 只，约 1 秒/批）。"""
     cache_dir = cache_dir or Path(cfg.cache_dir)
     cache_file = cache_dir / "_spot_pool.json"
-    if (
-        cache_file.exists()
-        and (time.time() - cache_file.stat().st_mtime) < _SPOT_CACHE_TTL
-    ):
+    if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < _SPOT_CACHE_TTL:
         try:
             df = pd.read_json(cache_file, orient="records", lines=True)
             # 优化：确保 stock_code 是字符串类型，与 codes 集合匹配

@@ -76,9 +76,7 @@ def compute_shap_top20(
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X_val)
         mean_abs_shap = np.abs(shap_values).mean(axis=0)
-        ranking = sorted(
-            zip(feature_names, mean_abs_shap), key=lambda x: x[1], reverse=True
-        )
+        ranking = sorted(zip(feature_names, mean_abs_shap), key=lambda x: x[1], reverse=True)
         return {name: round(float(val), 6) for name, val in ranking[:top_k]}
     except ImportError:
         logger.debug("shap not installed, skipping SHAP importance")
@@ -176,8 +174,7 @@ def log_training_summary(
 ) -> None:
     """统一的训练完成日志。"""
     logger.info(
-        "%s trained: val_IC=%.04f, train_IC=%.04f, ICIR=%.04f, "
-        "%d samples x %d features, %.1fs",
+        "%s trained: val_IC=%.04f, train_IC=%.04f, ICIR=%.04f, " "%d samples x %d features, %.1fs",
         model_name,
         ic,
         ic_train,
@@ -309,9 +306,7 @@ def detect_and_fix_overfit(
     model = build_model_fn(num_rounds)
     model.fit(X_train, y_train, **fit_kwargs)
 
-    ic, ic_train, overfit_ratio = check_overfit(
-        predict_fn, X_train, y_train, X_val, y_val
-    )
+    ic, ic_train, overfit_ratio = check_overfit(predict_fn, X_train, y_train, X_val, y_val)
 
     if should_retrain_on_overfit(prev_model_used, overfit_ratio, model_name=model_name):
         model = build_model_fn(num_rounds)
@@ -360,7 +355,10 @@ def run_hyperopt(
     y_val = y.iloc[-val_size:]
 
     result = _run(
-        X_train, y_train, X_val, y_val,
+        X_train,
+        y_train,
+        X_val,
+        y_val,
         model_type=model_type,
         n_trials=n_trials,
         force=force,
@@ -439,6 +437,7 @@ def save_model_artifacts(
         filename=meta_filename,
     )
 
+
 def compute_spearmanr_safe(predictions: np.ndarray, actuals: np.ndarray) -> float:
     """Compute Spearman rank correlation, safely handling constant inputs.
 
@@ -457,3 +456,118 @@ def compute_spearmanr_safe(predictions: np.ndarray, actuals: np.ndarray) -> floa
         warnings.filterwarnings("ignore", message="An input array is constant")
         ic, _ = spearmanr(predictions, actuals)
     return float(ic) if not np.isnan(ic) else 0.0
+
+
+# ── EWC (Elastic Weight Consolidation) utilities ──────────────────────────
+
+
+def compute_fisher_diagonal(
+    model: Any,
+    X: pd.DataFrame,
+    feature_names: list[str],
+    n_samples: int = 200,
+) -> dict[str, float]:
+    """Estimate Fisher information diagonal for XGBoost model.
+
+    Uses a hybrid approach:
+    1. Gain importance as base Fisher proxy
+    2. Feature-bucket sensitivity analysis for calibration
+
+    Parameters
+    ----------
+    model : xgb.Booster
+        Trained model.
+    X : pd.DataFrame
+        Feature matrix for calibration.
+    feature_names : list[str]
+        Feature names.
+    n_samples : int
+        Max samples for sensitivity analysis.
+
+    Returns
+    -------
+    dict[str, float]
+        feature_name -> Fisher information value in [0.1, 1.0].
+    """
+    import xgboost as xgb
+
+    if len(X) > n_samples:
+        X = X.sample(n_samples, random_state=42)
+
+    # Step 1: Gain importance as base
+    try:
+        gain = model.get_score(importance_type="gain")
+    except Exception:
+        gain = {}
+
+    max_gain = max(gain.values()) if gain else 1.0
+    base_fisher: dict[str, float] = {
+        f: gain.get(f, 0.0) / max_gain if max_gain > 0 else 0.0 for f in feature_names
+    }
+
+    # Step 2: Sensitivity calibration via feature bucketing
+    try:
+        dmatrix = xgb.DMatrix(X[feature_names])
+        predictions = model.predict(dmatrix)
+    except Exception:
+        return {f: max(0.1, v) for f, v in base_fisher.items()}
+
+    sensitivity: dict[str, float] = {}
+    for i, fname in enumerate(feature_names):
+        try:
+            col_vals = X.iloc[:, i]
+            bins = pd.qcut(col_vals, q=10, duplicates="drop")
+            if bins.nunique() < 3:
+                sensitivity[fname] = base_fisher.get(fname, 0.5)
+                continue
+            bucket_preds = predictions.groupby(bins).mean()
+            sensitivity[fname] = float(bucket_preds.std() ** 2)
+        except (ValueError, IndexError, KeyError):
+            sensitivity[fname] = base_fisher.get(fname, 0.5)
+
+    # Step 3: Weighted fusion — 0.7 * sensitivity + 0.3 * gain
+    max_sens = max(sensitivity.values()) if sensitivity else 1.0
+    fused: dict[str, float] = {}
+    for fname in feature_names:
+        s = sensitivity.get(fname, 0.0) / max_sens if max_sens > 0 else 0.0
+        g = base_fisher.get(fname, 0.0)
+        fused[fname] = 0.7 * s + 0.3 * g
+
+    # Step 4: Normalize to [0.1, 1.0]
+    max_f = max(fused.values()) if fused else 1.0
+    min_f = min(fused.values()) if fused else 0.0
+    if max_f - min_f < 1e-10:
+        return {f: 1.0 for f in feature_names}
+    return {f: 0.1 + 0.9 * (v - min_f) / (max_f - min_f) for f, v in fused.items()}
+
+
+def compute_ewc_penalty(
+    model_b_gain: dict[str, float],
+    model_a_gain: dict[str, float],
+    fisher_info: dict[str, float],
+    lambda_ewc: float = 50.0,
+) -> float:
+    """Compute EWC penalty: L_ewc = lambda/2 * sum(F_i * (theta_i^B - theta_i^A)^2).
+
+    Parameters
+    ----------
+    model_b_gain : dict[str, float]
+        B model's normalized gain per feature.
+    model_a_gain : dict[str, float]
+        A model's normalized gain per feature.
+    fisher_info : dict[str, float]
+        Fisher information diagonal.
+    lambda_ewc : float
+        EWC regularization strength.
+
+    Returns
+    -------
+    float
+        EWC penalty value.
+    """
+    penalty = 0.0
+    for key in fisher_info:
+        if key in model_b_gain and key in model_a_gain:
+            diff = model_b_gain[key] - model_a_gain[key]
+            penalty += fisher_info[key] * diff * diff
+    return lambda_ewc / 2.0 * penalty

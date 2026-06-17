@@ -1,14 +1,14 @@
-
 """Risk management: position sizing, portfolio constraints, drawdown control."""
+
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
 class RiskLimits:
     """Portfolio-level risk constraints."""
+
     max_position_pct: float = 0.10
     max_sector_pct: float = 0.30
     max_total_positions: int = 20
@@ -20,6 +20,7 @@ class RiskLimits:
 @dataclass(frozen=True)
 class Position:
     """A single portfolio position."""
+
     code: str
     name: str
     weight: float
@@ -47,6 +48,7 @@ class Position:
 @dataclass
 class PortfolioState:
     """Current portfolio state for risk checks."""
+
     positions: dict = field(default_factory=dict)
     cash: float = 1.0
     peak_value: float = 1.0
@@ -94,6 +96,27 @@ def check_risk_limits(portfolio: PortfolioState, limits: RiskLimits) -> list:
         if pos.weight > limits.max_position_pct:
             violations.append(("max_position", code, pos.weight, limits.max_position_pct))
     for sector, exp in portfolio.sector_exposure().items():
+        if not sector:  # Skip empty sector (no sector data available)
+            continue
         if exp > limits.max_sector_pct:
             violations.append(("max_sector", sector, exp, limits.max_sector_pct))
     return violations
+
+
+def compute_risk_budget_scale(current_dd: float) -> float:
+    """Dynamic risk budget scale based on current drawdown.
+
+    Returns a scale factor [0, 1] that reduces position sizing as drawdown grows.
+    - DD < 5%: full scale (1.0)
+    - DD 5-7%: half scale (0.5)
+    - DD 7-10%: quarter scale (0.25)
+    - DD > 10%: minimal scale (0.1)
+    """
+    if current_dd < 0.05:
+        return 1.0
+    elif current_dd < 0.07:
+        return 0.5
+    elif current_dd < 0.10:
+        return 0.25
+    else:
+        return 0.1

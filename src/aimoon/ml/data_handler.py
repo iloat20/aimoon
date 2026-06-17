@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
-import orjson
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
+import orjson
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,11 @@ class DataHandler:
         self._factor_panel_id: int = 0
 
     def fit(
-        self, panel: dict[str, pd.DataFrame], dates: list[str] | None = None,
-        icir_min: float = 0.02, icir_threshold: float = 0.3,
+        self,
+        panel: dict[str, pd.DataFrame],
+        dates: list[str] | None = None,
+        icir_min: float = 0.02,
+        icir_threshold: float = 0.3,
     ) -> DataHandler:
         """学习归一化参数（在训练数据上）。
 
@@ -160,9 +164,7 @@ class DataHandler:
                     mad = float((values - median).abs().median())
                     if mad > 1e-10:
                         z_scores = (combined[col] - median) / (1.4826 * mad)
-                        normalized[col] = z_scores.clip(
-                            -self.clip_value, self.clip_value
-                        )
+                        normalized[col] = z_scores.clip(-self.clip_value, self.clip_value)
                     else:
                         normalized[col] = 0.0
                 else:
@@ -170,10 +172,12 @@ class DataHandler:
 
         return normalized
 
-
     def _icir_prescreen(
-        self, panel: dict[str, pd.DataFrame], registry: Any,
-        icir_min: float = 0.02, icir_threshold: float = 0.3,
+        self,
+        panel: dict[str, pd.DataFrame],
+        registry: Any,
+        icir_min: float = 0.02,
+        icir_threshold: float = 0.3,
     ) -> list[str]:
         """ICIR 预筛选：保留信息系数显著的因子。
 
@@ -224,7 +228,7 @@ class DataHandler:
                     n = len(f_rank)
                     if n < 3:
                         continue
-                    ic = 1.0 - 6.0 * np.sum((f_rank - r_rank) ** 2) / (n * (n ** 2 - 1))
+                    ic = 1.0 - 6.0 * np.sum((f_rank - r_rank) ** 2) / (n * (n**2 - 1))
                     ic_values.append(ic)
 
                 if len(ic_values) < 10:

@@ -1,6 +1,7 @@
 """Tests for core data models — 100-point weighted scoring"""
-from aimoon.models import Signal, ScoredStock
+from aimoon.models import ScoredStock, Signal
 from aimoon.scoring import hybrid_score
+from aimoon.scoring.hybrid_scorer import get_suggestion
 
 
 class TestSignal:
@@ -19,48 +20,37 @@ class TestSignal:
 
 
 class TestScoredStock:
-    def _stock(self, signals=()) -> ScoredStock:
+    """ScoredStock is a frozen dataclass; total_score is externally injected."""
+
+    def _stock(self, signals=(), total_score=0) -> ScoredStock:
         return ScoredStock(
             code="000001", name="Test", price=10.0,
-            pct_change=1.0, turnover=5.0, signals=tuple(signals),
+            pct_change=1.0, turnover=5.0,
+            signals=tuple(signals), total_score=total_score,
         )
 
-    def test_total_score_uses_weighted_scoring(self) -> None:
-        """total_score returns 100-point weighted score, not raw sum."""
+    def test_total_score_is_injected_not_auto_computed(self) -> None:
+        """total_score defaults to 0 unless explicitly set by scoring layer."""
+        s = self._stock()
+        assert s.total_score == 0
+
+    def test_total_score_matches_hybrid_score(self) -> None:
+        """total_score equals hybrid_score(signals) when properly injected."""
         sigs = [
-            Signal("roc5_strong", "ROC5强势", 4),   # momentum
-            Signal("ma_align_bull", "均线多头", 3),   # trend
+            Signal("roc5_strong", "ROC5强势", 4, category="momentum"),
+            Signal("ma_align_bull", "均线多头", 3, category="reversal"),
         ]
-        s = self._stock(sigs)
         expected = hybrid_score(sigs)
+        s = self._stock(sigs, total_score=expected)
         assert s.total_score == expected
         assert 0 <= s.total_score <= 100
 
-    def test_total_score_ignores_rps_score_field(self) -> None:
-        """RPS score is carried via Signal objects, not the rps dict."""
-        s = ScoredStock(
-            code="000001", name="T", price=10.0,
-            pct_change=0, turnover=0,
-            signals=(Signal("roc5_strong", "ROC5", 4),),
-            rps={"rps_score": 5},
-        )
-        assert s.total_score == hybrid_score(list(s.signals))
-
-    def test_suggestion_thresholds(self) -> None:
-        """Suggestion uses 100-point scale."""
-        def stock_with_score(n: int) -> ScoredStock:
-            # Use alpha signals to reach high scores
-            sigs = [Signal(f"alpha_{i}", f"a{i}", 3) for i in range(max(1, n // 3 + 1))]
-            return ScoredStock(
-                code="0", name="T", price=0, pct_change=0, turnover=0,
-                signals=tuple(sigs[:30]),  # cap at 30 alpha signals
-            )
-        # Just verify suggestion returns a valid tuple
-        s = stock_with_score(50)
-        sug, conf = s.suggestion
+    def test_suggestion_is_get_suggestion_function(self) -> None:
+        """suggestion is derived via get_suggestion(total_score)."""
+        sug, conf = get_suggestion(75)
         assert sug in ("强烈买入", "买入", "建议买入", "观望", "谨慎", "建议卖出", "强烈卖出")
         assert conf in ("高", "中高", "中", "低")
 
-    def test_empty_signals_score_zero(self) -> None:
-        # hybrid_score returns 50 for empty signals (neutral score)
-        assert self._stock().total_score == 50
+    def test_hybrid_score_with_empty_signals(self) -> None:
+        """hybrid_score([]) returns 50 (neutral)."""
+        assert hybrid_score([]) == 50

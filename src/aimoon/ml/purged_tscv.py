@@ -64,7 +64,7 @@ class PurgedTimeSeriesSplit:
         y: pd.Series | np.ndarray | None = None,
         groups: np.ndarray | None = None,
         date_column: str | None = None,
-    ) -> Generator[tuple[np.ndarray, np.ndarray], None, None]:
+    ) -> Generator[tuple[np.ndarray, np.ndarray]]:
         """生成训练集和验证集的索引
 
         Args:
@@ -113,12 +113,8 @@ class PurgedTimeSeriesSplit:
                 # M1: 基于交易日索引（而非日历日）计算边界
                 fold_end_idx = fold_size * (i + 1)
                 purge_end_idx = max(0, fold_end_idx - self.purge_days)
-                embargo_start_idx = min(
-                    n_trading_days - 1, fold_end_idx + self.embargo_days
-                )
-                val_end_idx = min(
-                    n_trading_days, embargo_start_idx + fold_size
-                )
+                embargo_start_idx = min(n_trading_days - 1, fold_end_idx + self.embargo_days)
+                val_end_idx = min(n_trading_days, embargo_start_idx + fold_size)
 
                 train_mask = np.zeros(n_trading_days, dtype=bool)
                 train_mask[:purge_end_idx] = True
@@ -236,7 +232,7 @@ class CombinatorialPurgedCV:
         self,
         X: pd.DataFrame | np.ndarray,
         y: pd.Series | np.ndarray | None = None,
-    ) -> Generator[tuple[np.ndarray, np.ndarray], None, None]:
+    ) -> Generator[tuple[np.ndarray, np.ndarray]]:
         """生成组合式分割
 
         从 n_splits 折中选择 n_test_splits 折作为测试集，
@@ -254,9 +250,7 @@ class CombinatorialPurgedCV:
             fold_days = total_days // self.n_splits
 
             # 生成所有可能的测试折组合
-            test_fold_combinations = list(
-                combinations(range(self.n_splits), self.n_test_splits)
-            )
+            test_fold_combinations = list(combinations(range(self.n_splits), self.n_test_splits))
 
             for test_folds in test_fold_combinations:
                 train_folds = [f for f in range(self.n_splits) if f not in test_folds]
@@ -283,9 +277,7 @@ class CombinatorialPurgedCV:
             # 回退：按行数计算（原有逻辑）
             fold_size = n_samples // self.n_splits
 
-            test_fold_combinations = list(
-                combinations(range(self.n_splits), self.n_test_splits)
-            )
+            test_fold_combinations = list(combinations(range(self.n_splits), self.n_test_splits))
 
             for test_folds in test_fold_combinations:
                 train_folds = [f for f in range(self.n_splits) if f not in test_folds]

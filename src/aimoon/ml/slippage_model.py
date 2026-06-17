@@ -245,9 +245,7 @@ def calculate_smart_slippage(
         float: 滑点成本（百分比）
     """
     model = SlippageModel(config)
-    return model.calculate_slippage(
-        order_amount, daily_volume, volatility, market_cap, is_buy
-    )
+    return model.calculate_slippage(order_amount, daily_volume, volatility, market_cap, is_buy)
 
 
 def calculate_slippage_from_kline(
@@ -275,8 +273,7 @@ def calculate_slippage_from_kline(
         daily_volume = kline_data["amount"].iloc[-lookback_days:].mean()
     elif "volume" in kline_data.columns and "close" in kline_data.columns:
         daily_volume = (
-            kline_data["volume"].iloc[-lookback_days:]
-            * kline_data["close"].iloc[-lookback_days:]
+            kline_data["volume"].iloc[-lookback_days:] * kline_data["close"].iloc[-lookback_days:]
         ).mean()
     else:
         daily_volume = 1e8  # 默认 1亿
@@ -333,9 +330,7 @@ class AdaptiveSlippageModel:
             float: 调整后的滑点成本（百分比）
         """
         # 基础滑点
-        base_slippage = calculate_smart_slippage(
-            order_amount, daily_volume, volatility, market_cap
-        )
+        base_slippage = calculate_smart_slippage(order_amount, daily_volume, volatility, market_cap)
 
         # 市场环境调整
         adjustment = self.regime_adjustments.get(market_regime, 1.0)

@@ -3,44 +3,30 @@
 Formula (verbatim from the report):
     (RANK(CORR(RANK(HIGH),RANK(MEAN(VOLUME,15)),9))*-1)
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_141"
 
 __alpha_meta__ = {
-    'id': 'gtja191_141',
-    'theme': ['volume'],
-    'formula_latex': 'rank(corr(rank(high),rank(mean(v,15)),9))*-1',
-    'columns_required': ['high', 'volume', 'close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 15,
-    'min_warmup_bars': 24,
-    'notes': '',
+    "id": "gtja191_141",
+    "theme": ["volume"],
+    "formula_latex": "rank(corr(rank(high),rank(mean(v,15)),9))*-1",
+    "columns_required": ["high", "volume", "close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 15,
+    "min_warmup_bars": 24,
+    "notes": "",
 }
 
 

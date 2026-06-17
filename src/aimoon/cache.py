@@ -1,7 +1,10 @@
-"""文件缓存层 - pickle 序列化 + TTL 过期"""
+"""文件缓存层 - parquet/JSON 序列化 + TTL 过期"""
+
 from __future__ import annotations
 
+import json
 import logging
+import os
 import tempfile
 import threading
 import time
@@ -11,20 +14,15 @@ import pandas as pd
 
 try:
     import pyarrow.parquet as pq
+
     _HAS_PARQUET = True
 except ImportError:
     _HAS_PARQUET = False
 
-try:
-    import orjson
-    _HAS_ORJSON = True
-except ImportError:
-    _HAS_ORJSON = False
-
 logger = logging.getLogger(__name__)
 
 # 全局单例缓存实例，避免 cli.py 等调用方创建多个独立 DataCache。
-_GLOBAL_CACHE: "DataCache | None" = None
+_GLOBAL_CACHE: DataCache | None = None
 _GLOBAL_CACHE_LOCK = threading.Lock()
 
 # pandas Copy-on-Write：全局启用，消除隐式复制。
@@ -35,7 +33,9 @@ if hasattr(pd.options.mode, "copy_on_write"):
 class DataCache:
     """缓存 DataFrame 到磁盘，支持 TTL 过期。"""
 
-    def __init__(self, cache_dir: str = ".aimoon_cache", ttl_hours: int = 4, use_parquet: bool = False) -> None:
+    def __init__(
+        self, cache_dir: str = ".aimoon_cache", ttl_hours: int = 4, use_parquet: bool = True
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self._use_parquet = use_parquet and _HAS_PARQUET
         self.ttl_seconds = ttl_hours * 3600
@@ -44,7 +44,7 @@ class DataCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def get_global(cls, cache_dir: str = ".aimoon_cache", ttl_hours: int = 4) -> "DataCache":
+    def get_global(cls, cache_dir: str = ".aimoon_cache", ttl_hours: int = 4) -> DataCache:
         """返回全局单例 DataCache。"""
         global _GLOBAL_CACHE
         if _GLOBAL_CACHE is None:
@@ -61,12 +61,24 @@ class DataCache:
             _GLOBAL_CACHE = None
 
     def _path_for(self, stock_code: str) -> Path:
-        ext = "parquet" if self._use_parquet else "pkl"
+        ext = "parquet" if self._use_parquet else "json"
         return self.cache_dir / f"{stock_code}.{ext}"
+
+    def _cleanup_expired(self) -> None:
+        """删除过期缓存文件，防止存储泄漏。"""
+        now = time.time()
+        for f in self.cache_dir.iterdir():
+            if f.suffix in (".parquet", ".json"):
+                try:
+                    age = now - f.stat().st_mtime
+                    if age > self.ttl_seconds:
+                        f.unlink()
+                        logger.debug("Cleaned expired cache: %s", f.name)
+                except OSError:
+                    pass
 
     def get(self, stock_code: str) -> pd.DataFrame | None:
         """返回缓存的 DataFrame，过期或不存在返回 None。"""
-        # L1: 内存缓存命中
         with self._lock:
             if stock_code in self._mem_cache:
                 return self._mem_cache[stock_code]
@@ -76,12 +88,16 @@ class DataCache:
         age = time.time() - path.stat().st_mtime
         if age > self.ttl_seconds:
             logger.debug("Cache expired for %s (%.0fs old)", stock_code, age)
+            try:
+                path.unlink()
+            except OSError:
+                pass
             return None
         try:
-            if self._use_parquet and path.suffix == ".parquet":
+            if path.suffix == ".parquet":
                 df = pq.read_table(path).to_pandas()
             else:
-                df = pd.read_pickle(path)
+                df = self._read_json(path)
             with self._lock:
                 self._mem_cache[stock_code] = df
             return df
@@ -89,13 +105,44 @@ class DataCache:
             logger.warning("Cache read failed for %s: %s", stock_code, e)
             return None
 
-    def put(self, stock_code: str, df: pd.DataFrame) -> None:
-        """写入 DataFrame 到缓存。"""
-        if self._use_parquet:
-            self.put_parquet(stock_code, df)
-            return
+    def _read_json(self, path: Path) -> pd.DataFrame:
+        """从 JSON 文件读取 DataFrame（安全序列化）。"""
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        df = pd.DataFrame(data["data"], columns=data["columns"])
+        if data.get("index_name"):
+            df.index = pd.Index(data["index_data"], name=data["index_name"])
+        return df
+
+    def _write_json(self, stock_code: str, df: pd.DataFrame) -> None:
+        """写 DataFrame 为 JSON（安全序列化）。"""
+        index_name = df.index.name
+        data = {
+            "columns": [str(c) for c in df.columns],
+            "index_name": index_name,
+            "index_data": [str(i) for i in df.index],
+            "data": df.values.tolist(),
+        }
+        path = self._path_for(stock_code)
+        fd, tmp = tempfile.mkstemp(suffix=".json", dir=self.cache_dir)
         try:
-            df.to_pickle(self._path_for(stock_code))
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
+    def put(self, stock_code: str, df: pd.DataFrame) -> None:
+        """写入 DataFrame 到缓存（JSON 安全序列化）。"""
+        try:
+            if self._use_parquet:
+                self.put_parquet(stock_code, df)
+            else:
+                self._write_json(stock_code, df)
             with self._lock:
                 self._mem_cache[stock_code] = df
         except Exception as e:
@@ -108,6 +155,7 @@ class DataCache:
         target = self._path_for(stock_code)
         try:
             import pyarrow as pa
+
             save_df = df.reset_index() if not isinstance(df.index, pd.RangeIndex) else df.copy()
             table = pa.Table.from_pandas(save_df)
             pq.write_table(table, target, compression="snappy")
@@ -121,7 +169,7 @@ class DataCache:
         count = 0
         with self._lock:
             self._mem_cache.clear()
-        for ext in ("*.pkl", "*.parquet"):
+        for ext in ("*.pkl", "*.parquet", "*.json"):
             for p in self.cache_dir.glob(ext):
                 p.unlink()
                 count += 1

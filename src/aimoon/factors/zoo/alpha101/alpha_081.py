@@ -10,38 +10,27 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
     signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_081"
 
 __alpha_meta__ = {
-    'id': 'alpha101_081',
-    'nickname': 'Kakushadze Alpha #81',
-    'theme': ['volume'],
-    'formula_latex': '(rank(Log(product(rank((rank(correlation(vwap, sum(adv10,50), 8))^4)), 15))) < rank(correlation(rank(vwap), rank(volume), 5))) * -1',
-    'columns_required': ['volume', 'vwap', 'close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 70,
-    'notes': '',
+    "id": "alpha101_081",
+    "nickname": "Kakushadze Alpha #81",
+    "theme": ["volume"],
+    "formula_latex": "(rank(Log(product(rank((rank(correlation(vwap, sum(adv10,50), 8))^4)), 15))) < rank(correlation(rank(vwap), rank(volume), 5))) * -1",
+    "columns_required": ["volume", "vwap", "close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 70,
+    "notes": "",
 }
 
 

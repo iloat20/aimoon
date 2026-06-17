@@ -5,6 +5,7 @@ mootdx (https://github.com/mootdx/mootdx) 使用通达信原生二进制协议�
 
 范围：仅 A 股日线（沪/深自动识别，北交所不支持）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,7 @@ from aimoon.result import Err, Ok, Result
 logger = logging.getLogger(__name__)
 
 # TCP 连接比 HTTP 更重，限制并发
-_mootdx_semaphore = threading.Semaphore(3)
+_mootdx_semaphore = threading.Semaphore(1)
 _tdx_client = None
 _tdx_lock = threading.Lock()
 
@@ -30,22 +31,59 @@ def _get_client():
         with _tdx_lock:
             if _tdx_client is None:
                 from mootdx.quotes import Quotes
+
                 _tdx_client = Quotes.factory(market="std")
     return _tdx_client
 
 
-def _is_bj(code: str) -> bool:
+def _is_bj(code: str | int) -> bool:
     """检测北交所股票（4xxxxx/8xxxxx）。mootdx 不支持北交所。"""
-    return len(code) == 6 and code.isdigit() and code[0] in ("4", "8")
+    code_str = str(code)
+    return len(code_str) == 6 and code_str.isdigit() and code_str[0] in ("4", "8")
+
+
+# 已知指数代码白名单 — 精确匹配，避免误判深市主板个股（000xxx）
+# 注意："000001" 虽为上证指数，但也是平安银行个股代码，mootdx 应尝试获取个股
+# 上海指数：000016(上证50), 000300(沪深300), 000688(科创50),
+#           000852(中证1000), 000905(中证500)
+# 深圳指数：399001(深证成指), 399005(中小板指), 399006(创业板指), 399673(创业板50)
+_KNOWN_INDEX_CODES: frozenset[str] = frozenset(
+    {
+        "000016",
+        "000300",
+        "000688",
+        "000852",
+        "000905",
+        "399001",
+        "399005",
+        "399006",
+        "399673",
+    }
+)
+
+
+def _is_likely_index(code: str | int) -> bool:
+    """检测是否可能是指数代码。
+
+    mootdx 仅支持 A 股个股，不支持指数。
+    使用已知指数代码白名单精确匹配，避免误判深市主板个股（000xxx）。
+    """
+    code_str = str(code)
+    if not (len(code_str) == 6 and code_str.isdigit()):
+        return False
+    return code_str in _KNOWN_INDEX_CODES
 
 
 def mootdx_kline(code: str, days: int) -> Result[pd.DataFrame, str]:
     """通过 mootdx TCP 协议获取日线数据。
 
-    失败时返回 Err（未安装、北交所、TDX 返回空数据等）。
+    失败时返回 Err（未安装、北交所、指数代码、TDX 返回空数据等）。
     """
     if _is_bj(code):
         return Err(f"{code}: mootdx 不支持北交所")
+
+    if _is_likely_index(code):
+        return Err(f"{code}: mootdx 不支持指数")
 
     try:
         import mootdx  # noqa: F401

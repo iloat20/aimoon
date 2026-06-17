@@ -6,42 +6,30 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 60.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
     scale,
-    signed_power,
     ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_060"
 
 __alpha_meta__ = {
-    'id': 'alpha101_060',
-    'nickname': 'Kakushadze Alpha #60',
-    'theme': ['volume'],
-    'formula_latex': '0 - (2*scale(rank((((close-low)-(high-close))/(high-low))*volume)) - scale(rank(ts_argmax(close,10))))',
-    'columns_required': ['high', 'low', 'close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 10,
-    'notes': '',
+    "id": "alpha101_060",
+    "nickname": "Kakushadze Alpha #60",
+    "theme": ["volume"],
+    "formula_latex": "0 - (2*scale(rank((((close-low)-(high-close))/(high-low))*volume)) - scale(rank(ts_argmax(close,10))))",
+    "columns_required": ["high", "low", "close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 10,
+    "notes": "",
 }
 
 
@@ -51,7 +39,6 @@ def compute(panel: dict) -> pd.DataFrame:
     high = panel["high"]
     low = panel["low"]
     volume = panel["volume"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     x = safe_div(((close - low) - (high - close)), (high - low)) * volume

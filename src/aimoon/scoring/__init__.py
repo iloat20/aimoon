@@ -51,9 +51,7 @@ ALL_SCORERS: list[Scorer] = [
 ]
 
 
-def collect_signals(
-    ti: TechInd, code: str = "", use_reversal: bool = True
-) -> list[Signal]:
+def collect_signals(ti: TechInd, code: str = "", use_reversal: bool = True) -> list[Signal]:
     """Run scoring functions and collect non-empty signals.
 
     Returns signals grouped by scorer, each scorer's signals are averaged
@@ -61,6 +59,7 @@ def collect_signals(
     that generate many signals from dominating the final score.
     """
     from collections import defaultdict
+
     scorer_signals: dict[str, list[Signal]] = defaultdict(list)
     for scorer in ALL_SCORERS:
         result = scorer(ti, code=code)
@@ -77,12 +76,14 @@ def collect_signals(
         avg_score = int(round(sum(s.score for s in sigs) / len(sigs)))
         labels = "; ".join(s.label for s in sigs[:3])
         if len(sigs) > 3:
-            labels += f"... +{len(sigs)-3}more"
+            labels += f"... +{len(sigs) - 3}more"
         cat = sigs[0].category
-        all_signals.append(Signal(
-            name=f"group_{group_name}",
-            label=f"[{len(sigs)}sig] {labels}",
-            score=avg_score,
-            category=cat,
-        ))
+        all_signals.append(
+            Signal(
+                name=f"group_{group_name}",
+                label=f"[{len(sigs)}sig] {labels}",
+                score=avg_score,
+                category=cat,
+            )
+        )
     return all_signals

@@ -1,7 +1,7 @@
 """Tests for RPS calculation"""
-import numpy as np
 import pandas as pd
-from aimoon.models import Signal, ScoredStock
+
+from aimoon.models import ScoredStock
 from aimoon.scoring.rps import compute_rps
 
 

@@ -11,37 +11,27 @@ import pandas as pd
 
 from aimoon.factors.base import (
     decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_088"
 
 __alpha_meta__ = {
-    'id': 'alpha101_088',
-    'nickname': 'Kakushadze Alpha #88',
-    'theme': ['volume'],
-    'formula_latex': 'min(rank(decay_linear((rank(open)+rank(low))-(rank(high)+rank(close)),8)), Ts_Rank(decay_linear(correlation(Ts_Rank(close,8),Ts_Rank(adv60,20),8),7),3))',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 94,
-    'notes': '',
+    "id": "alpha101_088",
+    "nickname": "Kakushadze Alpha #88",
+    "theme": ["volume"],
+    "formula_latex": "min(rank(decay_linear((rank(open)+rank(low))-(rank(high)+rank(close)),8)), Ts_Rank(decay_linear(correlation(Ts_Rank(close,8),Ts_Rank(adv60,20),8),7),3))",
+    "columns_required": ["open", "high", "low", "close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 94,
+    "notes": "",
 }
 
 

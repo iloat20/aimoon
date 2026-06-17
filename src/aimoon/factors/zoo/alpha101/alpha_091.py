@@ -11,37 +11,27 @@ import pandas as pd
 
 from aimoon.factors.base import (
     decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_091"
 
 __alpha_meta__ = {
-    'id': 'alpha101_091',
-    'nickname': 'Kakushadze Alpha #91',
-    'theme': ['volume'],
-    'formula_latex': '(Ts_Rank(decay_linear(decay_linear(correlation(IndNeutralize(close, industry), volume, 10), 16), 4), 5) - rank(decay_linear(correlation(vwap, adv30, 4), 3))) * -1',
-    'columns_required': ['close', 'volume', 'vwap'],
-    'extras_required': [],
-    'requires_sector': True,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 35,
-    'notes': "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
+    "id": "alpha101_091",
+    "nickname": "Kakushadze Alpha #91",
+    "theme": ["volume"],
+    "formula_latex": "(Ts_Rank(decay_linear(decay_linear(correlation(IndNeutralize(close, industry), volume, 10), 16), 4), 5) - rank(decay_linear(correlation(vwap, adv30, 4), 3))) * -1",
+    "columns_required": ["close", "volume", "vwap"],
+    "extras_required": [],
+    "requires_sector": True,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 35,
+    "notes": "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
 }
 
 
@@ -85,7 +75,10 @@ def compute(panel: dict) -> pd.DataFrame:
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     ind_neutralize = _ind_neutralize
-    a = ts_rank(decay_linear(decay_linear(ts_corr(ind_neutralize(close, panel), volume, 10), 16), 4), 5)
+    a = ts_rank(
+        decay_linear(decay_linear(ts_corr(ind_neutralize(close, panel), volume, 10), 16), 4),
+        5,
+    )
     b = rank(decay_linear(ts_corr(vwap, adv30, 4), 3))
     out = (a - b) * -1.0
     return out

@@ -5,39 +5,29 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 56."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
     ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_056",
-    "theme": ['volume'],
-    "formula_latex": '(RANK(OPEN-TSMIN(OPEN,12)) < RANK((RANK(CORR(SUM(((HIGH+LOW)/2),19),SUM(MEAN(VOLUME,40),19),13))^5)))',
-    "columns_required": ['open', 'high', 'low', 'volume'],
+    "theme": ["volume"],
+    "formula_latex": "(RANK(OPEN-TSMIN(OPEN,12)) < RANK((RANK(CORR(SUM(((HIGH+LOW)/2),19),SUM(MEAN(VOLUME,40),19),13))^5)))",
+    "columns_required": ["open", "high", "low", "volume"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 19,
     "min_warmup_bars": 60,
-    "notes": 'Boolean comparator returns 1/0; 40d mean truncated.',
+    "notes": "Boolean comparator returns 1/0; 40d mean truncated.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     o = panel["open"]

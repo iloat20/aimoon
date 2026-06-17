@@ -10,38 +10,25 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_027"
 
 __alpha_meta__ = {
-    'id': 'alpha101_027',
-    'nickname': 'Kakushadze Alpha #27',
-    'theme': ['volume'],
-    'formula_latex': '(0.5<rank((sum(correlation(rank(volume),rank(vwap),6),2)/2.0)))?(-1):1',
-    'columns_required': ['volume', 'vwap', 'close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 10,
-    'notes': '',
+    "id": "alpha101_027",
+    "nickname": "Kakushadze Alpha #27",
+    "theme": ["volume"],
+    "formula_latex": "(0.5<rank((sum(correlation(rank(volume),rank(vwap),6),2)/2.0)))?(-1):1",
+    "columns_required": ["volume", "vwap", "close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 10,
+    "notes": "",
 }
 
 
@@ -68,7 +55,11 @@ def _where_ternary(cond, a, b):
         b_arr = np.full_like(cond.to_numpy(dtype=np.float64), float(b))
     else:
         b_arr = b.to_numpy(dtype=np.float64, na_value=np.nan)
-    cond_arr = cond.to_numpy(dtype=bool, na_value=False) if hasattr(cond, "to_numpy") else np.asarray(cond, dtype=bool)
+    cond_arr = (
+        cond.to_numpy(dtype=bool, na_value=False)
+        if hasattr(cond, "to_numpy")
+        else np.asarray(cond, dtype=bool)
+    )
     out = np.where(cond_arr, a_arr, b_arr)
     out = np.where(np.isfinite(out), out, np.nan)
     idx = cond.index if hasattr(cond, "index") else a.index
@@ -81,7 +72,6 @@ def compute(panel: dict) -> pd.DataFrame:
     close = panel["close"]
     volume = panel["volume"]
     vwap = panel["vwap"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum

@@ -8,14 +8,14 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# 默认裁剪范围（百分比收益率），覆盖A股5日涨跌停极端情况
-_DEFAULT_CLIP_RANGE: tuple[float, float] = (-15.0, 15.0)
+# 默认裁剪范围（百分比收益率），覆盖A股月度涨跌极端情况
+_DEFAULT_CLIP_RANGE: tuple[float, float] = (-30.0, 30.0)
 
 
 def generate_labels(
     klines: dict[str, pd.DataFrame],
     target_date: pd.Timestamp,
-    forward_days: int = 5,
+    forward_days: int = 22,
     purge_days: int = 0,  # 默认改为 0，因为 purge 在 CV 分割层面处理
     clip_range: tuple[float, float] | None = _DEFAULT_CLIP_RANGE,
 ) -> pd.Series:
@@ -27,17 +27,16 @@ def generate_labels(
     Args:
         klines: 股票K线数据字典
         target_date: 目标日期（信号生成日）
-        forward_days: 前瞻天数（持仓天数）
+        forward_days: 前瞻天数（持仓天数，默认 22=月度）
         purge_days: 清洗天数（默认 0，因为 purge 在 CV 分割层面处理）
         clip_range: 极端值裁剪范围 (low, high)，None 表示不裁剪。
-                    默认 (-15, 15) 对应A股5日极端涨跌停。
 
     Returns:
         pd.Series: index=stock code, value=forward return %
 
     Example:
-        如果 target_date = 2024-01-01, forward_days = 5
-        那么收益计算区间是：2024-01-02 到 2024-01-07
+        如果 target_date = 2024-01-01, forward_days = 22
+        那么收益计算区间是：2024-01-02 到 2024-01-24
         （T+1 开始，持有 forward_days 天）
     """
     labels: dict[str, float] = {}
@@ -53,7 +52,8 @@ def generate_labels(
         if isinstance(idx, slice):
             logger.warning(
                 "Duplicate date index for %s at %s, skipping label",
-                code, target_date,
+                code,
+                target_date,
             )
             continue
 
@@ -93,7 +93,7 @@ def generate_labels(
 def generate_rank_labels(
     klines: dict[str, pd.DataFrame],
     target_date: pd.Timestamp,
-    forward_days: int = 5,
+    forward_days: int = 22,
     purge_days: int = 5,
 ) -> pd.Series:
     """Generate cross-sectional rank labels (0-1) at target_date.
@@ -119,7 +119,7 @@ def generate_rank_labels(
 def generate_binary_labels(
     klines: dict[str, pd.DataFrame],
     target_date: pd.Timestamp,
-    forward_days: int = 5,
+    forward_days: int = 22,
     purge_days: int = 5,
 ) -> pd.Series:
     """Generate binary labels: 1 if above median forward return, else 0.
@@ -140,13 +140,12 @@ def generate_binary_labels(
     return (labels >= median).astype(int)
 
 
-
 def generate_reversal_labels(
     klines: dict[str, pd.DataFrame],
     target_date: pd.Timestamp,
-    forward_days: int = 5,
+    forward_days: int = 22,
     lookback_days: int = 20,
-    clip_range: tuple[float, float] | None = (-15.0, 15.0),
+    clip_range: tuple[float, float] | None = (-30.0, 30.0),
 ) -> pd.Series:
     """Generate reversal-based labels: predict forward reversal returns.
 
@@ -218,9 +217,10 @@ def generate_reversal_labels(
         fwd_return = (fwd_end - fwd_start) / fwd_start * 100.0
 
         # Reversal label: forward return minus momentum penalty
-        # Past winners (high past_return) get penalized
-        # Past losers (low past_return) get boosted
-        alpha = 0.3  # weight of momentum penalty
+        # Reduced from 0.3 to 0.1: original penalty was too aggressive,
+        # contradicting the momentum-biased universe selection (pre_sort_universe
+        # selects stocks with high 60-day returns, then labels punish them)
+        alpha = 0.1  # weight of momentum penalty (was 0.3)
         label = fwd_return - alpha * past_return
 
         if clip_range is not None:

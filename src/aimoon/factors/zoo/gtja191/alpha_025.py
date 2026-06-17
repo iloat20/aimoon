@@ -5,7 +5,6 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 25."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
@@ -13,31 +12,23 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_025",
-    "theme": ['momentum', 'volume'],
-    "formula_latex": '((-1*RANK((DELTA(CLOSE,7)*(1-RANK(DECAYLINEAR((VOLUME/MEAN(VOLUME,20)),9))))))*(1+RANK(SUM(RET,250))))',
-    "columns_required": ['close', 'volume'],
+    "theme": ["momentum", "volume"],
+    "formula_latex": "((-1*RANK((DELTA(CLOSE,7)*(1-RANK(DECAYLINEAR((VOLUME/MEAN(VOLUME,20)),9))))))*(1+RANK(SUM(RET,250))))",
+    "columns_required": ["close", "volume"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 9,
     "min_warmup_bars": 61,
-    "notes": 'Long-window RET sum approximated with 60d cap (warmup feasibility); see notes.',
+    "notes": "Long-window RET sum approximated with 60d cap (warmup feasibility); see notes.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     c = panel["close"]

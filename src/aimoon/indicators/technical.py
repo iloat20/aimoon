@@ -8,12 +8,14 @@ from aimoon.config import Config
 
 try:
     import pandas_ta as ta  # noqa: F401
+
     _HAS_PANDAS_TA = True
 except ImportError:
     _HAS_PANDAS_TA = False
 
 try:
     import talib as _tl  # noqa: F401
+
     _HAS_TALIB = True
 except ImportError:
     _HAS_TALIB = False
@@ -32,9 +34,7 @@ class TechnicalIndicators:
         DataFrame regardless of this parameter.
     """
 
-    def __init__(
-        self, df: pd.DataFrame, start_idx: int = 0, config: Config | None = None
-    ) -> None:
+    def __init__(self, df: pd.DataFrame, start_idx: int = 0, config: Config | None = None) -> None:
         self._df_original = df
         self._start_idx = start_idx
         self._cfg = config if config is not None else Config()
@@ -334,9 +334,9 @@ class TechnicalIndicators:
             return 0.0
         recent = o.iloc[-n:].values
         x = range(n)
-        slope = (
-            n * sum(i * v for i, v in enumerate(recent)) - sum(x) * sum(recent)
-        ) / (n * sum(i**2 for i in x) - sum(x) ** 2)
+        slope = (n * sum(i * v for i, v in enumerate(recent)) - sum(x) * sum(recent)) / (
+            n * sum(i**2 for i in x) - sum(x) ** 2
+        )
         mean_vol = float(self._volume.iloc[-n:].mean())
         if mean_vol == 0:
             return 0.0
@@ -463,11 +463,7 @@ class TechnicalIndicators:
                 / (
                     1.0
                     + d.where(d > 0, 0.0).ewm(com=13, min_periods=14).mean()
-                    / (-d)
-                    .where(d < 0, 0.0)
-                    .ewm(com=13, min_periods=14)
-                    .mean()
-                    .replace(0, 1e-10)
+                    / (-d).where(d < 0, 0.0).ewm(com=13, min_periods=14).mean().replace(0, 1e-10)
                 )
             )
         )
@@ -494,17 +490,16 @@ class TechnicalIndicators:
         df["boll_upper"] = boll_mid + self._cfg.boll_std * boll_std
         df["boll_mid"] = boll_mid
         df["boll_lower"] = boll_mid - self._cfg.boll_std * boll_std
-        df["vol_ratio"] = (
-            volume / volume.rolling(window=self._cfg.volume_ma_period).mean()
-        )
+        df["vol_ratio"] = volume / volume.rolling(window=self._cfg.volume_ma_period).mean()
         return df
 
 
 TechInd = TechnicalIndicators
 
+
 def add_all_indicators_batch(
     panel: dict[str, pd.DataFrame],
-    config: "Config | None" = None,
+    config: Config | None = None,
 ) -> dict[str, pd.DataFrame]:
     """????????????????????? 60-80%?
 
@@ -523,6 +518,7 @@ def add_all_indicators_batch(
         ???????????
     """
     from aimoon.config import Config as _Config
+
     cfg = config or _Config()
 
     close = panel.get("close")

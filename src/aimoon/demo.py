@@ -29,51 +29,33 @@ def _load_pool_codes(n: int = 30) -> list[str]:
     return []
 
 
-def _fallback_codes() -> list[str]:
-    """持仓池不可用时的备用股票代码列表。"""
-    return [
-        "000001",
-        "000002",
-        "000333",
-        "000568",
-        "000651",
-        "000725",
-        "000858",
-        "002049",
-        "002230",
-        "002304",
-        "002415",
-        "002475",
-        "002594",
-        "002714",
-        "300059",
-        "300064",
-        "300124",
-        "300750",
-        "600030",
-        "600036",
-        "600276",
-        "600309",
-        "600519",
-        "600585",
-        "600887",
-        "601012",
-        "601166",
-        "601318",
-        "601398",
-        "601888",
-    ]
+def _load_pool_file() -> list[str]:
+    """直接从硬盘的 shipped holdings_pool.json 读取。"""
+    try:
+        import json
+        from pathlib import Path
+
+        pool_file = Path(__file__).parent / "data" / "holdings_pool.json"
+        if pool_file.exists():
+            data = json.loads(pool_file.read_text(encoding="utf-8"))
+            return list(data) if isinstance(data, list) else []
+    except Exception:
+        pass
+    return []
 
 
 def generate_demo(n_stocks: int = 30) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """生成真实数据。优先使用持仓池真实股票代码 + 真实行情。"""
+    """生成真实数据。仅使用持仓池股票代码 + 真实行情。"""
     cfg = Config()
     cache = DataCache(cfg.cache_dir, cfg.cache_ttl_hours)
 
-    # 1. 获取股票代码
+    # 1. 获取股票代码（仅从持仓池）
     codes = _load_pool_codes(n_stocks)
     if not codes:
-        codes = _fallback_codes()[:n_stocks]
+        codes = _load_pool_file()[:n_stocks]
+    if not codes:
+        logger.error("持仓池为空，无法运行 demo。请先执行: aimoon refresh-pool")
+        return pd.DataFrame(), {}
 
     logger.info("Demo: 获取 %d 只股票的真实行情...", len(codes))
 
@@ -88,9 +70,7 @@ def generate_demo(n_stocks: int = 30) -> tuple[pd.DataFrame, dict[str, pd.DataFr
 
     # 3. 获取真实 K 线数据
     klines: dict[str, pd.DataFrame] = {}
-    valid_codes = (
-        spot_df["stock_code"].tolist() if "stock_code" in spot_df.columns else codes
-    )
+    valid_codes = spot_df["stock_code"].tolist() if "stock_code" in spot_df.columns else codes
 
     for code in valid_codes:
         r = get_kline(code, cfg.history_days, cache)

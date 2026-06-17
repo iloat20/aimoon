@@ -12,12 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
+from scipy.stats import ConstantInputWarning, spearmanr
 
 from aimoon.factors.registry import Registry, get_default_registry
 from aimoon.ml.label_engine import generate_labels
@@ -32,7 +33,7 @@ def compute_factor_ic_series(
     klines: dict[str, pd.DataFrame],
     registry: Registry | None = None,
     n_dates: int = 60,
-    forward_days: int = 5,
+    forward_days: int = 22,
     factor_cache: dict[str, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Compute IC time series for each alpha factor.
@@ -111,12 +112,15 @@ def compute_factor_ic_series(
             factor_vals = row[common].values
             label_vals = labels[common].values
 
-            # 跳过无方差输入（spearmanr 要求非常量输入）
-            if np.std(factor_vals) == 0 or np.std(label_vals) == 0:
+            # 跳过无方差或近零方差输入（spearmanr 要求非常量输入）
+            f_std, l_std = np.std(factor_vals), np.std(label_vals)
+            if f_std < 1e-12 or l_std < 1e-12:
                 continue
 
             try:
-                ic, _ = spearmanr(factor_vals, label_vals)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=ConstantInputWarning)
+                    ic, _ = spearmanr(factor_vals, label_vals)
                 if not np.isnan(ic):
                     record[alpha_id] = float(ic)
             except Exception:
@@ -134,13 +138,15 @@ def compute_factor_ic_series(
 
 def compute_icir_weights(
     ic_df: pd.DataFrame,
-    decay_halflife: int = 30,
+    decay_halflife: int = 20,
     min_icir: float = 0.0,
+    skew_threshold: float = -1.0,
 ) -> dict[str, float]:
     """Compute ICIR weights from IC time series.
 
-    ICIR = mean(IC) / std(IC), with exponential decay weighting.
-    Weights are proportional to max(ICIR, 0), normalized to sum to 1.0.
+    ICIR = mean(IC) / std(IC), with exponential decay weighting (half-life
+    = decay_halflife periods).  When the cross-factor IC distribution
+    skewness < skew_threshold, falls back to equal weights.
 
     Parameters
     ----------
@@ -150,6 +156,8 @@ def compute_icir_weights(
         Half-life in periods for exponential decay weighting.
     min_icir : float
         Minimum ICIR to include a factor (filters noise).
+    skew_threshold : float
+        Skewness threshold for regime switch to equal weights.
 
     Returns
     -------
@@ -164,6 +172,23 @@ def compute_icir_weights(
     decay = np.exp(-np.log(2) / decay_halflife * np.arange(n)[::-1])
     decay = decay / decay.sum()
 
+    # Regime check: skewness of most recent cross-sectional IC
+    recent_ic = ic_df.iloc[-1].dropna()
+    if len(recent_ic) >= 10:
+        arr = recent_ic.values
+        mean, std = arr.mean(), arr.std()
+        if std > 1e-10:
+            skew = float(((arr - mean) ** 3).mean() / (std**3))
+            if skew < skew_threshold:
+                logger.warning(
+                    "compute_icir_weights: skewness=%.2f < %.1f → equal weights (%d factors)",
+                    skew,
+                    skew_threshold,
+                    len(recent_ic),
+                )
+                n_factors = len(recent_ic)
+                return {k: 1.0 / n_factors for k in recent_ic.index}
+
     icir_scores: dict[str, float] = {}
     for col in ic_df.columns:
         ic_series = ic_df[col].dropna()
@@ -176,9 +201,7 @@ def compute_icir_weights(
 
         ic_mean = float(np.average(ic_series.values, weights=aligned_decay))
         ic_std = float(
-            np.sqrt(
-                np.average((ic_series.values - ic_mean) ** 2, weights=aligned_decay)
-            )
+            np.sqrt(np.average((ic_series.values - ic_mean) ** 2, weights=aligned_decay))
         )
 
         if ic_std < 1e-10:
@@ -222,22 +245,39 @@ class EWMAFactorWeighter:
         icir_ewma     = ewma_mean / sqrt(max(ewma_var, 1e-10))
         weight        = max(icir_ewma, 0), normalized to sum=1
 
+    Regime switch:
+        When the cross-factor IC distribution skewness < -1, the factor
+        universe is deemed unstable and all weights fall back to equal
+        allocation (1/N per factor).
+
     Parameters
     ----------
     decay : float
-        EWMA decay factor (0 < decay < 1). Smaller = faster adaptation.
-        0.95 ≈ effective half-life of ~13 observations.
+        EWMA decay factor (0 < decay < 1). Default corresponds to
+        half-life of 20 observations: exp(-ln(2)/20) ≈ 0.9659.
     min_weight : float
         Minimum weight floor (0 = allow zero-weight factors).
+    skew_threshold : float
+        Skewness threshold for regime switch. When the IC distribution
+        skewness drops below this value, fall back to equal weights.
     """
 
-    def __init__(self, decay: float = 0.95, min_weight: float = 0.0):
+    _DEFAULT_DECAY = np.exp(-np.log(2) / 20)  # half-life = 20
+
+    def __init__(
+        self,
+        decay: float = _DEFAULT_DECAY,
+        min_weight: float = 0.0,
+        skew_threshold: float = -1.0,
+    ):
         self._decay = decay
         self._min_weight = min_weight
+        self._skew_threshold = skew_threshold
         self._ewma_mean: dict[str, float] = {}
         self._ewma_var: dict[str, float] = {}
         self._n_updates: int = 0
         self._ic_history: dict[str, list[float]] = {}
+        self._equal_weight_active: bool = False
 
     @property
     def decay(self) -> float:
@@ -272,6 +312,14 @@ class EWMAFactorWeighter:
             if np.isnan(ic):
                 continue
 
+            # Track full IC history for skewness computation
+            if factor_id not in self._ic_history:
+                self._ic_history[factor_id] = []
+            self._ic_history[factor_id].append(ic)
+            # Keep at most 60 observations for skewness window
+            if len(self._ic_history[factor_id]) > 60:
+                self._ic_history[factor_id] = self._ic_history[factor_id][-60:]
+
             old_mean = self._ewma_mean.get(factor_id, ic)
             old_var = self._ewma_var.get(factor_id, 0.0)
 
@@ -285,19 +333,65 @@ class EWMAFactorWeighter:
             self._ewma_var[factor_id] = new_var
 
         self._n_updates += 1
+
+        # Regime check: compute cross-factor IC skewness
+        self._equal_weight_active = self._check_regime()
+
         weights = self.get_weights()
 
         logger.debug(
-            "EWMA update #%d: %d factors, top=%s (%.4f)",
+            "EWMA update #%d: %d factors, top=%s (%.4f), equal_weight=%s",
             self._n_updates,
             len(weights),
             max(weights, key=weights.get) if weights else "none",  # type: ignore[arg-type]
             max(weights.values()) if weights else 0.0,
+            self._equal_weight_active,
         )
         return weights
 
+    def _check_regime(self) -> bool:
+        """Check if IC distribution skewness indicates unstable regime.
+
+        Collects the most recent IC value from each factor's history,
+        computes the skewness of that cross-sectional distribution, and
+        returns True if skewness < skew_threshold (meaning the IC
+        distribution has a heavy left tail — many factors going negative).
+
+        Returns
+        -------
+        bool
+            True if regime switch to equal-weight should activate.
+        """
+        recent_ics: list[float] = []
+        for history in self._ic_history.values():
+            if history:
+                recent_ics.append(history[-1])
+
+        if len(recent_ics) < 10:
+            return False
+
+        arr = np.array(recent_ics)
+        mean = arr.mean()
+        std = arr.std()
+        if std < 1e-10:
+            return False
+
+        skew = float(((arr - mean) ** 3).mean() / (std**3))
+        if skew < self._skew_threshold:
+            logger.warning(
+                "Regime switch: IC skewness=%.2f < %.1f → equal weights (%d factors)",
+                skew,
+                self._skew_threshold,
+                len(recent_ics),
+            )
+            return True
+        return False
+
     def get_weights(self) -> dict[str, float]:
         """Return current normalized weights.
+
+        When regime switch is active (IC skewness < threshold), returns
+        equal weights (1/N) across all factors with EWMA data.
 
         Returns
         -------
@@ -306,6 +400,14 @@ class EWMAFactorWeighter:
         """
         if not self._ewma_mean:
             return {}
+
+        # Regime switch: fall back to equal weights
+        if self._equal_weight_active:
+            n = len(self._ewma_mean)
+            if n == 0:
+                return {}
+            w = 1.0 / n
+            return {factor_id: w for factor_id in self._ewma_mean}
 
         icir_scores: dict[str, float] = {}
         for factor_id, mean in self._ewma_mean.items():
@@ -345,7 +447,6 @@ class EWMAFactorWeighter:
 
         return weights
 
-
     def apply_ic_momentum(self):
         """Apply IC momentum boost: factors with improving IC get extra weight."""
         if not hasattr(self, "_ic_history"):
@@ -381,7 +482,13 @@ class EWMAFactorWeighter:
 
     def set_adaptive_decay(self, regime):
         """Adjust EWMA decay based on market regime."""
-        regime_decays = {"bull": 0.85, "bear": 0.90, "sideways": 0.95, "high_volatility": 0.88, "crisis": 0.85}
+        regime_decays = {
+            "bull": 0.85,
+            "bear": 0.90,
+            "sideways": 0.95,
+            "high_volatility": 0.88,
+            "crisis": 0.85,
+        }
         new_decay = regime_decays.get(regime, 0.95)
         self._decay = new_decay
 
@@ -410,9 +517,11 @@ class EWMAFactorWeighter:
             "timestamp": time.time(),
             "decay": self._decay,
             "min_weight": self._min_weight,
+            "skew_threshold": self._skew_threshold,
             "n_updates": self._n_updates,
             "ewma_mean": self._ewma_mean,
             "ewma_var": self._ewma_var,
+            "equal_weight_active": self._equal_weight_active,
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
@@ -439,12 +548,14 @@ class EWMAFactorWeighter:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             weighter = cls(
-                decay=data.get("decay", 0.95),
+                decay=data.get("decay", EWMAFactorWeighter._DEFAULT_DECAY),
                 min_weight=data.get("min_weight", 0.0),
+                skew_threshold=data.get("skew_threshold", -1.0),
             )
             weighter._ewma_mean = data.get("ewma_mean", {})
             weighter._ewma_var = data.get("ewma_var", {})
             weighter._n_updates = data.get("n_updates", 0)
+            weighter._equal_weight_active = data.get("equal_weight_active", False)
             return weighter
         except Exception as e:
             logger.debug("Failed to load EWMA weighter: %s", e)
@@ -455,7 +566,7 @@ def load_or_compute_ewma(
     panel: dict[str, pd.DataFrame],
     klines: dict[str, pd.DataFrame],
     registry: Registry | None = None,
-    decay: float = 0.95,
+    decay: float = EWMAFactorWeighter._DEFAULT_DECAY,
     cache_ttl_hours: float = _ICIR_CACHE_TTL_HOURS,
     factor_cache: dict[str, pd.DataFrame] | None = None,
     cache_dir: Path = Path(".aimoon_cache"),
@@ -536,3 +647,85 @@ def load_or_compute_ewma(
         )
 
     return weights
+
+
+# ── Factor covariance + Sharpe ────────────────────────────────────────────────
+
+
+def compute_factor_covariance_and_sharpe(
+    ic_df: pd.DataFrame,
+    icir_weights: dict[str, float] | None = None,
+    *,
+    denoise: bool = True,
+    min_samples: int = 30,
+) -> dict[str, Any] | None:
+    """Compute robust factor covariance and portfolio Sharpe from IC series.
+
+    Uses the IC time series (which already exists from ICIR weight computation)
+    as a proxy for factor quality. Higher IC -> higher signal -> higher expected
+    factor return. The IC series is used to construct synthetic factor returns
+    for covariance estimation.
+
+    Pipeline:
+    1. Use IC series as proxy for factor "returns" (cross-sectional IC ~ factor alpha).
+    2. Apply Ledoit-Wolf shrinkage + MP denoising via covariance_estimator.
+    3. If icir_weights provided, compute the ICIR-weighted factor portfolio Sharpe.
+
+    Parameters
+    ----------
+    ic_df : pd.DataFrame
+        IC time series (index=date, columns=factor_id, values=IC).
+    icir_weights : dict | None
+        ICIR weights for Sharpe calculation.
+    denoise : bool
+        Apply MP eigenvalue denoising.
+    min_samples : int
+        Minimum observations required.
+
+    Returns
+    -------
+    dict | None
+        Keys: cov (DataFrame), corr (DataFrame), eigenvalues (ndarray),
+        n_effective (float), shrinkage (float), sharpe (float | None),
+        mean_ic (float | None). None if insufficient data.
+    """
+    if ic_df.empty or len(ic_df) < min_samples:
+        return None
+
+    try:
+        from aimoon.ml.covariance_estimator import estimate_factor_covariance
+    except ImportError:
+        logger.debug("covariance_estimator not available")
+        return None
+
+    # Use IC series as synthetic factor returns
+    factor_returns = ic_df.dropna(axis=1, how="all")
+
+    if factor_returns.shape[1] < 2 or factor_returns.shape[0] < min_samples:
+        return None
+
+    # Convert ICIR weights to Series if provided
+    weights_series = None
+    if icir_weights:
+        weights_series = pd.Series(icir_weights)
+
+    try:
+        result = estimate_factor_covariance(
+            factor_returns,
+            min_samples=min_samples,
+            denoise=denoise,
+            icir_weights=weights_series,
+        )
+    except (ValueError, np.linalg.LinAlgError) as e:
+        logger.debug("Covariance estimation failed: %s", e)
+        return None
+
+    return {
+        "cov": result.cov,
+        "corr": result.corr,
+        "eigenvalues": result.eigenvalues,
+        "n_effective": result.n_effective,
+        "shrinkage": result.shrinkage,
+        "sharpe": result.sharpe,
+        "mean_ic": result.mean_ic,
+    }

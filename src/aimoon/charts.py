@@ -1,4 +1,5 @@
 """Chart generation with matplotlib (optional dependency)."""
+
 from __future__ import annotations
 
 import logging
@@ -8,8 +9,10 @@ logger = logging.getLogger(__name__)
 
 try:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
@@ -32,8 +35,13 @@ def plot_equity_curve(
     ax.plot(equity_curve, label="Portfolio", linewidth=2, color="#2196F3")
     if benchmark_curve and len(benchmark_curve) > 1:
         scale = equity_curve[0] / benchmark_curve[0] if benchmark_curve[0] != 0 else 1.0
-        ax.plot([v * scale for v in benchmark_curve], label="Benchmark",
-                linewidth=1.5, color="#FF9800", linestyle="--")
+        ax.plot(
+            [v * scale for v in benchmark_curve],
+            label="Benchmark",
+            linewidth=1.5,
+            color="#FF9800",
+            linestyle="--",
+        )
     ax.set_title(title, fontsize=14)
     ax.set_xlabel("Rebalance Period")
     ax.set_ylabel("Equity")
@@ -52,8 +60,12 @@ def plot_drawdown(
     """回撤面积图。"""
     _require()
     fig, ax = plt.subplots(figsize=(12, 4))
-    ax.fill_between(range(len(drawdown_curve)), [d * 100 for d in drawdown_curve],
-                    alpha=0.4, color="#F44336")
+    ax.fill_between(
+        range(len(drawdown_curve)),
+        [d * 100 for d in drawdown_curve],
+        alpha=0.4,
+        color="#F44336",
+    )
     ax.set_title("Drawdown", fontsize=14)
     ax.set_xlabel("Rebalance Period")
     ax.set_ylabel("Drawdown %")

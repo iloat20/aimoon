@@ -74,7 +74,11 @@ def build_deduped_scorers(
     corr_matrix = compute_scorer_correlations(signals_by_scorer)
     kept_names, reasons = find_redundant_scorers(corr_matrix, threshold, performance_rank)
     if reasons:
-        logger.info("Scorer dedup: %d -> %d scorers (removed %d redundant)",
-                    len(all_scorers), len(kept_names), len(reasons))
+        logger.info(
+            "Scorer dedup: %d -> %d scorers (removed %d redundant)",
+            len(all_scorers),
+            len(kept_names),
+            len(reasons),
+        )
     name_to_scorer = {s.__name__: s for s in all_scorers}
     return [name_to_scorer[n] for n in kept_names if n in name_to_scorer]

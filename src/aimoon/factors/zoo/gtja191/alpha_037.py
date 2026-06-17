@@ -5,39 +5,27 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 37."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_037",
-    "theme": ['momentum'],
-    "formula_latex": '(-1*RANK(((SUM(OPEN,5)*SUM(RET,5))-DELAY((SUM(OPEN,5)*SUM(RET,5)),10))))',
-    "columns_required": ['open', 'close'],
+    "theme": ["momentum"],
+    "formula_latex": "(-1*RANK(((SUM(OPEN,5)*SUM(RET,5))-DELAY((SUM(OPEN,5)*SUM(RET,5)),10))))",
+    "columns_required": ["open", "close"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 10,
     "min_warmup_bars": 16,
-    "notes": 'Change over 10d of product (sum(open,5)*sum(ret,5)).',
+    "notes": "Change over 10d of product (sum(open,5)*sum(ret,5)).",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     o = panel["open"]

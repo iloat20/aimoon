@@ -3,44 +3,28 @@
 Formula (verbatim from the report):
     (((-1 * RANK((OPEN - DELAY(HIGH, 1)))) * RANK((OPEN - DELAY(CLOSE, 1)))) * RANK((OPEN - DELAY(LOW, 1))))
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_107"
 
 __alpha_meta__ = {
-    'id': 'gtja191_107',
-    'theme': ['reversal'],
-    'formula_latex': '-1*rank(open-delay(high,1))*rank(open-delay(close,1))*rank(open-delay(low,1))',
-    'columns_required': ['open', 'high', 'low', 'close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 1,
-    'min_warmup_bars': 2,
-    'notes': '',
+    "id": "gtja191_107",
+    "theme": ["reversal"],
+    "formula_latex": "-1*rank(open-delay(high,1))*rank(open-delay(close,1))*rank(open-delay(low,1))",
+    "columns_required": ["open", "high", "low", "close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 1,
+    "min_warmup_bars": 2,
+    "notes": "",
 }
 
 

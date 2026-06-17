@@ -3,44 +3,28 @@
 Formula (verbatim from the report):
     SUM(HIGH-OPEN,20)/SUM(OPEN-LOW,20)*100
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_118"
 
 __alpha_meta__ = {
-    'id': 'gtja191_118',
-    'theme': ['reversal'],
-    'formula_latex': 'sum(h-o,20)/sum(o-l,20)*100',
-    'columns_required': ['open', 'high', 'low', 'close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 20,
-    'notes': '',
+    "id": "gtja191_118",
+    "theme": ["reversal"],
+    "formula_latex": "sum(h-o,20)/sum(o-l,20)*100",
+    "columns_required": ["open", "high", "low", "close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 20,
+    "notes": "",
 }
 
 

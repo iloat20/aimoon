@@ -6,42 +6,30 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 43.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_043"
 
 __alpha_meta__ = {
-    'id': 'alpha101_043',
-    'nickname': 'Kakushadze Alpha #43',
-    'theme': ['volume', 'momentum'],
-    'formula_latex': 'ts_rank(volume/adv20,20) * ts_rank(-1*delta(close,7),8)',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 39,
-    'notes': '',
+    "id": "alpha101_043",
+    "nickname": "Kakushadze Alpha #43",
+    "theme": ["volume", "momentum"],
+    "formula_latex": "ts_rank(volume/adv20,20) * ts_rank(-1*delta(close,7),8)",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 39,
+    "notes": "",
 }
 
 

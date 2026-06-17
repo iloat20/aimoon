@@ -3,44 +3,29 @@
 Formula (verbatim from the report):
     (MEAN(VOLUME,9)-MEAN(VOLUME,26))/MEAN(VOLUME,12)*100
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_145"
 
 __alpha_meta__ = {
-    'id': 'gtja191_145',
-    'theme': ['volume'],
-    'formula_latex': '(mean(v,9)-mean(v,26))/mean(v,12)*100',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 26,
-    'min_warmup_bars': 26,
-    'notes': '',
+    "id": "gtja191_145",
+    "theme": ["volume"],
+    "formula_latex": "(mean(v,9)-mean(v,26))/mean(v,12)*100",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 26,
+    "min_warmup_bars": 26,
+    "notes": "",
 }
 
 

@@ -9,35 +9,23 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_050",
-    "theme": ['reversal'],
-    "formula_latex": 'SUM(up_move,12)/(SUM(up_move,12)+SUM(dn_move,12)) - SUM(dn_move,12)/(SUM(up_move,12)+SUM(dn_move,12))',
-    "columns_required": ['high', 'low'],
+    "theme": ["reversal"],
+    "formula_latex": "SUM(up_move,12)/(SUM(up_move,12)+SUM(dn_move,12)) - SUM(dn_move,12)/(SUM(up_move,12)+SUM(dn_move,12))",
+    "columns_required": ["high", "low"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 12,
     "min_warmup_bars": 13,
-    "notes": 'Signed version of #49.',
+    "notes": "Signed version of #49.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     h = panel["high"]
@@ -45,9 +33,12 @@ def compute(panel: dict) -> pd.DataFrame:
     hl = h + l
     phl = h.shift(1) + l.shift(1)
     move = pd.DataFrame(
-        np.maximum(np.abs(h.to_numpy() - h.shift(1).to_numpy()),
-                   np.abs(l.to_numpy() - l.shift(1).to_numpy())),
-        index=h.index, columns=h.columns,
+        np.maximum(
+            np.abs(h.to_numpy() - h.shift(1).to_numpy()),
+            np.abs(l.to_numpy() - l.shift(1).to_numpy()),
+        ),
+        index=h.index,
+        columns=h.columns,
     )
     dn = move.where(hl < phl, 0.0)
     up = move.where(hl > phl, 0.0)

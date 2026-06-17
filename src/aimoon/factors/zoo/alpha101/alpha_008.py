@@ -6,42 +6,27 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 8.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_008"
 
 __alpha_meta__ = {
-    'id': 'alpha101_008',
-    'nickname': 'Kakushadze Alpha #8',
-    'theme': ['reversal'],
-    'formula_latex': '-1 * rank((sum(open,5)*sum(returns,5)) - delay(sum(open,5)*sum(returns,5),10))',
-    'columns_required': ['open', 'close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 15,
-    'notes': '',
+    "id": "alpha101_008",
+    "nickname": "Kakushadze Alpha #8",
+    "theme": ["reversal"],
+    "formula_latex": "-1 * rank((sum(open,5)*sum(returns,5)) - delay(sum(open,5)*sum(returns,5),10))",
+    "columns_required": ["open", "close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 15,
+    "notes": "",
 }
 
 
@@ -62,7 +47,7 @@ def compute(panel: dict) -> pd.DataFrame:
     close = panel["close"]
     open_ = panel["open"]
 
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum
     delay = _delay

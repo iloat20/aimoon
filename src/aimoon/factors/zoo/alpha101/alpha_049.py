@@ -9,39 +9,21 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
-)
-
 ALPHA_ID = "alpha101_049"
 
 __alpha_meta__ = {
-    'id': 'alpha101_049',
-    'nickname': 'Kakushadze Alpha #49',
-    'theme': ['momentum'],
-    'formula_latex': '(((delay(close,20)-delay(close,10))/10 - (delay(close,10)-close)/10) < -0.1) ? 1 : -1*(close-delay(close,1))',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 21,
-    'notes': '',
+    "id": "alpha101_049",
+    "nickname": "Kakushadze Alpha #49",
+    "theme": ["momentum"],
+    "formula_latex": "(((delay(close,20)-delay(close,10))/10 - (delay(close,10)-close)/10) < -0.1) ? 1 : -1*(close-delay(close,1))",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 21,
+    "notes": "",
 }
 
 
@@ -70,7 +52,11 @@ def _where_ternary(cond, a, b):
         b_arr = np.full_like(cond.to_numpy(dtype=np.float64), float(b))
     else:
         b_arr = b.to_numpy(dtype=np.float64, na_value=np.nan)
-    cond_arr = cond.to_numpy(dtype=bool, na_value=False) if hasattr(cond, "to_numpy") else np.asarray(cond, dtype=bool)
+    cond_arr = (
+        cond.to_numpy(dtype=bool, na_value=False)
+        if hasattr(cond, "to_numpy")
+        else np.asarray(cond, dtype=bool)
+    )
     out = np.where(cond_arr, a_arr, b_arr)
     out = np.where(np.isfinite(out), out, np.nan)
     idx = cond.index if hasattr(cond, "index") else a.index
@@ -81,7 +67,6 @@ def _where_ternary(cond, a, b):
 def compute(panel: dict) -> pd.DataFrame:
     """Compute the alpha on the OHLCV+ panel and return a wide DataFrame."""
     close = panel["close"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     delay = _delay

@@ -150,8 +150,9 @@ class TestGoldenFactors:
 
     def should_cache_with_cow_mode(self) -> None:
         """DataCache should work with Copy-on-Write enabled."""
+        import tempfile
+
         from aimoon.cache import DataCache
-        import tempfile, os
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = DataCache(tmpdir, 4)

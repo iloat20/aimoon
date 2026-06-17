@@ -13,35 +13,25 @@ from aimoon.factors.base import (
     decay_linear,
     delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_082"
 
 __alpha_meta__ = {
-    'id': 'alpha101_082',
-    'nickname': 'Kakushadze Alpha #82',
-    'theme': ['volume'],
-    'formula_latex': 'min(rank(decay_linear(delta(open,1),15)), Ts_Rank(decay_linear(correlation(IndNeutralize(volume, sector), 0.634*open+0.366*open, 17), 7), 13)) * -1',
-    'columns_required': ['open', 'volume', 'close'],
-    'extras_required': [],
-    'requires_sector': True,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 35,
-    'notes': "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
+    "id": "alpha101_082",
+    "nickname": "Kakushadze Alpha #82",
+    "theme": ["volume"],
+    "formula_latex": "min(rank(decay_linear(delta(open,1),15)), Ts_Rank(decay_linear(correlation(IndNeutralize(volume, sector), 0.634*open+0.366*open, 17), 7), 13)) * -1",
+    "columns_required": ["open", "volume", "close"],
+    "extras_required": [],
+    "requires_sector": True,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 35,
+    "notes": "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
 }
 
 
@@ -81,7 +71,6 @@ def compute(panel: dict) -> pd.DataFrame:
     close = panel["close"]
     open_ = panel["open"]
     volume = panel["volume"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     ind_neutralize = _ind_neutralize

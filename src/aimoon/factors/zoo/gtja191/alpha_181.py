@@ -5,42 +5,30 @@ Formula (verbatim from the report):
 
 Notes: Benchmark falls back to cross-sectional mean of close.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_181"
 
 __alpha_meta__ = {
-    'id': 'gtja191_181',
-    'theme': ['volatility'],
-    'formula_latex': 'see body',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 40,
-    'notes': 'Benchmark falls back to cross-sectional mean of close.',
+    "id": "gtja191_181",
+    "theme": ["volatility"],
+    "formula_latex": "see body",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 40,
+    "notes": "Benchmark falls back to cross-sectional mean of close.",
 }
 
 
@@ -53,6 +41,7 @@ def compute(panel):
     Returns:
         pd.DataFrame with index = panel["close"].index, columns = panel["close"].columns.
     """
+
     def _bench_close():
         """Benchmark close fallback: cross-sectional mean of `close`."""
         if "benchmark_close" in panel:
@@ -63,6 +52,7 @@ def compute(panel):
             index=c.index,
             columns=c.columns,
         )
+
     c = panel["close"]
     bench = _bench_close()
     br = safe_div(bench, bench.shift(1)) - 1.0

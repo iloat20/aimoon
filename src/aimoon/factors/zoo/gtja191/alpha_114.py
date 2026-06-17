@@ -3,45 +3,30 @@
 Formula (verbatim from the report):
     ((RANK(DELAY(((HIGH-LOW)/(SUM(CLOSE,5)/5)),2)) * RANK(RANK(VOLUME))) / (((HIGH-LOW)/(SUM(CLOSE,5)/5))/(VWAP-CLOSE)))
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
     vwap,
 )
 
 ALPHA_ID = "gtja191_114"
 
 __alpha_meta__ = {
-    'id': 'gtja191_114',
-    'theme': ['volume', 'volatility'],
-    'formula_latex': 'see body',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume', 'amount'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 7,
-    'notes': '',
+    "id": "gtja191_114",
+    "theme": ["volume", "volatility"],
+    "formula_latex": "see body",
+    "columns_required": ["open", "high", "low", "close", "volume", "amount"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 7,
+    "notes": "",
 }
 
 

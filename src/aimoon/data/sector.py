@@ -1,4 +1,5 @@
 """Sector filters (cached 30 min)."""
+
 from __future__ import annotations
 
 import json
@@ -32,12 +33,18 @@ def _cached(key: str, ttl: int, fetcher):
 def _fetch_all_sectors(top_pct: float) -> dict[str, str]:
     """Fetch sector constituent mapping. Direct eastmoney API."""
     from aimoon.data.spot import em_get
+
     try:
         url = "https://push2delay.eastmoney.com/api/qt/clist/get"
         params = {
-            "pn": "1", "pz": "1000", "po": "1", "np": "1",
+            "pn": "1",
+            "pz": "1000",
+            "po": "1",
+            "np": "1",
             "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "fltt": "2", "invt": "2", "fid": "f3",
+            "fltt": "2",
+            "invt": "2",
+            "fid": "f3",
             "fs": "m:90+t:2",
             "fields": "f12,f14,f3",
         }
@@ -56,9 +63,14 @@ def _fetch_all_sectors(top_pct: float) -> dict[str, str]:
             try:
                 cons_url = "https://push2delay.eastmoney.com/api/qt/clist/get"
                 cons_params = {
-                    "pn": "1", "pz": "5000", "po": "1", "np": "1",
+                    "pn": "1",
+                    "pz": "5000",
+                    "po": "1",
+                    "np": "1",
                     "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                    "fltt": "2", "invt": "2", "fid": "f12",
+                    "fltt": "2",
+                    "invt": "2",
+                    "fid": "f12",
                     "fs": f"b:{sector_code}",
                     "fields": "f12",
                 }
@@ -70,10 +82,7 @@ def _fetch_all_sectors(top_pct: float) -> dict[str, str]:
 
         result: dict[str, str] = {}
         with ThreadPoolExecutor(max_workers=8) as ex:
-            futures = {
-                ex.submit(_fetch_one, s["code"], s["name"]): s["name"]
-                for s in top_sectors
-            }
+            futures = {ex.submit(_fetch_one, s["code"], s["name"]): s["name"] for s in top_sectors}
             for fut in as_completed(futures):
                 result.update(fut.result())
         return result
@@ -99,9 +108,7 @@ def get_sector_context(df: pd.DataFrame, top_pct: float = 5.0) -> dict:
         df_copy["pct_60d"] = 0.0
     df_copy["pct_60d"] = pd.to_numeric(df_copy["pct_60d"], errors="coerce").fillna(0)
     df_copy["sector"] = df_copy["stock_code"].map(sector_map)
-    sector_returns = (
-        df_copy.dropna(subset=["sector"]).groupby("sector")["pct_60d"].mean().to_dict()
-    )
+    sector_returns = df_copy.dropna(subset=["sector"]).groupby("sector")["pct_60d"].mean().to_dict()
 
     sorted_sectors = sorted(sector_returns.items(), key=lambda x: x[1], reverse=True)
     n_top = max(1, int(len(sorted_sectors) * top_pct / 100))

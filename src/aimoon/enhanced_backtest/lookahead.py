@@ -57,9 +57,7 @@ def _check_df(
             cutoff.date(),
             max_date.date() if hasattr(max_date, "date") else max_date,
         )
-        raise LookAheadError(
-            f"{label}: {n_future} rows >= cutoff {cutoff.date()}"
-        )
+        raise LookAheadError(f"{label}: {n_future} rows >= cutoff {cutoff.date()}")
 
 
 def filter_to_cutoff(

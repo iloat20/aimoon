@@ -5,42 +5,26 @@ Formula (verbatim from the report):
 
 Notes: LOWDAY -> ts_argmin (0-based); (20 - argmin)/20 * 100.
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
     ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_103"
 
 __alpha_meta__ = {
-    'id': 'gtja191_103',
-    'theme': ['reversal'],
-    'formula_latex': '((20-lowday(low,20))/20)*100',
-    'columns_required': ['close', 'low'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 20,
-    'notes': 'LOWDAY -> ts_argmin (0-based); (20 - argmin)/20 * 100.',
+    "id": "gtja191_103",
+    "theme": ["reversal"],
+    "formula_latex": "((20-lowday(low,20))/20)*100",
+    "columns_required": ["close", "low"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 20,
+    "notes": "LOWDAY -> ts_argmin (0-based); (20 - argmin)/20 * 100.",
 }
 
 

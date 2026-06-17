@@ -68,9 +68,7 @@ def compute_position_weights(
 
     # ── Score-proportional adjustment ──
     avg_score = np.mean(list(scores.values())) if scores else 1.0
-    score_scale = {
-        code: max(0.5, min(1.5, score / avg_score)) for code, score in scores.items()
-    }
+    score_scale = {code: max(0.5, min(1.5, score / avg_score)) for code, score in scores.items()}
 
     if not use_kelly or len(trades) < 20:
         base = equal_weight * vol_scale
@@ -99,7 +97,7 @@ def compute_position_weights(
         "sideways": 0.85,  # 从 0.7 提高，增加震荡市仓位利用率
         "bear": 0.3,
         "high_volatility": 0.5,
-        "crisis": 0.1,     # 补充缺失的 crisis 条目
+        "crisis": 0.1,  # 补充缺失的 crisis 条目
     }
     kelly *= regime_kelly_scale.get(regime, 0.85)
 
@@ -116,7 +114,5 @@ def compute_position_weights(
 
     total = sum(kelly_weights.values())
     if total > 0:
-        kelly_weights = {
-            c: float(min(v / total, 0.20)) for c, v in kelly_weights.items()
-        }
+        kelly_weights = {c: float(min(v / total, 0.20)) for c, v in kelly_weights.items()}
     return kelly_weights

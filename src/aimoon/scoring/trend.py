@@ -6,9 +6,7 @@ from aimoon.indicators.technical import TechInd
 from aimoon.models import Signal
 
 
-def score_trend(
-    ti: TechInd, *, code: str = "", ctx: dict | None = None
-) -> list[Signal]:
+def score_trend(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> list[Signal]:
     signals: list[Signal] = []
     trend = ti.ma_trend()
     if trend == "bullish":
@@ -20,4 +18,3 @@ def score_trend(
     if ti.ma_death_cross():
         signals.append(Signal("ma_death", "MA死叉", -2, category="reversal"))
     return signals
-

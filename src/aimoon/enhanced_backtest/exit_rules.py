@@ -32,7 +32,6 @@ from aimoon.enhanced_backtest.models import EnhancedPosition, EnhancedTrade
 from aimoon.enhanced_backtest.risk_controls import (
     PARTIAL_PROFIT_SECONDARY_PNL,
     PARTIAL_PROFIT_TAKE_PNL,
-    PARTIAL_PROFIT_TAKE_RATIO,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,11 +84,17 @@ def phase0_execute_pending(
             if pending_expiry is not None:
                 pending_expiry.pop(code, None)
             continue
-        entry_price = float(df.loc[bar_date, "open"]) if "open" in df.columns else float(df.loc[bar_date, "close"])
+        entry_price = (
+            float(df.loc[bar_date, "open"])
+            if "open" in df.columns
+            else float(df.loc[bar_date, "close"])
+        )
 
         entry_loc = df.index.get_loc(bar_date)
         entry_window = df.iloc[:entry_loc]
-        dynamic_sl = _compute_atr_entry_stop_loss(entry_window, engine.stop_loss_atr_multiplier, engine.stop_loss_pct)
+        dynamic_sl = _compute_atr_entry_stop_loss(
+            entry_window, engine.stop_loss_atr_multiplier, engine.stop_loss_pct
+        )
         weight = pending.get("weight", 1.0 / effective_positions)
         buy_cost = weight * cash[0]
         cash[0] -= buy_cost
@@ -154,7 +159,11 @@ def phase1_stop_loss_take_profit(
         effective_sl = pos.stop_loss if pos.stop_loss > 0 else engine.stop_loss_pct
         if bar_date not in df.index:
             last_price = float(df["close"].iloc[-1])
-            entry_date = pos.entry_date if isinstance(pos.entry_date, pd.Timestamp) else pd.Timestamp(pos.entry_date)
+            entry_date = (
+                pos.entry_date
+                if isinstance(pos.entry_date, pd.Timestamp)
+                else pd.Timestamp(pos.entry_date)
+            )
             elapsed = (pd.Timestamp(bar_date) - entry_date).days
             to_close.append((code, last_price, "data_gap", elapsed))
             continue
@@ -162,10 +171,16 @@ def phase1_stop_loss_take_profit(
         if not can_sell_at_open(df, bar_date):
             continue
 
-        current_price = float(df.loc[bar_date, "open"]) if "open" in df.columns else _prev_close(df, bar_date)
+        current_price = (
+            float(df.loc[bar_date, "open"]) if "open" in df.columns else _prev_close(df, bar_date)
+        )
 
         pnl = (current_price - pos.entry_price) / pos.entry_price
-        entry_date = pos.entry_date if isinstance(pos.entry_date, pd.Timestamp) else pd.Timestamp(pos.entry_date)
+        entry_date = (
+            pos.entry_date
+            if isinstance(pos.entry_date, pd.Timestamp)
+            else pd.Timestamp(pos.entry_date)
+        )
 
         try:
             entry_loc = df.index.get_loc(entry_date)
@@ -178,7 +193,11 @@ def phase1_stop_loss_take_profit(
             continue
 
         pos = pos.with_update(peak_pnl=max(pos.peak_pnl, pnl) if pos.peak_pnl != 0.0 else pnl)
-        pos = pos.with_update(highest_price=max(pos.highest_price, current_price) if pos.highest_price != 0.0 else current_price)
+        pos = pos.with_update(
+            highest_price=(
+                max(pos.highest_price, current_price) if pos.highest_price != 0.0 else current_price
+            )
+        )
         positions[code] = pos
 
         for pnl_threshold, lock_ratio in risk_controls.TRAILING_STOP_TIERS:
@@ -193,8 +212,9 @@ def phase1_stop_loss_take_profit(
         if atr_val > 0:
             # Adaptive ATR: widen stops in high-vol regime
             atr_mult = risk_controls.CHANDELIER_ATR_MULTIPLIER
-            if hasattr(engine, 'use_adaptive_atr') and engine.use_adaptive_atr:
+            if hasattr(engine, "use_adaptive_atr") and engine.use_adaptive_atr:
                 from aimoon.risk import adaptive_atr_multiplier
+
                 # Use regime-based ATR multiplier
                 if current_regime in ("high_volatility", "crisis"):
                     atr_mult = adaptive_atr_multiplier(atr_mult, 0.5, 0.3)
@@ -206,24 +226,41 @@ def phase1_stop_loss_take_profit(
 
         if pnl <= -risk_controls.HARD_LOSS_CAP:
             to_close.append((code, current_price, "stop_loss", elapsed_days))
-        elif pnl > 0 and pos.peak_pnl >= risk_controls.PROFIT_PROTECTION_PEAK_THRESHOLD and pnl <= risk_controls.PROFIT_PROTECTION_FLOOR:
+            continue
+        elif (
+            pnl > 0
+            and pos.peak_pnl >= risk_controls.PROFIT_PROTECTION_PEAK_THRESHOLD
+            and pnl <= risk_controls.PROFIT_PROTECTION_FLOOR
+        ):
             to_close.append((code, current_price, "profit_protection", elapsed_days))
+            continue
         elif pnl <= -effective_sl:
             to_close.append((code, current_price, "stop_loss", elapsed_days))
+            continue
         elif pos.atr_at_entry > 0:
             entry_atr_pct = pos.atr_at_entry / pos.entry_price * 100.0
-            atr_tp = risk_controls.compute_atr_take_profit(entry_atr_pct, engine.take_profit_atr_multiplier)
+            atr_tp = risk_controls.compute_atr_take_profit(
+                entry_atr_pct, engine.take_profit_atr_multiplier
+            )
             atr_tp_regime = _regime_take_profit(current_regime, atr_tp)
             fixed_tp = _regime_take_profit(current_regime, engine.take_profit_pct)
             tp_threshold = min(atr_tp_regime, fixed_tp)
             if pnl >= tp_threshold:
                 to_close.append((code, current_price, "take_profit", elapsed_days))
+                continue
         elif pnl >= _regime_take_profit(current_regime, engine.take_profit_pct):
             to_close.append((code, current_price, "take_profit", elapsed_days))
+            continue
         elif pnl >= PARTIAL_PROFIT_TAKE_PNL and not getattr(pos, "_partial_taken", False):
             to_close.append((code, current_price, "partial_profit_50", elapsed_days))
+            continue
         elif pnl >= PARTIAL_PROFIT_SECONDARY_PNL and getattr(pos, "_partial_taken", False):
             to_close.append((code, current_price, "partial_profit_100", elapsed_days))
+            continue
+        # ── 时间止损：持仓超过5个交易日且收益为负 → 强制平仓（避免长期扛单） ──
+        if elapsed_days >= 5 and pnl < 0:
+            to_close.append((code, current_price, "time_stop_negative", elapsed_days))
+            continue
         elif elapsed_days > _TIME_DECAY_IDLE_DAYS_THRESHOLD and 0 < pnl < _TIME_DECAY_IDLE_PNL:
             to_close.append((code, current_price, "time_decay", elapsed_days))
         elif elapsed_days > 10 and pnl < 0 and pnl <= -effective_sl * 0.8:
@@ -233,26 +270,55 @@ def phase1_stop_loss_take_profit(
             entry_score = pos.entry_score if pos.entry_score > 0 else 50
             window = df.iloc[: df.index.get_loc(bar_date) + 1]
             ml_sigs = engine._get_ml_scores_for_date(prev_date) if prev_date else None
-            current_score = engine._score_stock(code, pos.name, window, alpha_signals=alpha_signals, ml_scores=ml_sigs)
+            current_score = engine._score_stock(
+                code, pos.name, window, alpha_signals=alpha_signals, ml_scores=ml_sigs
+            )
             if current_score is not None and current_score < entry_score * 0.7:
                 to_close.append((code, current_price, "time_stop_score_decline", elapsed_days))
         elif elapsed_days >= max_hold_bars:
             entry_score = pos.entry_score if pos.entry_score > 0 else 50
             window = df.iloc[: df.index.get_loc(bar_date) + 1]
             ml_sigs = engine._get_ml_scores_for_date(prev_date) if prev_date else None
-            current_score = engine._score_stock(code, pos.name, window, ctx=sector_ctx, alpha_signals=alpha_signals, ml_scores=ml_sigs)
-            if current_score is not None and current_score >= entry_score * 0.8 and pnl > 0 and elapsed_days < max_hold_bars * 2.0:
+            current_score = engine._score_stock(
+                code,
+                pos.name,
+                window,
+                ctx=sector_ctx,
+                alpha_signals=alpha_signals,
+                ml_scores=ml_sigs,
+            )
+            if (
+                current_score is not None
+                and current_score >= entry_score * 0.8
+                and pnl > 0
+                and elapsed_days < max_hold_bars * 2.0
+            ):
                 continue
             else:
                 to_close.append((code, current_price, "hold_period", elapsed_days))
 
     for code, exit_price, reason, hdays in to_close:
+        if code not in positions:
+            continue
         pos = positions.pop(code)
         weak_streak.pop(code, None)
         cost_rate = engine._buy_cost() + engine._sell_cost()
         gross_ret = (exit_price - pos.entry_price) / pos.entry_price
         net_ret = gross_ret - cost_rate
-        trades.append(EnhancedTrade(code=code, name=pos.name, entry_date=str(pos.entry_date), exit_date=str(bar_date), entry_price=pos.entry_price, exit_price=exit_price, return_pct=net_ret * 100, cost_pct=cost_rate * 100, exit_reason=reason, hold_days=hdays))
+        trades.append(
+            EnhancedTrade(
+                code=code,
+                name=pos.name,
+                entry_date=str(pos.entry_date),
+                exit_date=str(bar_date),
+                entry_price=pos.entry_price,
+                exit_price=exit_price,
+                return_pct=net_ret * 100,
+                cost_pct=cost_rate * 100,
+                exit_reason=reason,
+                hold_days=hdays,
+            )
+        )
         cost_basis = engine._pos_cost_basis.pop(code, 0.0)
         sell_proceeds = cost_basis * exit_price / pos.entry_price
         sell_cost = cost_basis * cost_rate
@@ -284,7 +350,11 @@ def phase2_momentum_check(
     recent_exits = recent_exits or {}
     cash = cash or [100.0]
     alpha_query_date = prev_date if prev_date is not None else bar_date
-    alpha_sigs = engine._get_alpha_signals_for_date(alpha_signals, alpha_query_date) if alpha_signals else None
+    alpha_sigs = (
+        engine._get_alpha_signals_for_date(alpha_signals, alpha_query_date)
+        if alpha_signals
+        else None
+    )
     weak_codes: list[str] = []
     for code, pos in list(positions.items()):
         if code not in klines:
@@ -297,7 +367,15 @@ def phase2_momentum_check(
             continue
         window = df.iloc[:idx]
         ml_sigs = engine._get_ml_scores_for_date(alpha_query_date)
-        score = engine._score_stock(code, pos.name, window, ctx=sector_ctx, alpha_signals=alpha_sigs, ml_scores=ml_sigs, _ti=engine._bar_ti_cache.get(code))
+        score = engine._score_stock(
+            code,
+            pos.name,
+            window,
+            ctx=sector_ctx,
+            alpha_signals=alpha_sigs,
+            ml_scores=ml_sigs,
+            _ti=engine._bar_ti_cache.get(code),
+        )
         if score is not None and score < engine.exit_threshold:
             weak_streak[code] = weak_streak.get(code, 0) + 1
             if weak_streak[code] >= 2:
@@ -312,13 +390,34 @@ def phase2_momentum_check(
             continue
         weak_streak.pop(code, None)
         pos = positions.pop(code)
-        exit_price = float(klines[code].loc[bar_date, "open"]) if "open" in klines[code].columns else float(klines[code].loc[bar_date, "close"])
+        exit_price = (
+            float(klines[code].loc[bar_date, "open"])
+            if "open" in klines[code].columns
+            else float(klines[code].loc[bar_date, "close"])
+        )
         cost_rate = engine._buy_cost() + engine._sell_cost()
         gross_ret = (exit_price - pos.entry_price) / pos.entry_price
         net_ret = gross_ret - cost_rate
-        entry_date = pos.entry_date if isinstance(pos.entry_date, pd.Timestamp) else pd.Timestamp(pos.entry_date)
+        entry_date = (
+            pos.entry_date
+            if isinstance(pos.entry_date, pd.Timestamp)
+            else pd.Timestamp(pos.entry_date)
+        )
         elapsed = (pd.Timestamp(bar_date) - entry_date).days
-        trades.append(EnhancedTrade(code=code, name=pos.name, entry_date=str(pos.entry_date), exit_date=str(bar_date), entry_price=pos.entry_price, exit_price=exit_price, return_pct=net_ret * 100, cost_pct=cost_rate * 100, exit_reason="momentum_exit", hold_days=elapsed))
+        trades.append(
+            EnhancedTrade(
+                code=code,
+                name=pos.name,
+                entry_date=str(pos.entry_date),
+                exit_date=str(bar_date),
+                entry_price=pos.entry_price,
+                exit_price=exit_price,
+                return_pct=net_ret * 100,
+                cost_pct=cost_rate * 100,
+                exit_reason="momentum_exit",
+                hold_days=elapsed,
+            )
+        )
         cost_basis = engine._pos_cost_basis.pop(code, 0.0)
         sell_proceeds = cost_basis * exit_price / pos.entry_price
         sell_cost = cost_basis * cost_rate

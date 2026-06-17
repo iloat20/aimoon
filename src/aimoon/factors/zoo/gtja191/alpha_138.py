@@ -3,45 +3,34 @@
 Formula (verbatim from the report):
     ((RANK(DECAYLINEAR(DELTA((((LOW*0.7)+(VWAP*0.3))),3),20))-TSRANK(DECAYLINEAR(TSRANK(CORR(TSRANK(LOW,8),TSRANK(MEAN(VOLUME,60),17),5),19),16),7))*-1)
 
-Notes: 
+Notes:
 """
-from __future__ import annotations
 
-import numpy as np
-import pandas as pd
+from __future__ import annotations
 
 from aimoon.factors.base import (
     decay_linear,
     delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
     vwap,
 )
 
 ALPHA_ID = "gtja191_138"
 
 __alpha_meta__ = {
-    'id': 'gtja191_138',
-    'theme': ['volume'],
-    'formula_latex': 'see body',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume', 'amount'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 60,
-    'min_warmup_bars': 119,
-    'notes': '',
+    "id": "gtja191_138",
+    "theme": ["volume"],
+    "formula_latex": "see body",
+    "columns_required": ["open", "high", "low", "close", "volume", "amount"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 60,
+    "min_warmup_bars": 119,
+    "notes": "",
 }
 
 

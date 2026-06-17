@@ -78,9 +78,7 @@ def score_trend_ext(
     ema20 = ti.ema(20)
     if len(ema20) >= 5:
         slope = (
-            (float(ema20.iloc[-1]) - float(ema20.iloc[-5]))
-            / float(ema20.iloc[-5])
-            * 100
+            (float(ema20.iloc[-1]) - float(ema20.iloc[-5])) / float(ema20.iloc[-5]) * 100
             if float(ema20.iloc[-5]) > 0
             else 0
         )
@@ -125,4 +123,3 @@ def _adx_detail(ti: TechInd, period: int = 14) -> tuple[float, float, float]:
         float(plus_di.iloc[-1]) if not pd.isna(plus_di.iloc[-1]) else 0.0,
         float(minus_di.iloc[-1]) if not pd.isna(minus_di.iloc[-1]) else 0.0,
     )
-

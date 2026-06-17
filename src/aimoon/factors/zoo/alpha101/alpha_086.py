@@ -6,42 +6,30 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 86.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_086"
 
 __alpha_meta__ = {
-    'id': 'alpha101_086',
-    'nickname': 'Kakushadze Alpha #86',
-    'theme': ['volume'],
-    'formula_latex': '(Ts_Rank(correlation(close, sum(adv20,15), 6), 20) < rank((open+close) - (vwap+open))) * -1',
-    'columns_required': ['open', 'close', 'volume', 'vwap'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 44,
-    'notes': '',
+    "id": "alpha101_086",
+    "nickname": "Kakushadze Alpha #86",
+    "theme": ["volume"],
+    "formula_latex": "(Ts_Rank(correlation(close, sum(adv20,15), 6), 20) < rank((open+close) - (vwap+open))) * -1",
+    "columns_required": ["open", "close", "volume", "vwap"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 44,
+    "notes": "",
 }
 
 

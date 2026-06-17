@@ -75,7 +75,12 @@ def run_portfolio(
         if len(df) > 0:
             if isinstance(df.index[0], (int, np.integer)):
                 logger.error("Stock %s still has integer index after fix!", code)
-            all_dates.update(df.index)
+            # 统一转换所有日期为 Timestamp
+            for d in df.index:
+                try:
+                    all_dates.add(pd.Timestamp(d))
+                except (ValueError, TypeError):
+                    logger.debug("Skipping unparseable date for %s: %s", code, d)
 
     date_types = set(type(d) for d in all_dates)
     if len(date_types) > 1:
@@ -133,14 +138,16 @@ def run_portfolio(
 
     # Compute volatility and volume regime filter
     if has_benchmark and benchmark_kline is not None:
-        bench_close = benchmark_kline['close']
+        bench_close = benchmark_kline["close"]
         bench_returns = bench_close.pct_change().dropna()
-        bench_vol_20 = bench_returns.rolling(20).std() * (252 ** 0.5)
+        bench_vol_20 = bench_returns.rolling(20).std() * (252**0.5)
         bench_vol_20_arr = bench_vol_20.dropna()
         if len(bench_vol_20_arr) > 0:
             vol_p80 = bench_vol_20_arr.quantile(0.80)
             vol_p95 = bench_vol_20_arr.quantile(0.95)
-            bench_volume = benchmark_kline['volume'] if 'volume' in benchmark_kline.columns else None
+            bench_volume = (
+                benchmark_kline["volume"] if "volume" in benchmark_kline.columns else None
+            )
             vol_ma20 = bench_volume.rolling(20).mean() if bench_volume is not None else None
 
             for date in sorted_dates[60:]:
@@ -158,12 +165,31 @@ def run_portfolio(
 
                 # Volume filter: if volume < 0.6x of 20-day average, reduce signal weight
                 if vol_ma20 is not None and ts in vol_ma20.index and ts in bench_volume.index:
-                    vol_ratio = float(bench_volume.loc[ts]) / float(vol_ma20.loc[ts]) if float(vol_ma20.loc[ts]) > 0 else 1.0
+                    vol_ratio = (
+                        float(bench_volume.loc[ts]) / float(vol_ma20.loc[ts])
+                        if float(vol_ma20.loc[ts]) > 0
+                        else 1.0
+                    )
                     if vol_ratio < 0.6 and vol_regime_cache[ts] > 0.3:
                         vol_regime_cache[ts] = 0.3  # low volume: reduce signal weight
 
     import time as _time
-    _loop_times = {"total": 0, "regime": 0, "rumi_gen": 0, "dd_risk": 0, "phase0": 0, "phase1": 0, "rumi_exit": 0, "phase2": 0, "equity": 0, "vol_filter": 0, "phase4": 0, "ic_track": 0, "ml_score": 0}
+
+    _loop_times = {
+        "total": 0,
+        "regime": 0,
+        "rumi_gen": 0,
+        "dd_risk": 0,
+        "phase0": 0,
+        "phase1": 0,
+        "rumi_exit": 0,
+        "phase2": 0,
+        "equity": 0,
+        "vol_filter": 0,
+        "phase4": 0,
+        "ic_track": 0,
+        "ml_score": 0,
+    }
     _loop_start = _time.time()
 
     for bar_date in sorted_dates[60:]:
@@ -190,7 +216,7 @@ def run_portfolio(
         effective_threshold = engine.entry_threshold
         current_regime = "sideways"
         if benchmark_kline is not None:
-            regime = _detect_regime_safe(benchmark_kline, bar_date)
+            regime = _detect_regime_safe(benchmark_kline)
             if regime is not None:
                 current_regime = regime.state
                 if hasattr(regime, "position_scale"):
@@ -222,6 +248,9 @@ def run_portfolio(
         if dd_scale < 1.0:
             effective_positions = max(1, int(effective_positions * dd_scale))
 
+        # 每 bar 清空 TechInd 缓存，避免 Phase1/Phase2/Phase4 重复创建
+        engine._bar_ti_cache.clear()
+
         with engine._perf.timer("phase0_execute"):
             engine._phase0_execute_pending(
                 bar_date=bar_date,
@@ -250,7 +279,7 @@ def run_portfolio(
                 stop_loss_count=stop_loss_count,
                 bar_count=bar_count,
                 prev_date=prev_date,
-                            )
+            )
 
         rumi_exits = []
         for code, pos in list(positions.items()):
@@ -370,7 +399,25 @@ def run_portfolio(
             prev_date = bar_date
             continue
 
-        if len(positions) < effective_positions and bar_count % check_interval == 0:
+        # ── 大盘择时：仅当沪深300站上MA20且MACD>0时才开仓 ──
+        _market_ok = True
+        if has_benchmark and benchmark_kline is not None:
+            try:
+                mk = benchmark_kline.loc[:bar_date]
+                if len(mk) >= 50:
+                    close_m = mk["close"]
+                    ma20_m = close_m.rolling(20).mean()
+                    ema12 = close_m.ewm(span=12, adjust=False).mean()
+                    ema26 = close_m.ewm(span=26, adjust=False).mean()
+                    macd_line = ema12 - ema26
+                    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                    macd_hist = macd_line - signal_line
+                    if close_m.iloc[-1] < ma20_m.iloc[-1] or macd_hist.iloc[-1] <= 0:
+                        _market_ok = False
+            except (KeyError, ValueError, IndexError):
+                pass
+
+        if _market_ok and len(positions) < effective_positions and bar_count % check_interval == 0:
             _t = _time.time()
             with engine._perf.timer("phase4_replacements"):
                 engine._phase4_open_replacements(
@@ -396,18 +443,20 @@ def run_portfolio(
 
         _loop_times["phase4"] += _time.time() - _t
 
-        if prev_ml_scores and prev_date is not None:
-            from aimoon.ml.label_engine import generate_reversal_labels
-            rev_labels = generate_reversal_labels(klines, prev_date, forward_days=5, lookback_days=20)
-            common_codes = set(prev_ml_scores) & set(rev_labels.index)
+        # IC Tracking — 测量评分系统对未来收益的预测力
+        # 使用原始前瞻收益（非 reversal-adjusted），直接回答"评分能否预测未来N日收益"
+        if prev_ml_scores and prev_date is not None and bar_count % 5 == 0:
+            from aimoon.ml.label_engine import generate_labels
+
+            fwd = getattr(engine, "forward_days", 5)  # 默认 5，可配置
+            fwd_labels = generate_labels(klines, prev_date, forward_days=fwd)
+            common_codes = set(prev_ml_scores) & set(fwd_labels.index)
             if len(common_codes) >= 10:
                 from scipy.stats import spearmanr
 
                 preds = [prev_ml_scores[c] for c in common_codes]
-                rets = [rev_labels[c] for c in common_codes]
-                if np.std(preds) == 0 or np.std(rets) == 0:
-                    pass
-                else:
+                rets = [fwd_labels[c] for c in common_codes]
+                if np.std(preds) > 1e-10 and np.std(rets) > 1e-10:
                     with warnings.catch_warnings():
                         warnings.filterwarnings("ignore", message=".*constant.*")
                         ic_val, _ = spearmanr(preds, rets)

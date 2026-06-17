@@ -5,42 +5,26 @@ Formula (verbatim from the report):
 
 Notes: Recursive SELF unrolled to cumulative product of (1 + up_return) since series start.
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_143"
 
 __alpha_meta__ = {
-    'id': 'gtja191_143',
-    'theme': ['momentum'],
-    'formula_latex': 'cumprod(1 + (c/delay(c,1)-1) if c>delay(c,1) else 0)',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 1,
-    'min_warmup_bars': 2,
-    'notes': 'Recursive SELF unrolled to cumulative product of (1 + up_return) since series start.',
+    "id": "gtja191_143",
+    "theme": ["momentum"],
+    "formula_latex": "cumprod(1 + (c/delay(c,1)-1) if c>delay(c,1) else 0)",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 1,
+    "min_warmup_bars": 2,
+    "notes": "Recursive SELF unrolled to cumulative product of (1 + up_return) since series start.",
 }
 
 

@@ -5,39 +5,28 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 26."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_026",
-    "theme": ['momentum', 'microstructure'],
-    "formula_latex": '((((SUM(CLOSE,7)/7)-CLOSE))+((CORR(VWAP,DELAY(CLOSE,5),230))))',
-    "columns_required": ['close', 'volume', 'amount'],
+    "theme": ["momentum", "microstructure"],
+    "formula_latex": "((((SUM(CLOSE,7)/7)-CLOSE))+((CORR(VWAP,DELAY(CLOSE,5),230))))",
+    "columns_required": ["close", "volume", "amount"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 7,
     "min_warmup_bars": 35,
-    "notes": '230d corr approximated with 30d window; see notes.',
+    "notes": "230d corr approximated with 30d window; see notes.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     c = panel["close"]

@@ -74,6 +74,8 @@ def compute_atr_take_profit(
 ) -> float:
     """Compute ATR-based take-profit at entry time."""
     return _compute_atr_threshold(kline, atr_multiplier, fallback, "compute_atr_take_profit")
+
+
 def parallel_compute_factors(
     registry,
     panel: dict[str, pd.DataFrame],
@@ -85,11 +87,16 @@ def parallel_compute_factors(
 
     For small factor lists (< 20) runs sequentially to avoid thread overhead.
     """
+    try:
+        from aimoon.factors.registry import SkipAlphaError
+    except ImportError:
+        SkipAlphaError = Exception
+
     if len(alpha_ids) < 20:
         for fid in alpha_ids:
             try:
                 out[fid] = registry.compute(fid, panel)
-            except (KeyError, ValueError, AttributeError):
+            except (SkipAlphaError, KeyError, ValueError, AttributeError):
                 continue
         return
 
@@ -98,7 +105,7 @@ def parallel_compute_factors(
     def _compute_one(fid: str) -> tuple[str, pd.DataFrame] | None:
         try:
             return fid, registry.compute(fid, panel)
-        except (ValueError, TypeError, KeyError, RuntimeError):
+        except (SkipAlphaError, ValueError, TypeError, KeyError, RuntimeError):
             return None
 
     # Use ThreadPoolExecutor (factor compute releases GIL via numpy/scipy)

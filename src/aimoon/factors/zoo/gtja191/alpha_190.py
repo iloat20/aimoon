@@ -5,42 +5,29 @@ Formula (verbatim from the report):
 
 Notes: Complex log of ratio of conditional squared deviations.
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
     signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_190"
 
 __alpha_meta__ = {
-    'id': 'gtja191_190',
-    'theme': ['momentum'],
-    'formula_latex': 'see body',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 39,
-    'notes': 'Complex log of ratio of conditional squared deviations.',
+    "id": "gtja191_190",
+    "theme": ["momentum"],
+    "formula_latex": "see body",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 39,
+    "notes": "Complex log of ratio of conditional squared deviations.",
 }
 
 
@@ -62,5 +49,7 @@ def compute(panel):
     cnt_dn = cond_dn.rolling(20).sum()
     sumif_dn = (((ret - geo) ** 2) * cond_dn).rolling(20).sum()
     sumif_up = (((ret - geo) ** 2) * cond_up).rolling(20).sum()
-    out = np.log(safe_div(cnt_up * sumif_dn, cnt_dn * sumif_up).replace([0, np.inf, -np.inf], np.nan))
+    out = np.log(
+        safe_div(cnt_up * sumif_dn, cnt_dn * sumif_up).replace([0, np.inf, -np.inf], np.nan)
+    )
     return out

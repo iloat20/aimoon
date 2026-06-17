@@ -1,0 +1,1042 @@
+C:\Users\Administrator\AppData\Local\Programs\Python\Python312\Lib\site-packages\py_mini_racer\py_mini_racer.py:13: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+=== Backtest: top 10, hold 15d, SL 4%, TP 15% ===
+Loading holdings pool (cached)...
+Holdings pool: 81 stocks
+Spot data for 44 stocks (from pool)
+Universe after filter: 40 stocks
+Scoring 40 stocks...
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\cache.py:35: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  return pd.read_json(path, orient="records", lines=True)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\icir_weighter.py:91: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+Scored in 87.2s
+Top 10 stocks: 600750(华润江中), 600900(长江电力), 603713(密尔克卫), 
+603871(嘉友国际), 600285(羚锐制药), 603129(春风动力), 600686(金龙汽车), 
+600309(万华化学), 300832(新产业), 301035(润丰股份)
+WARNING:aimoon.data.history:mootdx failed for 000300: 000300: mootdx 失败: 'datetime', trying Tencent
+WARNING:aimoon.data.history:Tencent failed for 000300: 000300: empty Tencent data, trying AKShare
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+C:\Users\Administrator\Downloads\work\aimoon\src\aimoon\ml\factor_decay.py:114: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  ic, _ = spearmanr(row[common].values, labels[common].values)
+      Enhanced Portfolio Backtest      
+┌──────────────────────┬──────────────┐
+│ Metric               │        Value │
+├──────────────────────┼──────────────┤
+│ Total Return         │      -15.73% │
+│ Annual Return        │      -34.75% │
+│ Sharpe Ratio         │        -2.83 │
+│ Sortino Ratio        │        -4.24 │
+│ Max Drawdown         │       26.10% │
+│ Calmar Ratio         │      -133.13 │
+│ Win Rate             │        42.9% │
+│ Profit Factor        │         0.20 │
+│ Avg Win              │       +2.06% │
+│ Avg Loss             │       -7.84% │
+│ Trade Count          │           14 │
+│ Avg Hold Days        │           15 │
+└──────────────────────┴──────────────┘
+Charts: output\equity_curve.png, output\drawdown.png, 
+output\monthly_returns.png
+Report: output\backtest_report_20260605_075714.md

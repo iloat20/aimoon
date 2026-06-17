@@ -7,7 +7,6 @@ import time
 
 import numpy as np
 import pandas as pd
-import pytest
 
 
 class TestMetricsCollector:
@@ -75,8 +74,7 @@ class TestMetricsCollector:
 
     def should_record_backtest_metrics(self) -> None:
         """record_backtest_metrics() should populate all fields."""
-        from aimoon.metrics import get_metrics
-        from aimoon.metrics import record_backtest_metrics
+        from aimoon.metrics import get_metrics, record_backtest_metrics
 
         m = get_metrics()
         record_backtest_metrics(

@@ -137,9 +137,7 @@ class StackingEnsemble:
 
         valid_mask = ~(np.isnan(oof_preds_xgb) | np.isnan(oof_preds_lgbm))
         if valid_mask.sum() < 30:
-            logger.warning(
-                "Stacking: insufficient OOF predictions (%d)", valid_mask.sum()
-            )
+            logger.warning("Stacking: insufficient OOF predictions (%d)", valid_mask.sum())
             return
 
         meta_X = pd.DataFrame(
@@ -148,9 +146,7 @@ class StackingEnsemble:
                 "lgbm_pred": oof_preds_lgbm[valid_mask],
             }
         )
-        meta_y = (
-            y.iloc[valid_mask] if isinstance(y, pd.Series) else pd.Series(y[valid_mask])
-        )
+        meta_y = y.iloc[valid_mask] if isinstance(y, pd.Series) else pd.Series(y[valid_mask])
 
         if is_binary:
             self._meta_model = lgb.LGBMClassifier(n_estimators=50, verbose=-1)
@@ -199,9 +195,7 @@ class StackingEnsemble:
             logger.warning("Full LGBM training failed: %s", e)
 
         self._is_fitted = True
-        logger.info(
-            "StackingEnsemble fitted: %d samples, %d features", len(X), len(X.columns)
-        )
+        logger.info("StackingEnsemble fitted: %d samples, %d features", len(X), len(X.columns))
 
     def predict(self, X: pd.DataFrame) -> pd.Series:
         """Predict calibrated probabilities.
@@ -279,9 +273,17 @@ class StackingEnsemble:
 
         if self._xgb_base is not None:
             self._xgb_base.save_model(str(base / "xgb_base.json"))
-        if self._lgbm_base is not None:
+        if (
+            self._lgbm_base is not None
+            and hasattr(self._lgbm_base, "booster_")
+            and self._lgbm_base.booster_ is not None
+        ):
             self._lgbm_base.booster_.save_model(str(base / "lgbm_base.txt"))
-        if self._meta_model is not None:
+        if (
+            self._meta_model is not None
+            and hasattr(self._meta_model, "booster_")
+            and self._meta_model.booster_ is not None
+        ):
             self._meta_model.booster_.save_model(str(base / "meta_model.txt"))
 
         meta: dict = {
@@ -324,23 +326,31 @@ class StackingEnsemble:
             xgb_path = base / "xgb_base.json"
             if xgb_path.exists():
                 import xgboost as xgb
+
                 obj._xgb_base = xgb.XGBClassifier()
                 obj._xgb_base.load_model(str(xgb_path))
 
             lgbm_path = base / "lgbm_base.txt"
             if lgbm_path.exists():
                 import lightgbm as lgb
+
                 obj._lgbm_base = lgb.LGBMClassifier()
-                obj._lgbm_base._Booster = lgb.Booster(model_file=str(lgbm_path))
+                booster = lgb.Booster(model_file=str(lgbm_path))
+                obj._lgbm_base._Booster = booster
+                obj._lgbm_base.booster_ = booster
 
             meta_model_path = base / "meta_model.txt"
             if meta_model_path.exists():
                 import lightgbm as lgb
+
                 obj._meta_model = lgb.LGBMClassifier()
-                obj._meta_model._Booster = lgb.Booster(model_file=str(meta_model_path))
+                booster = lgb.Booster(model_file=str(meta_model_path))
+                obj._meta_model._Booster = booster
+                obj._meta_model.booster_ = booster
 
             if "calibrator_x" in meta:
                 from sklearn.isotonic import IsotonicRegression
+
                 obj._calibrator = IsotonicRegression(out_of_bounds="clip")
                 obj._calibrator.X_thresholds_ = np.array(meta["calibrator_x"])
                 obj._calibrator.y_thresholds_ = np.array(meta["calibrator_y"])

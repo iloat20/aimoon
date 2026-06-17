@@ -6,42 +6,28 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 32.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
     scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_032"
 
 __alpha_meta__ = {
-    'id': 'alpha101_032',
-    'nickname': 'Kakushadze Alpha #32',
-    'theme': ['momentum'],
-    'formula_latex': 'scale(sum(close,7)/7 - close) + 20*scale(correlation(vwap, delay(close,5), 230))',
-    'columns_required': ['close', 'vwap'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 235,
-    'notes': 'Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.',
+    "id": "alpha101_032",
+    "nickname": "Kakushadze Alpha #32",
+    "theme": ["momentum"],
+    "formula_latex": "scale(sum(close,7)/7 - close) + 20*scale(correlation(vwap, delay(close,5), 230))",
+    "columns_required": ["close", "vwap"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 235,
+    "notes": "Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.",
 }
 
 
@@ -62,9 +48,10 @@ def compute(panel: dict) -> pd.DataFrame:
     close = panel["close"]
     vwap = panel["vwap"]
 
-
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum
     delay = _delay
-    out = scale(rolling_sum(close, 7) / 7.0 - close) + 20.0 * scale(ts_corr(vwap, delay(close, 5), 230))
+    out = scale(rolling_sum(close, 7) / 7.0 - close) + 20.0 * scale(
+        ts_corr(vwap, delay(close, 5), 230)
+    )
     return out

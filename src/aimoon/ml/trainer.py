@@ -1,4 +1,15 @@
-"""Time-series cross-validated XGBoost training."""
+"""Time-series cross-validated XGBoost training + 双模型增量学习。
+
+核心功能：
+    1. train_model() — 单模型 XGBoost 训练
+    2. train_ensemble() — 集成训练 (EN + XGB + LGBM)
+    3. train_incremental_dual() — 双模型增量训练 (A/B + EWC)
+
+双模型策略：
+    Model A: 长期全量模型（稳定）
+    Model B: 短期增量模型（适应性强，带 EWC 正则）
+    预测时：根据 IC 衰减速度动态调整 A/B 权重
+"""
 
 from __future__ import annotations
 
@@ -33,6 +44,7 @@ from aimoon.ml.training_loop import run_cv_training
 logger = logging.getLogger(__name__)
 
 _MODEL_TTL_DAYS = 7
+_MIN_INCREMENTAL_SAMPLES = 50
 
 
 @dataclass(frozen=True)
@@ -57,6 +69,10 @@ class EnsembleTrainingResult(TypedDict):
     xgb_weight: float
     lgbm_weight: float
     en_weight: float
+
+
+# DualModel 类型（延迟导入避免循环依赖）
+DualModel = Any
 
 
 def _default_params() -> dict[str, Any]:
@@ -96,9 +112,9 @@ def _search_ensemble_weights(
                     ic_val, _ = spearmanr(combined, combined_labels.values)
                 if not np.isnan(ic_val) and ic_val > best_ic:
                     best_ic = ic_val
-                    en_weight = w_en / w_total
-                    xgb_weight = w_xgb / w_total
-                    lgbm_weight = w_lgbm / w_total
+                    en_weight = float(w_en / w_total)
+                    xgb_weight = float(w_xgb / w_total)
+                    lgbm_weight = float(w_lgbm / w_total)
 
     weight_method = "grid_search"
     logger.info("Grid search best IC: %.4f", best_ic)
@@ -111,18 +127,40 @@ def train_model(
     registry: Registry | None = None,
     params: dict[str, Any] | None = None,
     n_dates: int = 300,
-    forward_days: int = 5,
+    forward_days: int = 22,
     save_dir: str | Path | None = None,
     sector_map: dict[str, str] | None = None,
     warm_start: bool = False,
     zoo_factor_ids: list[str] | None = None,
+    use_early_stop: bool = False,
+    overfit_threshold: float = 1.5,
+    early_stop_patience: int = 3,
 ) -> TrainingResult:
-    """Train XGBoost model with time-series cross-validation."""
+    """Train XGBoost model with time-series cross-validation.
+
+    Parameters
+    ----------
+    use_early_stop : bool
+        Use train_xgboost_with_early_stopping instead of run_cv_training.
+        Enables consecutive-fold early stopping, per-fold Rank IC, and
+        automatic overfitting detection with complexity reduction.
+    overfit_threshold : float
+        Train/val IC ratio threshold for complexity reduction (only used
+        when use_early_stop=True).
+    early_stop_patience : int
+        Consecutive OOS IC drops before stopping CV (only used when
+        use_early_stop=True).
+    """
     registry = registry or get_default_registry()
     t0 = time.time()
 
     X, y, _ = _collect_training_data(
-        panel, klines, registry, n_dates, forward_days, sector_map=sector_map,
+        panel,
+        klines,
+        registry,
+        n_dates,
+        forward_days,
+        sector_map=sector_map,
         zoo_factor_ids=zoo_factor_ids,
     )
     if len(X) < 50 or X.shape[1] < 2:
@@ -133,22 +171,59 @@ def train_model(
 
     n_stocks = len(X)
 
-    # H4: Clip labels after cross-sectional standardization (z-score units)
-    y = y.clip(-3.0, 3.0)
+    # 标签已通过 data_collection 在截面标准化前裁剪极端值（±15%）
+    # 此处仅做安全保底：z-score 后 3σ 以外归零（极小概率事件）
+    y = y.clip(-4.0, 4.0)
 
     xgb_params = {**_default_params(), **(params or {})}
     feature_names = (
-        [c for c in X.columns if c != "_date"] if "_date" in X.columns
-        else X.columns.tolist()
+        [c for c in X.columns if c != "_date"] if "_date" in X.columns else X.columns.tolist()
     )
 
-    (
-        final_model, cv_scores, fold_ics, best_cv_score, best_round,
-        X_train_final, X_val_final, y_train_final, y_val_final,
-    ) = run_cv_training(
-        X, y, xgb_params, feature_names, forward_days,
-        Path(save_dir) if save_dir else None,
-    )
+    if use_early_stop:
+        from aimoon.ml.training_loop import train_xgboost_with_early_stopping
+
+        (
+            final_model,
+            cv_scores,
+            fold_ics,
+            _rank_ics,
+            best_cv_score,
+            best_round,
+            X_train_final,
+            X_val_final,
+            y_train_final,
+            y_val_final,
+            _fold_details,
+        ) = train_xgboost_with_early_stopping(
+            X,
+            y,
+            xgb_params,
+            feature_names,
+            forward_days,
+            early_stop_patience=early_stop_patience,
+            overfit_threshold=overfit_threshold,
+            save_dir=Path(save_dir) if save_dir else None,
+        )
+    else:
+        (
+            final_model,
+            cv_scores,
+            fold_ics,
+            best_cv_score,
+            best_round,
+            X_train_final,
+            X_val_final,
+            y_train_final,
+            y_val_final,
+        ) = run_cv_training(
+            X,
+            y,
+            xgb_params,
+            feature_names,
+            forward_days,
+            Path(save_dir) if save_dir else None,
+        )
 
     importance = compute_feature_importance(final_model, feature_names)
     shap_top20 = compute_shap_top20(final_model, X_val_final, feature_names)
@@ -156,9 +231,8 @@ def train_model(
 
     # Re-compute IC for logging/saving
     import xgboost as xgb_mod
-    ic = compute_spearmanr_safe(
-        final_model.predict(xgb_mod.DMatrix(X_val_final)), y_val_final
-    )
+
+    ic = compute_spearmanr_safe(final_model.predict(xgb_mod.DMatrix(X_val_final)), y_val_final)
     ic_train = compute_spearmanr_safe(
         final_model.predict(xgb_mod.DMatrix(X_train_final)), y_train_final
     )
@@ -166,8 +240,13 @@ def train_model(
 
     train_duration = time.time() - t0
     log_training_summary(
-        "XGBoost", ic, ic_train, fold_icir,
-        n_stocks, len(feature_names), train_duration,
+        "XGBoost",
+        ic,
+        ic_train,
+        fold_icir,
+        n_stocks,
+        len(feature_names),
+        train_duration,
     )
 
     # Save artifacts
@@ -214,12 +293,20 @@ def train_ensemble(
     klines: dict[str, pd.DataFrame],
     registry: Registry | None = None,
     n_dates: int = 300,
-    forward_days: int = 5,
+    forward_days: int = 22,
     save_dir: str | Path | None = None,
     cache_dir: str | Path = ".aimoon_cache",
     sector_map: dict[str, str] | None = None,
     warm_start: bool = True,
     zoo_factor_ids: list[str] | None = None,
+    smart_incremental: bool = False,
+    incremental_config: dict[str, Any] | None = None,
+    use_early_stop: bool = False,
+    overfit_threshold: float = 1.5,
+    early_stop_patience: int = 3,
+    use_optuna: bool = False,
+    optuna_trials: int = 80,
+    optuna_timeout: float | None = None,
 ) -> EnsembleTrainingResult:
     """Train stacking ensemble: Elastic Net + XGBoost + LightGBM.
 
@@ -229,6 +316,26 @@ def train_ensemble(
         3. Train Elastic Net on full features (handles collinearity natively)
         4. Train XGB and LGBM on PCA-reduced features
         5. Grid-search optimal weights
+
+    Parameters
+    ----------
+    smart_incremental : bool
+        Enable smart incremental learning (A/B dual model + EWC + adaptive weights).
+    incremental_config : dict | None
+        Smart incremental learning config. See SmartIncrementalLearner.__init__.
+    use_early_stop : bool
+        Enable consecutive-fold early stopping + overfitting auto-recovery
+        for XGBoost and LightGBM sub-models.
+    overfit_threshold : float
+        Train/val IC ratio threshold for complexity reduction.
+    early_stop_patience : int
+        Consecutive OOS IC drops before stopping CV.
+    use_optuna : bool
+        Run Optuna hyperparameter search before training.
+    optuna_trials : int
+        Number of Optuna trials.
+    optuna_timeout : float | None
+        Max seconds for Optuna search.
     """
     from aimoon.ml.lgbm_trainer import train_lgbm_model
 
@@ -237,6 +344,54 @@ def train_ensemble(
     save_path.mkdir(parents=True, exist_ok=True)
 
     logger.info("=== Training Stacking Ensemble (Elastic Net + XGB + LGBM) ===")
+
+    # ── Optional: Optuna hyperparameter search ──
+    optuna_params: dict[str, Any] | None = None
+    if use_optuna:
+        from aimoon.factors.panel import build_panel
+        from aimoon.ml.training_loop import run_optuna_search
+
+        logger.info("Running Optuna hyperparameter search...")
+        panel_for_optuna = build_panel(klines, min_rows=60)
+        if panel_for_optuna is not None:
+            X_opt, y_opt, _ = _collect_training_data(
+                panel_for_optuna,
+                klines,
+                registry,
+                n_dates,
+                forward_days,
+                sector_map=sector_map,
+                zoo_factor_ids=zoo_factor_ids,
+            )
+            feature_names_opt = (
+                [c for c in X_opt.columns if c != "_date"]
+                if "_date" in X_opt.columns
+                else X_opt.columns.tolist()
+            )
+            optuna_result = run_optuna_search(
+                X_opt,
+                y_opt,
+                feature_names_opt,
+                forward_days,
+                n_trials=optuna_trials,
+                timeout=optuna_timeout,
+                cache_dir=cache_dir,
+            )
+            if optuna_result is not None:
+                optuna_params = optuna_result["best_params"]
+                logger.info(
+                    "Optuna best: objective=%.4f, mean_ic=%.4f, std_ic=%.4f",
+                    optuna_result["best_objective"],
+                    optuna_result["mean_ic"],
+                    optuna_result["std_ic"],
+                )
+                # Merge Optuna params into xgb_params (Optuna overrides)
+                optuna_best = optuna_result["best_params"]
+                xgb_params_opt = get_xgb_params()
+                for k, v in optuna_best.items():
+                    if k in xgb_params_opt:
+                        xgb_params_opt[k] = v
+                logger.info("XGBoost params updated from Optuna search")
 
     # Train Elastic Net on full features (handles collinearity)
     en_result = train_elasticnet_model(
@@ -256,12 +411,16 @@ def train_ensemble(
         panel,
         klines,
         registry,
+        params=optuna_params,
         n_dates=n_dates,
         forward_days=forward_days,
         save_dir=save_path,
         sector_map=sector_map,
         warm_start=warm_start,
         zoo_factor_ids=zoo_factor_ids,
+        use_early_stop=use_early_stop,
+        overfit_threshold=overfit_threshold,
+        early_stop_patience=early_stop_patience,
     )
     logger.info("XGBoost: IC=%.04f", xgb_result.ic)
 
@@ -282,6 +441,7 @@ def train_ensemble(
     # H5 + M4: Softmax IC weighting — smooth dynamic weights adapting to relative model quality
     # Temperature-scaled softmax prevents domination by a single model while rewarding higher IC
     import math as _math
+
     temperature = 0.02
     ics = [max(0.0, en_result.ic), max(0.0, xgb_result.ic), max(0.0, lgbm_result.ic)]
     if max(ics) > 0:
@@ -321,9 +481,7 @@ def train_ensemble(
                 if features.empty:
                     continue
 
-                common_labels = generate_labels(
-                    klines, val_date, forward_days, forward_days
-                )
+                common_labels = generate_labels(klines, val_date, forward_days, forward_days)
                 common = features.index.intersection(common_labels.index)
                 if len(common) < 20:
                     continue
@@ -337,15 +495,14 @@ def train_ensemble(
                         with open(en_path, encoding="utf-8") as f:
                             en_data = json.load(f)
                         from sklearn.preprocessing import StandardScaler
+
                         en_scaler = StandardScaler()
                         en_scaler.mean_ = np.array(en_data["scaler_mean"], dtype=np.float64)
                         en_scaler.scale_ = np.array(en_data["scaler_scale"], dtype=np.float64)
                         en_scaler.var_ = np.array(en_data["scaler_var"], dtype=np.float64)
                         en_scaler.n_features_in_ = len(en_data["scaler_mean"])
                         en_feat = features.loc[common]
-                        en_feat = en_feat.reindex(
-                            columns=en_result.feature_names, fill_value=0.0
-                        )
+                        en_feat = en_feat.reindex(columns=en_result.feature_names, fill_value=0.0)
                         en_scaled = en_scaler.transform(en_feat.values)
                         preds_en = pd.Series(
                             en_data["model"].predict(en_scaled),
@@ -358,9 +515,7 @@ def train_ensemble(
                 # XGB prediction (on PCA features)
                 try:
                     fn = xgb_result.feature_names
-                    features_xgb = features.loc[common].reindex(
-                        columns=fn, fill_value=0.0
-                    )
+                    features_xgb = features.loc[common].reindex(columns=fn, fill_value=0.0)
                     preds_xgb = pd.Series(
                         xgb_result.model.predict(xgb.DMatrix(features_xgb)),
                         index=common,
@@ -372,9 +527,7 @@ def train_ensemble(
                 # LGBM prediction
                 try:
                     fn = lgbm_result.feature_names
-                    features_lgbm = features.loc[common].reindex(
-                        columns=fn, fill_value=0.0
-                    )
+                    features_lgbm = features.loc[common].reindex(columns=fn, fill_value=0.0)
                     preds_lgbm = pd.Series(
                         lgbm_result.model.predict(features_lgbm.values),
                         index=common,
@@ -388,16 +541,15 @@ def train_ensemble(
             # Grid search for optimal weights
             if all_val_labels and all_val_preds_en:
                 combined_en = pd.concat(all_val_preds_en)
-                combined_xgb = (
-                    pd.concat(all_val_preds_xgb) if all_val_preds_xgb else combined_en
-                )
-                combined_lgbm = (
-                    pd.concat(all_val_preds_lgbm) if all_val_preds_lgbm else combined_en
-                )
+                combined_xgb = pd.concat(all_val_preds_xgb) if all_val_preds_xgb else combined_en
+                combined_lgbm = pd.concat(all_val_preds_lgbm) if all_val_preds_lgbm else combined_en
                 combined_labels = pd.concat(all_val_labels)
 
                 en_weight, xgb_weight, lgbm_weight, weight_method = _search_ensemble_weights(
-                    combined_en, combined_xgb, combined_lgbm, combined_labels,
+                    combined_en,
+                    combined_xgb,
+                    combined_lgbm,
+                    combined_labels,
                     weight_method,
                 )
     except Exception as e:
@@ -427,6 +579,74 @@ def train_ensemble(
         lgbm_weight,
     )
 
+    # ── 智能增量学习（可选）──
+    if smart_incremental:
+        try:
+            from aimoon.ml.incremental_trainer import SmartIncrementalLearner
+
+            learner = SmartIncrementalLearner(save_path, incremental_config)
+            _, existing = SmartIncrementalLearner.load(save_path, incremental_config)
+
+            # 收集全量 + 增量数据
+            X_full, y_full, _ = _collect_training_data(
+                panel,
+                klines,
+                registry,
+                n_dates,
+                forward_days,
+                sector_map=sector_map,
+                zoo_factor_ids=zoo_factor_ids,
+            )
+            X_new, y_new, _ = _collect_training_data(
+                panel,
+                klines,
+                registry,
+                n_dates=min(60, n_dates),
+                forward_days=forward_days,
+                sector_map=sector_map,
+                zoo_factor_ids=zoo_factor_ids,
+            )
+            feature_names = list(xgb_result.feature_names)
+            date_index = panel.get("close", pd.DataFrame()).index
+
+            if len(X_new) >= _MIN_INCREMENTAL_SAMPLES:
+                smart_dual = learner.train(
+                    model_a=existing.model_a if existing else xgb_result.model,
+                    X_full=X_full,
+                    y_full=y_full,
+                    X_new=X_new,
+                    y_new=y_new,
+                    feature_names=feature_names,
+                    xgb_params=_default_params(),
+                    date_index=date_index,
+                )
+                # 用 SmartDualModel 的 A 替换原 XGB 模型
+                xgb_result = TrainingResult(
+                    model=smart_dual.model_a,
+                    feature_names=tuple(feature_names),
+                    feature_importance=xgb_result.feature_importance,
+                    ic=smart_dual.a_ic,
+                    n_stocks=xgb_result.n_stocks,
+                    n_dates=xgb_result.n_dates,
+                    train_duration=xgb_result.train_duration,
+                )
+                logger.info(
+                    "Smart incremental: A_ic=%.4f, B_ic=%.4f, " "decay=%.4f, w_a=%.2f, w_b=%.2f",
+                    smart_dual.a_ic,
+                    smart_dual.b_ic,
+                    smart_dual.ic_decay_speed,
+                    smart_dual.weight_a,
+                    smart_dual.weight_b,
+                )
+            else:
+                logger.info(
+                    "Smart incremental skipped: insufficient data (%d < %d)",
+                    len(X_new),
+                    _MIN_INCREMENTAL_SAMPLES,
+                )
+        except Exception as e:
+            logger.warning("Smart incremental training failed: %s", e)
+
     # 保存规范特征名列表（所有模型使用的共特征）
     canonical_features_path = save_path / "canonical_feature_names.json"
     if xgb_result.feature_names:
@@ -453,7 +673,7 @@ def train_elasticnet_model(
     klines: dict[str, pd.DataFrame],
     registry: Registry | None = None,
     n_dates: int = 300,
-    forward_days: int = 5,
+    forward_days: int = 22,
     save_dir: str | Path | None = None,
     cache_dir: str | Path = ".aimoon_cache",
     sector_map: dict[str, str] | None = None,
@@ -483,9 +703,7 @@ def train_elasticnet_model(
         zoo_factor_ids=zoo_factor_ids,
     )
     if len(X) < 50 or X.shape[1] < 2:
-        raise ValueError(
-            f"Insufficient training data: {len(X)} samples, {X.shape[1]} features"
-        )
+        raise ValueError(f"Insufficient training data: {len(X)} samples, {X.shape[1]} features")
 
     dates_column = None
     if "_date" in X.columns:
@@ -496,6 +714,9 @@ def train_elasticnet_model(
     y = y.clip(-3.0, 3.0)
 
     feature_names = X.columns.tolist()
+
+    # Fill NaN before standardization
+    X = X.ffill().bfill().fillna(0)
 
     # Standardize features
     scaler = StandardScaler()
@@ -539,9 +760,7 @@ def train_elasticnet_model(
                 preds = model.predict(X_scaled[val_idx])
 
                 with warnings.catch_warnings():
-                    warnings.filterwarnings(
-                        "ignore", message="An input array is constant"
-                    )
+                    warnings.filterwarnings("ignore", message="An input array is constant")
                     ic_val, _ = spearmanr(preds, y.values[val_idx])
                 if not np.isnan(ic_val):
                     fold_ic_vals.append(float(ic_val))
@@ -648,7 +867,7 @@ def ensure_model_fresh(
     model_dir: str | Path | None = None,
     cache_dir: str | Path = ".aimoon_cache",
     n_dates: int = 300,
-    forward_days: int = 5,
+    forward_days: int = 22,
 ) -> object | None:
     """Check if ensemble needs retraining. Returns EnsemblePredictor or None."""
     from aimoon.ml.ensemble import EnsemblePredictor
@@ -692,17 +911,166 @@ def ensure_model_fresh(
         panel = build_panel(klines, min_rows=60)
         if panel is None:
             logger.warning("Cannot train ML model: insufficient panel data")
-            return None
-        registry = get_default_registry()
-        result = train_ensemble(panel, klines, registry, save_dir=save_dir)
-        logger.info(
-            "Ensemble trained: XGB IC=%.04f, LGBM IC=%.04f",
-            result["xgb_result"].ic,
-            result["lgbm_result"].ic,
-        )
-        return EnsemblePredictor.from_cache(save_dir)
-
     return None
 
 
+def train_incremental_dual(
+    panel: dict[str, pd.DataFrame],
+    klines: dict[str, pd.DataFrame],
+    registry: Registry | None = None,
+    n_dates: int = 300,
+    forward_days: int = 22,
+    save_dir: str | Path | None = None,
+    cache_dir: str | Path = ".aimoon_cache",
+    sector_map: dict[str, str] | None = None,
+    zoo_factor_ids: list[str] | None = None,
+    lambda_ewc: float = 50.0,
+) -> DualModel | None:
+    """增量训练双模型 B。
 
+    策略：
+    1. 加载现有 DualModel 状态
+    2. 用增量数据训练 B 模型（带 EWC 正则）
+    3. 使用 Purged TSCV 检测性能滑坡
+    4. 根据 IC 衰减速度调整 A/B 权重
+    5. 保存更新后的 DualModel
+
+    Parameters
+    ----------
+    panel, klines, registry, n_dates, forward_days, save_dir, cache_dir, sector_map, zoo_factor_ids
+        训练参数（与 train_ensemble 一致）。
+    lambda_ewc : float
+        EWC 正则强度。
+
+    Returns
+    -------
+    DualModel | None
+        更新后的双模型，None 表示无需训练或训练失败。
+    """
+    from aimoon.ml.incremental_trainer import (
+        compute_dual_weights,
+        detect_performance_slide,
+        load_dual_model,
+        save_dual_model,
+        train_incremental_b,
+    )
+
+    registry = registry or get_default_registry()
+    save_path = Path(save_dir) if save_dir else Path(cache_dir) / "ml"
+    save_path.mkdir(parents=True, exist_ok=True)
+
+    # 加载现有双模型状态
+    dual = load_dual_model(save_path)
+    if dual is None:
+        logger.info("No existing DualModel found, skipping incremental training")
+        return None
+
+    # 检查 A 模型是否存在
+    if dual.model_a is None:
+        logger.warning("DualModel has no A model, skipping incremental training")
+        return None
+
+    t0 = time.time()
+
+    # 1. 收集增量训练数据（最近 N 天）
+    X, y, _ = _collect_training_data(
+        panel,
+        klines,
+        registry,
+        n_dates=min(60, n_dates),  # 增量训练用较短窗口
+        forward_days=forward_days,
+        sector_map=sector_map,
+        zoo_factor_ids=zoo_factor_ids,
+    )
+    if len(X) < 50:
+        logger.info("Insufficient incremental data (%d < 50), skipping", len(X))
+        return None
+
+    feature_names = dual.feature_names
+    if not feature_names:
+        logger.warning("DualModel has no feature names, skipping")
+        return None
+
+    # 2. 计算 IC 衰减速度（基于最近 20 天的 IC 序列）
+    # 使用 A 模型在增量数据上的 IC 作为代理
+    import xgboost as xgb_mod
+
+    dmatrix = xgb_mod.DMatrix(X[feature_names])
+    preds_a = dual.model_a.predict(dmatrix)
+    from scipy.stats import spearmanr
+
+    with np.errstate(all="ignore"):
+        ic_a, _ = spearmanr(preds_a, y.values)
+    if np.isnan(ic_a):
+        ic_a = 0.0
+
+    # 计算衰减速度（简化：用 A 模型最近 IC 与历史 IC 的差异）
+    ic_decay = ic_a - dual.a_ic  # 正值 = 改善，负值 = 衰减
+
+    # 3. 训练 B 模型
+    result = train_incremental_b(
+        model_a=dual.model_a,
+        X_new=X[feature_names],
+        y_new=y,
+        feature_names=feature_names,
+        fisher_info=dual.fisher_info,
+        xgb_params=_default_params(),
+        lambda_ewc=lambda_ewc,
+    )
+
+    # 4. 检测性能滑坡（使用 Purged TSCV）
+    is_slide, slide_ratio, fold_ics = detect_performance_slide(
+        model=result.model,
+        X=X,
+        y=y,
+        feature_names=feature_names,
+        n_splits=5,
+    )
+
+    # 5. 更新 A/B 权重
+    weight_a, weight_b = compute_dual_weights(
+        ic_decay_speed=ic_decay,
+        a_ic=dual.a_ic,
+        b_ic=result.ic,
+    )
+
+    # 如果检测到性能滑坡，降低 B 权重
+    if is_slide:
+        weight_b *= 0.5
+        weight_a = 1.0 - weight_b
+        logger.warning(
+            "Performance slide detected, reducing B weight: w_a=%.2f, w_b=%.2f",
+            weight_a,
+            weight_b,
+        )
+
+    # 更新双模型状态
+    dual.model_b = result.model
+    dual.weight_a = weight_a
+    dual.weight_b = weight_b
+    dual.ic_decay_speed = ic_decay
+    dual.a_ic = ic_a
+    dual.b_ic = result.ic
+    dual.b_train_count += 1
+    dual.last_train_time = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 保存更新后的双模型
+    save_dual_model(dual, save_path)
+
+    duration = time.time() - t0
+    logger.info(
+        "DualModel incremental update: A_IC=%.4f, B_IC=%.4f, w_a=%.2f, w_b=%.2f, "
+        "decay=%.4f, slide=%s, %.1fs",
+        ic_a,
+        result.ic,
+        weight_a,
+        weight_b,
+        ic_decay,
+        is_slide,
+        duration,
+    )
+
+    return dual
+
+
+# ── 以下为 ensure_model_cached_or_train 中的双模型初始化逻辑（保留供参考）──

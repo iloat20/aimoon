@@ -1,4 +1,5 @@
 """Institutional holdings pool — quarterly data, persisted to disk."""
+
 from __future__ import annotations
 
 import json
@@ -147,6 +148,7 @@ def _filter_by_fund_pct(codes: set[str], min_pct: float, cfg: Config | None = No
     try:
         from aimoon.config import Config as _Config
         from aimoon.data.spot import get_spot
+
         spot_cfg = cfg if cfg is not None else _Config()
         spot_result = get_spot(spot_cfg)
         if spot_result.is_err():
@@ -165,8 +167,11 @@ def _filter_by_fund_pct(codes: set[str], min_pct: float, cfg: Config | None = No
         today = date.today()
         quarters = [(12, 31), (9, 30), (6, 30), (3, 31)]
         report_date = next(
-            (date(today.year, m, d).strftime("%Y%m%d")
-             for m, d in quarters if date(today.year, m, d) <= today),
+            (
+                date(today.year, m, d).strftime("%Y%m%d")
+                for m, d in quarters
+                if date(today.year, m, d) <= today
+            ),
             f"{today.year - 1}1231",
         )
         df = ak.stock_report_fund_hold(symbol="基金持仓", date=report_date)
@@ -182,7 +187,9 @@ def _filter_by_fund_pct(codes: set[str], min_pct: float, cfg: Config | None = No
         fund["held_shares"] = pd.to_numeric(fund["held_shares"], errors="coerce").fillna(0)
 
         merged = cap[["stock_code", "float_shares"]].merge(
-            fund, on="stock_code", how="left",
+            fund,
+            on="stock_code",
+            how="left",
         )
         merged["held_shares"] = merged["held_shares"].fillna(0)
         merged["pct"] = merged["held_shares"] / merged["float_shares"] * 100
@@ -197,6 +204,7 @@ def _filter_by_pe(codes: set[str], max_pe: float, cfg: Config | None = None) -> 
     try:
         from aimoon.config import Config as _Config
         from aimoon.data.spot import get_spot
+
         spot_cfg = cfg if cfg is not None else _Config()
         spot_result = get_spot(spot_cfg)
         if spot_result.is_err():
@@ -230,8 +238,7 @@ def _filter_by_dividend_yield(codes: set[str], min_yield: float) -> set[str]:
                 "source": "WEB",
                 "client": "WEB",
             }
-            r = requests.get(url, params=params, timeout=15,
-                             headers={"User-Agent": "Mozilla/5.0"})
+            r = requests.get(url, params=params, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
             rows = (r.json().get("result") or {}).get("data") or []
             if not rows:
                 break
@@ -259,14 +266,13 @@ def _filter_by_listing(codes: set[str], min_days: int) -> set[str]:
     """Filter by listing date from eastmoney spot data."""
     try:
         from aimoon.data.spot import FIELDS, em_get
+
         code_list = sorted(str(c) for c in codes)
         result: set[str] = set()
         cutoff = (date.today() - timedelta(days=min_days)).strftime("%Y%m%d")
         for i in range(0, len(code_list), 500):
-            batch = code_list[i:i + 500]
-            secids = ",".join(
-                f'{"1" if c.startswith("6") else "0"}.{c}' for c in batch
-            )
+            batch = code_list[i : i + 500]
+            secids = ",".join(f'{"1" if c.startswith("6") else "0"}.{c}' for c in batch)
             url = "https://push2delay.eastmoney.com/api/qt/ulist.np/get"
             params = {"fltt": "2", "invt": "2", "fields": FIELDS, "secids": secids}
             r = em_get(url, params, timeout=15)
@@ -305,8 +311,7 @@ def _get_northbound(min_cap: float) -> set[str]:
             "client": "WEB",
         }
         try:
-            r = requests.get(url, params=params, timeout=15,
-                             headers={"User-Agent": "Mozilla/5.0"})
+            r = requests.get(url, params=params, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
             data = r.json()
             rows = (data.get("result") or {}).get("data")
             if not rows:

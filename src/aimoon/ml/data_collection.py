@@ -44,7 +44,9 @@ def _select_dates_evenly(
         n_dates = max(1, (len(available_dates) - 1) // min_interval + 1)
         logger.info(
             "Adjusted n_dates to %d (min_interval=%d, available=%d)",
-            n_dates, min_interval, len(available_dates),
+            n_dates,
+            min_interval,
+            len(available_dates),
         )
 
     if n_dates <= 1:
@@ -55,7 +57,7 @@ def _select_dates_evenly(
     step = max(min_interval, ideal_step)
 
     selected = []
-    pos = 0
+    pos: float = 0
     for _ in range(n_dates):
         if pos >= len(available_dates):
             break
@@ -70,7 +72,7 @@ def _collect_training_data(
     klines: dict[str, pd.DataFrame],
     registry: Registry | None = None,
     n_dates: int = 300,
-    forward_days: int = 5,
+    forward_days: int = 22,
     sector_map: dict[str, str] | None = None,
     *,
     use_pca: bool = False,
@@ -115,7 +117,10 @@ def _collect_training_data(
 
     for date in selected_dates:
         features = extract_features(
-            panel, registry, target_date=date, sector_map=sector_map,
+            panel,
+            registry,
+            target_date=date,
+            sector_map=sector_map,
             zoo_factor_ids=_zoo_factor_ids,
         )
         labels = generate_reversal_labels(klines, date, forward_days, lookback_days=20)
@@ -138,6 +143,10 @@ def _collect_training_data(
     X = pd.concat(all_features, axis=0)
     y = pd.concat(all_labels, axis=0)
 
+    # 截面标准化前先裁剪极端值（防止涨跌停等极端收益扭曲均值/标准差）
+    # generate_reversal_labels 中已有 clip_range=(-30,30)，此处为二次安全保底
+    y = y.clip(-30.0, 30.0)
+
     if standardize_labels:
         n_stocks_per_date = X.groupby("_date").size().median()
         if n_stocks_per_date >= 200:
@@ -158,26 +167,31 @@ def _collect_training_data(
         logger.info("Removed %d constant features", constant_cols.sum())
 
     if len(X) > 100 and X.shape[1] > 40:
-        date_col = X.get("_date")
-        if date_col is not None:
-            unique_dates = sorted(date_col.unique())
-            cutoff_idx = int(len(unique_dates) * 0.6)
-            early_dates = set(unique_dates[:cutoff_idx])
-            early_mask = date_col.isin(early_dates)
-            X_early = X.loc[early_mask].drop(columns=["_date"], errors="ignore")
-            y_early = y.loc[early_mask]
+        # 特征选择：仅使用前 60% 时间的数据（避免使用未来信息评估特征预测力）
+        if "_date" in X.columns:
+            sorted_dates = sorted(X["_date"].unique())
+            cutoff_idx = int(len(sorted_dates) * 0.6)
+            cutoff_date = sorted_dates[cutoff_idx]
+            select_mask = X["_date"] <= cutoff_date
         else:
-            split_idx = int(len(X) * 0.6)
-            X_early = X.iloc[:split_idx].drop(columns=["_date"], errors="ignore")
-            y_early = y.iloc[:split_idx]
+            select_mask = slice(len(X))
 
-        selected = select_features_by_ic(X_early, y_early, top_k=40, min_ic=0.015)
+        X_for_selection = X.loc[select_mask].drop(columns=["_date"], errors="ignore")
+        y_for_selection = y.loc[select_mask]
+
+        selected = select_features_by_ic(
+            X_for_selection,
+            y_for_selection,
+            top_k=40,
+            min_ic=0.03,
+        )
         keep_cols = [c for c in selected if c in X.columns]
-        if date_col is not None and "_date" not in keep_cols:
+        if "_date" in X.columns and "_date" not in keep_cols:
             keep_cols.append("_date")
         X = X[keep_cols]
         logger.info(
-            "Stability-based feature selection: %d features retained", len(selected)
+            "Stability-based feature selection: %d features retained (using early 60%% data)",
+            len(selected),
         )
 
     pca_object = None

@@ -1,4 +1,5 @@
-﻿"""Config module -- frozen dataclass, explicit passing, no global singleton."""
+"""Config module -- frozen dataclass, explicit passing, no global singleton."""
+
 from __future__ import annotations
 
 import argparse
@@ -54,8 +55,8 @@ class Config:
     use_alpha: bool = True
     command: str | None = None
     stocks: str = "000001"
-    hold_days: int = 10
-    max_positions: int = 5
+    hold_days: int = 22
+    max_positions: int = 4
     # Exclusion rules
     exclude_boards: tuple[str, ...] = ("ST", "\u9000", "\u5317\u4ea4\u6240")
     exclude_prefixes: tuple[str, ...] = ("8", "4")
@@ -65,10 +66,13 @@ class Config:
     max_drawdown_limit: float = 0.15
     target_volatility: float = 0.15
     # Enhanced backtest defaults
-    stop_loss_pct: float = 0.05
-    take_profit_pct: float = 0.20
+    stop_loss_pct: float = 0.035
+    take_profit_pct: float = 0.14
     entry_threshold: float = 50.0
     benchmark_code: str = "000300"
+    # Default start date for training and backtesting (YYYY-MM-DD)
+    backtest_start_date: str = "2025-02-01"
+
     # Walk-forward
     train_pct: float = 0.7
     n_splits: int = 3
@@ -84,6 +88,7 @@ def load_config(args: argparse.Namespace | None = None, path: str | None = None)
         if p.exists():
             try:
                 import yaml
+
                 with open(p, encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
                 valid = {f.name for f in fields(Config)}
@@ -97,11 +102,17 @@ def load_config(args: argparse.Namespace | None = None, path: str | None = None)
     # CLI overrides
     if args:
         cli_map = {
-            "top": "top_n", "workers": "workers", "no_csv": "no_csv",
-            "demo": "demo", "refresh": "refresh",
-            "hold_days": "hold_days", "stocks": "stocks",
-            "stop_loss": "stop_loss_pct", "take_profit": "take_profit_pct",
-            "benchmark": "benchmark_code", "reversal": "use_reversal",
+            "top": "top_n",
+            "workers": "workers",
+            "no_csv": "no_csv",
+            "demo": "demo",
+            "refresh": "refresh",
+            "hold_days": "hold_days",
+            "stocks": "stocks",
+            "stop_loss": "stop_loss_pct",
+            "take_profit": "take_profit_pct",
+            "benchmark": "benchmark_code",
+            "reversal": "use_reversal",
         }
         for cli_key, cfg_key in cli_map.items():
             val = getattr(args, cli_key, None)

@@ -1,4 +1,5 @@
 """data filters -- pure functions."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -27,9 +28,7 @@ def filter_universe(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
     # --- Market cap filter (config values are in 亿) ---
     if "total_market_cap" in result.columns:
         cap_yi = result["total_market_cap"] / 1e8  # raw is in 元, convert to 亿
-        result = result[
-            (cap_yi >= cfg.min_market_cap_yi) & (cap_yi < cfg.max_market_cap_yi)
-        ]
+        result = result[(cap_yi >= cfg.min_market_cap_yi) & (cap_yi < cfg.max_market_cap_yi)]
 
     # --- Turnover rate filter (skip when min=0 and max>=100) ---
     if "turnover" in result.columns and (cfg.min_turnover_pct > 0 or cfg.max_turnover_pct < 100):
@@ -40,9 +39,7 @@ def filter_universe(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
 
     # --- Price filter (skip when min=0 and max is very large) ---
     if "price" in result.columns and cfg.min_price > 0:
-        result = result[
-            (result["price"] >= cfg.min_price) & (result["price"] <= cfg.max_price)
-        ]
+        result = result[(result["price"] >= cfg.min_price) & (result["price"] <= cfg.max_price)]
 
     # --- Exclude boards (ST, 退市, 北交所) ---
     if "stock_name" in result.columns and cfg.exclude_boards:

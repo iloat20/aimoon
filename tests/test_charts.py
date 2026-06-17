@@ -1,5 +1,6 @@
 """Tests for chart generation."""
 import os
+
 import pytest
 
 

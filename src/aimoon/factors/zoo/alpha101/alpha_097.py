@@ -13,35 +13,26 @@ from aimoon.factors.base import (
     decay_linear,
     delta,
     rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_097"
 
 __alpha_meta__ = {
-    'id': 'alpha101_097',
-    'nickname': 'Kakushadze Alpha #97',
-    'theme': ['volume'],
-    'formula_latex': '(rank(decay_linear(delta(IndNeutralize(0.721*low+0.279*vwap, industry),3),20)) - Ts_Rank(decay_linear(Ts_Rank(correlation(Ts_Rank(low,8), Ts_Rank(adv60,17), 5), 19), 16),16)) * -1',
-    'columns_required': ['low', 'volume', 'vwap', 'close'],
-    'extras_required': [],
-    'requires_sector': True,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 128,
-    'notes': "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
+    "id": "alpha101_097",
+    "nickname": "Kakushadze Alpha #97",
+    "theme": ["volume"],
+    "formula_latex": "(rank(decay_linear(delta(IndNeutralize(0.721*low+0.279*vwap, industry),3),20)) - Ts_Rank(decay_linear(Ts_Rank(correlation(Ts_Rank(low,8), Ts_Rank(adv60,17), 5), 19), 16),16)) * -1",
+    "columns_required": ["low", "volume", "vwap", "close"],
+    "extras_required": [],
+    "requires_sector": True,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 128,
+    "notes": "Industry neutralization implemented via per-row sector group demean (panel['sector'] required). When sector tag is absent the registry rejects via SkipAlpha; the compute() also has a degraded global demean fallback. This is a partial approximation of the paper's IndClass.industry/subindustry/sector neutralization.",
 }
 
 
@@ -87,6 +78,9 @@ def compute(panel: dict) -> pd.DataFrame:
     ind_neutralize = _ind_neutralize
     mix = low * 0.721001 + vwap * (1.0 - 0.721001)
     a = rank(decay_linear(delta(ind_neutralize(mix, panel), 3), 20))
-    b = ts_rank(decay_linear(ts_rank(ts_corr(ts_rank(low, 8), ts_rank(adv60, 17), 5), 19), 16), 16)
+    b = ts_rank(
+        decay_linear(ts_rank(ts_corr(ts_rank(low, 8), ts_rank(adv60, 17), 5), 19), 16),
+        16,
+    )
     out = (a - b) * -1.0
     return out

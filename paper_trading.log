@@ -1,0 +1,6 @@
+2026-06-02 16:54:09,040 - aimoon.data.filters - INFO - Using cached holdings pool (48 stocks)
+2026-06-02 16:54:09,040 - aimoon.watchlist - INFO - 合并持仓池: 机构 48 只 + 自选 22 只
+2026-06-02 17:01:01,963 - aimoon.paper_trading - INFO - Loaded portfolio state: 995331.18 cash, 0 positions
+2026-06-02 17:01:01,964 - aimoon.paper_trading - INFO - Loaded 2 historical trades
+2026-06-02 17:21:15,089 - aimoon.paper_trading - INFO - Loaded portfolio state: 990662.37 cash, 0 positions
+2026-06-02 17:21:15,089 - aimoon.paper_trading - INFO - Loaded 2 historical trades

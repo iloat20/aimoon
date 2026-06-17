@@ -5,7 +5,6 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 39."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
@@ -13,31 +12,24 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_039",
-    "theme": ['volume'],
-    "formula_latex": '((RANK(DECAYLINEAR(DELTA(CLOSE,2),8)) - RANK(DECAYLINEAR(CORR(((VWAP*0.3)+(OPEN*0.7)),SUM(MEAN(VOLUME,180),37),14),12)))*-1)',
-    "columns_required": ['close', 'open', 'volume', 'amount'],
+    "theme": ["volume"],
+    "formula_latex": "((RANK(DECAYLINEAR(DELTA(CLOSE,2),8)) - RANK(DECAYLINEAR(CORR(((VWAP*0.3)+(OPEN*0.7)),SUM(MEAN(VOLUME,180),37),14),12)))*-1)",
+    "columns_required": ["close", "open", "volume", "amount"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 14,
     "min_warmup_bars": 63,
-    "notes": '180d / 37d windows approximated with 30d / 10d. See notes.',
+    "notes": "180d / 37d windows approximated with 30d / 10d. See notes.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     c = panel["close"]

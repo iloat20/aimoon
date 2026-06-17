@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from prometheus_client import Gauge, Histogram, start_http_server
+
     _HAS_PROMETHEUS = True
 except ImportError:
     _HAS_PROMETHEUS = False
@@ -37,6 +38,7 @@ except ImportError:
 @dataclass
 class _MetricValue:
     """???????????"""
+
     values: list[float] = field(default_factory=list)
     max_window: int = 1000
     count: int = 0
@@ -45,7 +47,7 @@ class _MetricValue:
         self.values.append(value)
         self.count += 1
         if len(self.values) > self.max_window:
-            self.values = self.values[-self.max_window:]
+            self.values = self.values[-self.max_window :]
 
     @property
     def last(self) -> float:

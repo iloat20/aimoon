@@ -5,39 +5,29 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 85."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
-    rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_085",
-    "theme": ['volume', 'momentum'],
-    "formula_latex": '(TSRANK((VOLUME/MEAN(VOLUME,20)),20)*TSRANK((-1*DELTA(CLOSE,7)),8))',
-    "columns_required": ['close', 'volume'],
+    "theme": ["volume", "momentum"],
+    "formula_latex": "(TSRANK((VOLUME/MEAN(VOLUME,20)),20)*TSRANK((-1*DELTA(CLOSE,7)),8))",
+    "columns_required": ["close", "volume"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 20,
     "min_warmup_bars": 39,
-    "notes": 'Vol-adjusted contrarian momentum.',
+    "notes": "Vol-adjusted contrarian momentum.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     v = panel["volume"]

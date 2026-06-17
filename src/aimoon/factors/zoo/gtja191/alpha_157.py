@@ -5,42 +5,32 @@ Formula (verbatim from the report):
 
 Notes: PROD(.,1) is identity; we use it directly.
 """
+
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
     ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_157"
 
 __alpha_meta__ = {
-    'id': 'gtja191_157',
-    'theme': ['volume'],
-    'formula_latex': 'see body',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 12,
-    'notes': 'PROD(.,1) is identity; we use it directly.',
+    "id": "gtja191_157",
+    "theme": ["volume"],
+    "formula_latex": "see body",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 12,
+    "notes": "PROD(.,1) is identity; we use it directly.",
 }
 
 

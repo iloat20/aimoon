@@ -37,6 +37,7 @@ def init_ml_model(
     """Load ML ensemble model and adapt weights."""
     try:
         from aimoon.ml.ensemble import EnsemblePredictor
+
         predictor = EnsemblePredictor.from_cache(cache_dir)
         if not (predictor.has_xgb or predictor.has_lgbm):
             logger.info("ML model unavailable, skipping ML scoring")
@@ -45,9 +46,11 @@ def init_ml_model(
 
         if panel is None:
             from aimoon.factors.panel import build_panel
+
             panel = build_panel(klines)
         if registry is None:
             from aimoon.factors.registry import get_default_registry
+
             registry = get_default_registry()
 
         engine._ml_panel = panel
@@ -57,12 +60,29 @@ def init_ml_model(
         if factor_cache is not None:
             engine._factor_cache = factor_cache
 
+        # 预计算归一化集成权重（回测期间不变，避免每次预测重复计算）
+        w_xgb = predictor._xgb_weight
+        w_lgbm = predictor._lgbm_weight
+        w_en = predictor._en_weight
+        w_total = w_xgb + w_lgbm + max(w_en, 0)
+        engine._ml_weights = {
+            "xgb": w_xgb / w_total if w_total > 0 else 0,
+            "lgbm": w_lgbm / w_total if w_total > 0 else 0,
+            "en": w_en / w_total if w_total > 0 and w_en > 0 else 0,
+        }
+
         try:
-            predictor.adapt_weights(panel or {}, klines, registry=registry, factor_cache=factor_cache or {})
+            predictor.adapt_weights(
+                panel or {}, klines, registry=registry, factor_cache=factor_cache or {}
+            )
         except (ValueError, KeyError, RuntimeError):
             logger.debug("ML weight adapt failed")
 
-        logger.info("ML model loaded: xgb_w=%.2f, lgbm_w=%.2f", predictor._xgb_weight, predictor._lgbm_weight)
+        logger.info(
+            "ML model loaded: xgb_w=%.2f, lgbm_w=%.2f",
+            predictor._xgb_weight,
+            predictor._lgbm_weight,
+        )
     except Exception as e:
         logger.warning("ML model load failed: %s", e)
         engine._ml_predictor = None
@@ -87,47 +107,132 @@ def compute_alpha_signals(
             return None
         registry = get_default_registry()
 
-        cache_p = Path(engine.cache_dir) if engine.cache_dir else None
+        cache_p = Path(engine.cache_dir) if engine.cache_dir else Path(".aimoon_cache")
         filtered_ids = get_or_compute_filtered_ids(
-            panel, klines, registry, cache_dir=cache_p,
+            panel,
+            klines,
+            registry,
+            cache_dir=cache_p,
         )
 
-        from aimoon.ml.feature_pipeline import _select_factor_subset
-        all_factor_ids = _select_factor_subset(registry, 80)
+        # 使用质量过滤后的因子列表，如果太多则二次抽样
+        if filtered_ids and len(filtered_ids) > 120:
+
+            # 从 filtered_ids 中按组等比抽样，保持多样性
+            factor_ids = filtered_ids[:120]  # 已按 ICIR 降序
+        else:
+            factor_ids = filtered_ids if filtered_ids else registry.list()[:80]
+
+        logger.info(
+            "Alpha backtest: using %d factors (from %d filtered)",
+            len(factor_ids),
+            len(filtered_ids),
+        )
 
         from aimoon.enhanced_backtest.helpers import parallel_compute_factors
+
         factor_cache: dict[str, pd.DataFrame] = {}
-        parallel_compute_factors(registry, panel, all_factor_ids, factor_cache)
+        parallel_compute_factors(registry, panel, factor_ids, factor_cache)
         engine._factor_cache = factor_cache
+
+        # Determine adaptive halflife for ICIR weighter
+        adaptive_halflife = 20  # default
+        try:
+            from aimoon.ml.factor_decay import compute_adaptive_halflife
+
+            halflife_state = compute_adaptive_halflife(panel.get("close"))
+            adaptive_halflife = halflife_state.current_halflife
+            if halflife_state.regime_changed:
+                logger.info(
+                    "ICIR: using adaptive halflife=%d (vol_ratio=%.2f)",
+                    adaptive_halflife,
+                    halflife_state.vol_ratio,
+                )
+        except Exception:
+            pass
 
         try:
             from aimoon.ml.icir_weighter import load_or_compute_ewma
+
             cache_p = Path(engine.cache_dir) if engine.cache_dir else Path(".aimoon_cache")
+            # Convert halflife to decay: decay = exp(-ln(2) / halflife)
+            import numpy as np
+
+            decay = float(np.exp(-np.log(2) / adaptive_halflife))
             engine._icir_weights = load_or_compute_ewma(
-                panel, klines, registry,
-                factor_cache=factor_cache, cache_dir=cache_p,
+                panel,
+                klines,
+                registry,
+                decay=decay,
+                factor_cache=factor_cache,
+                cache_dir=cache_p,
             )
         except (ValueError, KeyError, RuntimeError):
             logger.debug("ICIR weight computation failed")
 
         try:
             from aimoon.ml.factor_decay import get_decayed_factors
+
             cache_p = Path(engine.cache_dir) if engine.cache_dir else Path(".aimoon_cache")
             engine._decay_factors = get_decayed_factors(cache_dir=cache_p)
         except (ValueError, KeyError, RuntimeError):
             logger.debug("Factor decay detection failed")
 
+        # Extended decay scan: group decay + adaptive halflife + diagnosis
+        try:
+            from aimoon.ml.factor_decay import scan_factor_decay_extended
+
+            (
+                decay_alerts,
+                group_alert,
+                halflife_state,
+            ) = scan_factor_decay_extended(
+                panel,
+                klines,
+                registry,
+                n_dates=60,
+                forward_days=22,
+            )
+
+            # Store extended results on engine for downstream use
+            engine._decay_alerts = decay_alerts
+            engine._group_decay_alert = group_alert
+            engine._adaptive_halflife = halflife_state
+
+            # If group decay triggered, force full retrain flag
+            if group_alert is not None and group_alert.is_triggered:
+                engine._force_retrain = True
+                logger.info(
+                    "Group decay triggered → force_retrain=True (%s)",
+                    group_alert.diagnosis,
+                )
+
+            # Use adaptive halflife for ICIR weighter
+            if halflife_state.regime_changed:
+                logger.info(
+                    "Adaptive halflife active: %d days (vol_ratio=%.2f)",
+                    halflife_state.current_halflife,
+                    halflife_state.vol_ratio,
+                )
+
+        except Exception as e:
+            logger.debug("Extended decay scan failed: %s", e)
+
         engine._filtered_factor_ids = set(filtered_ids)
 
         if engine.use_ml:
             init_ml_model(
-                engine, klines, panel=panel, registry=registry,
-                factor_cache=factor_cache, cache_dir=engine.cache_dir,
+                engine,
+                klines,
+                panel=panel,
+                registry=registry,
+                factor_cache=factor_cache,
+                cache_dir=engine.cache_dir,
             )
 
         return {"panel": panel, "registry": registry}
     except Exception as e:
-        logger.warning("Alpha Zoo panel build failed: %s", e)
+        logger.debug("Alpha Zoo panel build failed: %s", e)
         return None
 
 
@@ -150,7 +255,12 @@ def score_stock(
     try:
         from aimoon.indicators.technical import TechInd
         from aimoon.scoring import collect_signals
+
         ti = _ti if _ti is not None else TechInd(kline)
+        # 缓存 TechInd 以便同 bar 内 Phase2/Phase4 复用
+        bar_cache = getattr(engine, "_bar_ti_cache", None)
+        if bar_cache is not None and code not in bar_cache:
+            bar_cache[code] = ti
         signals = collect_signals(ti, code=code)
     except (ValueError, TypeError, IndexError):
         signals = []
@@ -181,8 +291,13 @@ def score_stock(
 
     from aimoon.scoring import hybrid_score
     from aimoon.scoring.hybrid_scorer import get_regime_config
+
     config = get_regime_config(regime) if regime else None
     return hybrid_score(signals, config)
+
+
+# Sentinel for caching None results, avoids repeated fallback calls
+_NULL_SENTINEL: dict[str, int] = {"__ml_null__": -1}
 
 
 def get_ml_scores_for_date(
@@ -192,12 +307,13 @@ def get_ml_scores_for_date(
     """Get ML ensemble percentile scores for a specific date (0-100)."""
     cache_key = str(target_date)
     if cache_key in engine._ml_score_cache:
-        return engine._ml_score_cache[cache_key]
+        cached = engine._ml_score_cache[cache_key]
+        return None if cached is _NULL_SENTINEL else cached
 
     if engine._ml_predictor is None or engine._ml_panel is None:
         result = get_fallback_ml_scores(engine, target_date)
-        if result is not None:
-            engine._ml_score_cache[cache_key] = result
+        # Cache None results too to avoid repeated fallback calls
+        engine._ml_score_cache[cache_key] = result if result is not None else _NULL_SENTINEL
         return result
 
     try:
@@ -214,6 +330,7 @@ def get_ml_scores_for_date(
         if engine._ml_predictor._xgb is not None:
             try:
                 import xgboost as xgb
+
                 predictions["xgb"] = engine._ml_predictor._xgb.predict(xgb.DMatrix(features))
             except (ValueError, TypeError):
                 logger.debug("XGB predict failed")
@@ -236,22 +353,18 @@ def get_ml_scores_for_date(
         if not predictions:
             return get_fallback_ml_scores(engine, target_date)
 
-        weights = []
-        for name in predictions:
-            if name == "xgb":
-                weights.append(engine._ml_predictor._xgb_weight)
-            elif name == "lgbm":
-                weights.append(engine._ml_predictor._lgbm_weight)
-            elif name == "en":
-                weights.append(engine._ml_predictor._en_weight)
-
-        total_weight = sum(weights)
-        if total_weight <= 0:
-            return get_fallback_ml_scores(engine, target_date)
-
+        # 使用初始化时预计算的归一化权重，避免每 bar 重复计算
+        pw = getattr(engine, "_ml_weights", {})
         combined = np.zeros(len(features))
-        for i, (name, preds) in enumerate(predictions.items()):
-            combined += (weights[i] / total_weight) * preds
+        weight_sum = 0.0
+        for name, preds in predictions.items():
+            w = pw.get(name, 0)
+            if w > 0:
+                combined += w * preds
+                weight_sum += w
+
+        if weight_sum <= 0:
+            return get_fallback_ml_scores(engine, target_date)
 
         pred_series = pd.Series(combined, index=features.index).dropna()
         if len(pred_series) < 5:
@@ -273,17 +386,30 @@ def extract_features_cached(
     """Extract features using the same pipeline as training."""
     try:
         from aimoon.ml.feature_pipeline import extract_features
+
         registry = getattr(engine, "_ml_registry", None)
         predictor = getattr(engine, "_ml_predictor", None)
         zoo_factor_ids = getattr(predictor, "_zoo_factor_ids", None) if predictor else None
-        features = extract_features(engine._ml_panel, registry=registry, target_date=target_date, zoo_factor_ids=zoo_factor_ids)
+        features = extract_features(
+            engine._ml_panel,
+            registry=registry,
+            target_date=target_date,
+            zoo_factor_ids=zoo_factor_ids,
+        )
         if features.empty:
             return None
         fn = predictor._feature_names if predictor else None
         if fn:
             missing = [f for f in fn if f not in features.columns]
             extra = [f for f in features.columns if f not in fn]
-            logger.debug("Features @ %s: %d extracted, %d model, %d missing, %d extra", target_date, len(features.columns), len(fn), len(missing), len(extra))
+            logger.debug(
+                "Features @ %s: %d extracted, %d model, %d missing, %d extra",
+                target_date,
+                len(features.columns),
+                len(fn),
+                len(missing),
+                len(extra),
+            )
         return features
     except Exception as e:
         logger.debug("Feature extraction failed @ %s: %s", target_date, e)
@@ -296,6 +422,7 @@ def get_fallback_ml_scores(
 ) -> dict[str, int] | None:
     """Fallback: use Alpha Zoo aggregate signals as ML score proxy."""
     from aimoon.scoring import hybrid_score
+
     alpha_ctx = getattr(engine, "_alpha_signals_ctx", None)
     if alpha_ctx is None:
         return None
@@ -326,10 +453,13 @@ def get_alpha_signals_for_date(
     """Get Alpha Zoo cross-sectional signals at a specific date."""
     try:
         from aimoon.factors.scorer import compute_alpha_signals
+
         panel = alpha_ctx["panel"]
         registry = alpha_ctx["registry"]
         signals = compute_alpha_signals(
-            registry, panel, target_date=target_date,
+            registry,
+            panel,
+            target_date=target_date,
             icir_weights=getattr(engine, "_icir_weights", None),
             decay_factors=getattr(engine, "_decay_factors", None),
             filter_to_ids=getattr(engine, "_filtered_factor_ids", None),

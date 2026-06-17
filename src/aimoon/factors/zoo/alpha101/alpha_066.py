@@ -6,7 +6,6 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 66.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
@@ -14,34 +13,24 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_066"
 
 __alpha_meta__ = {
-    'id': 'alpha101_066',
-    'nickname': 'Kakushadze Alpha #66',
-    'theme': ['momentum'],
-    'formula_latex': '(rank(decay_linear(delta(vwap,4), 7)) + Ts_Rank(decay_linear(((0.966*low+0.034*low - vwap)/(open-(high+low)/2)), 11), 7)) * -1',
-    'columns_required': ['open', 'high', 'low', 'vwap', 'close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 18,
-    'notes': '',
+    "id": "alpha101_066",
+    "nickname": "Kakushadze Alpha #66",
+    "theme": ["momentum"],
+    "formula_latex": "(rank(decay_linear(delta(vwap,4), 7)) + Ts_Rank(decay_linear(((0.966*low+0.034*low - vwap)/(open-(high+low)/2)), 11), 7)) * -1",
+    "columns_required": ["open", "high", "low", "vwap", "close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 18,
+    "notes": "",
 }
 
 
@@ -51,7 +40,6 @@ def compute(panel: dict) -> pd.DataFrame:
     high = panel["high"]
     low = panel["low"]
     vwap = panel["vwap"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     t1 = rank(decay_linear(delta(vwap, 4), 7))

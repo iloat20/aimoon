@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +103,7 @@ def train_lgbm_model(
     registry: Registry | None = None,
     params: dict[str, Any] | None = None,
     n_dates: int = 200,
-    forward_days: int = 5,
+    forward_days: int = 22,
     save_dir: str | Path | None = None,
     sector_map: dict[str, str] | None = None,
     warm_start: bool = False,
@@ -132,9 +133,7 @@ def train_lgbm_model(
         zoo_factor_ids=zoo_factor_ids,
     )
     if len(X) < 50 or X.shape[1] < 2:
-        raise ValueError(
-            f"Insufficient training data: {len(X)} samples, {X.shape[1]} features"
-        )
+        raise ValueError(f"Insufficient training data: {len(X)} samples, {X.shape[1]} features")
 
     dates_column = None
     if "_date" in X.columns:
@@ -186,7 +185,8 @@ def train_lgbm_model(
         y_val_final = y[val_mask]
         logger.info(
             "LightGBM final split: train=%d, val=%d",
-            len(X_train_final), len(X_val_final),
+            len(X_train_final),
+            len(X_val_final),
         )
     else:
         val_size = int(len(X) * 0.2)
@@ -205,13 +205,16 @@ def train_lgbm_model(
         y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
         model = _build_lgbm(lgbm_params, lgbm_params["n_estimators"])
-        model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_val, y_val)],
-            callbacks=[lgb.early_stopping(20, verbose=False)],
-        )
-        val_pred = model.predict(X_val)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*feature names.*")
+            model.fit(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                callbacks=[lgb.early_stopping(20, verbose=False), lgb.log_evaluation(0)],
+                feature_name=feature_names,
+            )
+            val_pred = model.predict(X_val, num_iteration=model._best_iteration)
         fold_ic = compute_spearmanr_safe(val_pred, y_val)
         fold_ics.append(fold_ic)
 
@@ -229,11 +232,17 @@ def train_lgbm_model(
 
         if fold_ic > best_cv_score:
             best_cv_score = fold_ic
-            best_round = model.best_iteration_
+            best_round = model._best_iteration
 
     # Warm start
     prev_booster, warm_divisor, feature_names = try_warm_start_lgbm(
-        save_dir, feature_names, X, X_train_final, y_train_final, X_val_final, y_val_final,
+        Path(save_dir) if save_dir is not None else None,
+        feature_names,
+        X,
+        X_train_final,
+        y_train_final,
+        X_val_final,
+        y_val_final,
     )
 
     num_rounds = (
@@ -274,9 +283,7 @@ def train_lgbm_model(
     )
 
     # Auto-degradation: if warm-start caused severe overfitting, retrain from scratch
-    if should_retrain_on_overfit(
-        prev_booster is not None, overfit_ratio, model_name="LightGBM"
-    ):
+    if should_retrain_on_overfit(prev_booster is not None, overfit_ratio, model_name="LightGBM"):
         fresh_model = _build_lgbm(lgbm_params, num_rounds)
         fresh_model.fit(
             X_train_final,
@@ -330,9 +337,7 @@ def train_lgbm_model(
             if hasattr(model, "booster_") and model.booster_ is not None:
                 model.booster_.save_model(path)
             else:
-                logger.warning(
-                    "LGBM booster_ not available, model may not be saved correctly"
-                )
+                logger.warning("LGBM booster_ not available, model may not be saved correctly")
 
         save_model_artifacts(
             save_path,

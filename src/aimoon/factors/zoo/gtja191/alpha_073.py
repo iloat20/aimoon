@@ -5,39 +5,31 @@ Source: 国泰君安 191 alpha 研报 (2014), alpha 73."""
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
     decay_linear,
-    delta,
     rank,
     safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_073",
-    "theme": ['volume'],
-    "formula_latex": '((TSRANK(DECAYLINEAR(DECAYLINEAR(CORR((CLOSE),VOLUME,10),16),4),5) - RANK(DECAYLINEAR(CORR(VWAP,MEAN(VOLUME,30),4),3))) * -1)',
-    "columns_required": ['close', 'volume', 'amount'],
+    "theme": ["volume"],
+    "formula_latex": "((TSRANK(DECAYLINEAR(DECAYLINEAR(CORR((CLOSE),VOLUME,10),16),4),5) - RANK(DECAYLINEAR(CORR(VWAP,MEAN(VOLUME,30),4),3))) * -1)",
+    "columns_required": ["close", "volume", "amount"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 16,
     "min_warmup_bars": 35,
-    "notes": 'Composite of decay-linear of close-volume corr minus another decay term.',
+    "notes": "Composite of decay-linear of close-volume corr minus another decay term.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     c = panel["close"]

@@ -12,32 +12,23 @@ from aimoon.factors.base import (
     decay_linear,
     delta,
     rank,
-    safe_div,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
     ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 __alpha_meta__ = {
     "id": "gtja191_035",
-    "theme": ['volume'],
-    "formula_latex": '(MIN(RANK(DECAYLINEAR(DELTA(OPEN,1),15)), RANK(DECAYLINEAR(CORR(VOLUME,((OPEN*0.65)+(OPEN*0.35)),17),7))) * -1)',
-    "columns_required": ['open', 'volume'],
+    "theme": ["volume"],
+    "formula_latex": "(MIN(RANK(DECAYLINEAR(DELTA(OPEN,1),15)), RANK(DECAYLINEAR(CORR(VOLUME,((OPEN*0.65)+(OPEN*0.35)),17),7))) * -1)",
+    "columns_required": ["open", "volume"],
     "extras_required": [],
     "requires_sector": False,
     "universe": ["equity_cn"],
     "frequency": ["1d"],
     "decay_horizon": 15,
     "min_warmup_bars": 25,
-    "notes": 'Element-wise min of two ranks, negated.',
+    "notes": "Element-wise min of two ranks, negated.",
 }
+
 
 def compute(panel: dict) -> pd.DataFrame:
     o = panel["open"]
@@ -45,5 +36,6 @@ def compute(panel: dict) -> pd.DataFrame:
     p1 = rank(decay_linear(delta(o, 1), 15))
     weighted = o * 0.65 + o * 0.35
     p2 = rank(decay_linear(ts_corr(v, weighted, 17), 7))
-    return -1.0 * pd.DataFrame(np.minimum(p1.to_numpy(), p2.to_numpy()),
-                               index=o.index, columns=o.columns)
+    return -1.0 * pd.DataFrame(
+        np.minimum(p1.to_numpy(), p2.to_numpy()), index=o.index, columns=o.columns
+    )

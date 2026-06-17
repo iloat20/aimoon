@@ -26,6 +26,7 @@ from aimoon.rumi_strategy import (
 
 logger = logging.getLogger(__name__)
 
+
 class EnhancedBacktestEngine:
     """Event-driven backtest with stop-loss, take-profit, position sizing."""
 
@@ -36,7 +37,7 @@ class EnhancedBacktestEngine:
         commission: float = 0.0003,
         slippage: float = 0.002,
         stamp_tax: float = 0.001,
-        entry_threshold: int | float = 60,
+        entry_threshold: int | float = 50,
         stop_loss_pct: float = 0.04,
         take_profit_pct: float = 0.15,
         stop_loss_atr_multiplier: float = risk_controls.STOP_LOSS_ATR_MULTIPLIER,
@@ -51,9 +52,10 @@ class EnhancedBacktestEngine:
         use_kelly: bool = True,
         ic_weights: dict[str, float] | None = None,
         backtest_start_date: str | None = None,
-        exit_ratio: float = 0.50,  # 从0.65降低，让动量退出更宽松
-        stop_loss_cooldown: int = 10,
+        exit_ratio: float = 0.60,  # 0.50→0.60: exit_threshold=30→30, narrower dead zone
+        stop_loss_cooldown: int = 5,  # 10→5: faster re-entry after stop-loss
         check_interval: int = 2,
+        forward_days: int = 22,  # IC 评估的前瞻天数（默认月度=22）
     ) -> None:
         self.hold_days = hold_days
         self.max_positions = max_positions
@@ -78,6 +80,7 @@ class EnhancedBacktestEngine:
         self.backtest_start_date = backtest_start_date
         self.exit_threshold = int(entry_threshold * exit_ratio)
         self.stop_loss_cooldown = stop_loss_cooldown
+        self.forward_days = forward_days
         self.cache_dir: str | None = None
 
         # T1 合规：hold_days 至少为 1（买入次日才能卖出）
@@ -91,6 +94,7 @@ class EnhancedBacktestEngine:
         self.slippage_model = SlippageModel()
 
         # ML 集成模型（回测开始时初始化）
+        self._last_result: Any = None
         self._ml_predictor: Any = None
         self._ml_panel: dict | None = None
         self._ml_registry: Any = None
@@ -100,8 +104,9 @@ class EnhancedBacktestEngine:
         self._alpha_cache: dict | None = None
 
         from aimoon.performance import PerformanceMonitor
+
         self._perf = PerformanceMonitor()
-            # ICIR 动态权重 + 因子衰减
+        # ICIR 动态权重 + 因子衰减
 
     def _init_ml_model(
         self,
@@ -115,11 +120,15 @@ class EnhancedBacktestEngine:
         Delegates to ml_integration.init_ml_model.
         """
         from aimoon.enhanced_backtest.ml_integration import init_ml_model as _init_ml_model_fn
-        _init_ml_model_fn(
-            self, klines, panel=panel, registry=registry,
-            factor_cache=factor_cache, cache_dir=self.cache_dir,
-        )
 
+        _init_ml_model_fn(
+            self,
+            klines,
+            panel=panel,
+            registry=registry,
+            factor_cache=factor_cache,
+            cache_dir=self.cache_dir,
+        )
 
     def _buy_cost(
         self,
@@ -162,8 +171,8 @@ class EnhancedBacktestEngine:
 
     def _empty_result(self):
         from aimoon.enhanced_backtest.metrics import empty_result as _empty_result_fn
-        return _empty_result_fn()
 
+        return _empty_result_fn()
 
     def _compute_alpha_signals(self, klines: dict[str, pd.DataFrame]) -> dict | None:
         """Pre-compute Alpha Zoo panel + ICIR weights + factor quality filtering.
@@ -173,6 +182,7 @@ class EnhancedBacktestEngine:
         from aimoon.enhanced_backtest.ml_integration import (
             compute_alpha_signals as _compute_alpha_signals_fn,
         )
+
         return _compute_alpha_signals_fn(self, klines)
 
     def _score_stock(
@@ -192,9 +202,18 @@ class EnhancedBacktestEngine:
         Delegates to ml_integration.score_stock.
         """
         from aimoon.enhanced_backtest.ml_integration import score_stock as _score_stock_fn
+
         return _score_stock_fn(
-            self, code, name, kline, ctx=ctx, alpha_signals=alpha_signals,
-            ic_weights=ic_weights, ml_scores=ml_scores, regime=regime, _ti=_ti,
+            self,
+            code,
+            name,
+            kline,
+            ctx=ctx,
+            alpha_signals=alpha_signals,
+            ic_weights=ic_weights,
+            ml_scores=ml_scores,
+            regime=regime,
+            _ti=_ti,
         )
 
     def _get_ml_scores_for_date(self, target_date) -> dict[str, int] | None:
@@ -205,6 +224,7 @@ class EnhancedBacktestEngine:
         from aimoon.enhanced_backtest.ml_integration import (
             get_ml_scores_for_date as _get_ml_scores_for_date_fn,
         )
+
         return _get_ml_scores_for_date_fn(self, target_date)
 
     def precompute_ml_scores(self, sorted_dates: list, klines: dict) -> None:
@@ -224,13 +244,13 @@ class EnhancedBacktestEngine:
                 logger.debug("ML precompute failed @ %s: %s", date, e)
         logger.info("ML score precomputation complete: %d dates", total)
 
-
     def _extract_features_cached(self, target_date) -> pd.DataFrame | None:
         """Extract features using the same pipeline as training.
 
         Delegates to ml_integration.extract_features_cached.
         """
         from aimoon.enhanced_backtest.ml_integration import extract_features_cached as _extract_fn
+
         return _extract_fn(self, target_date)
 
     def _get_fallback_ml_scores(self, target_date) -> dict[str, int] | None:
@@ -239,6 +259,7 @@ class EnhancedBacktestEngine:
         Delegates to ml_integration.get_fallback_ml_scores.
         """
         from aimoon.enhanced_backtest.ml_integration import get_fallback_ml_scores as _get_fn
+
         return _get_fn(self, target_date)
 
     def _get_alpha_signals_for_date(self, alpha_ctx, target_date):
@@ -247,6 +268,7 @@ class EnhancedBacktestEngine:
         Delegates to ml_integration.get_alpha_signals_for_date.
         """
         from aimoon.enhanced_backtest.ml_integration import get_alpha_signals_for_date as _get_fn
+
         return _get_fn(self, alpha_ctx, target_date)
 
     def _generate_rumi_signals(
@@ -260,6 +282,7 @@ class EnhancedBacktestEngine:
         Delegates to rumi_signals.generate_rumi_signals.
         """
         from aimoon.enhanced_backtest.rumi_signals import generate_rumi_signals as _generate_fn
+
         return _generate_fn(klines, names, bar_date)
 
     def _check_rumi_exit(
@@ -276,6 +299,7 @@ class EnhancedBacktestEngine:
         Delegates to rumi_signals.check_rumi_exit.
         """
         from aimoon.enhanced_backtest.rumi_signals import check_rumi_exit as _check_fn
+
         return _check_fn(code, position, klines, bar_date, rumi_score, regime)
 
     def _phase0_execute_pending(
@@ -294,9 +318,17 @@ class EnhancedBacktestEngine:
         Delegates to exit_rules.phase0_execute_pending.
         """
         from aimoon.enhanced_backtest.exit_rules import phase0_execute_pending as _phase0_fn
+
         _phase0_fn(
-            bar_date, positions, pending_entries, klines, effective_positions, cash,
-            engine=self, pending_expiry=pending_expiry, max_pending_age=max_pending_age,
+            bar_date,
+            positions,
+            pending_entries,
+            klines,
+            effective_positions,
+            cash,
+            engine=self,
+            pending_expiry=pending_expiry,
+            max_pending_age=max_pending_age,
         )
 
     def _phase1_stop_loss_take_profit(
@@ -322,11 +354,24 @@ class EnhancedBacktestEngine:
         Delegates to exit_rules.phase1_stop_loss_take_profit.
         """
         from aimoon.enhanced_backtest.exit_rules import phase1_stop_loss_take_profit as _phase1_fn
+
         return _phase1_fn(
-            bar_date, positions, klines, trades, cash, current_regime, max_hold_bars,
-            engine=self, sector_ctx=sector_ctx, alpha_signals=alpha_signals,
-            weak_streak=weak_streak, recent_exits=recent_exits,
-            stop_loss_count=stop_loss_count, bar_count=bar_count, partial_taken_set=partial_taken_set, prev_date=prev_date,
+            bar_date,
+            positions,
+            klines,
+            trades,
+            cash,
+            current_regime,
+            max_hold_bars,
+            engine=self,
+            sector_ctx=sector_ctx,
+            alpha_signals=alpha_signals,
+            weak_streak=weak_streak,
+            recent_exits=recent_exits,
+            stop_loss_count=stop_loss_count,
+            bar_count=bar_count,
+            partial_taken_set=partial_taken_set,
+            prev_date=prev_date,
         )
 
     def _phase2_momentum_check(
@@ -348,11 +393,20 @@ class EnhancedBacktestEngine:
         Delegates to exit_rules.phase2_momentum_check.
         """
         from aimoon.enhanced_backtest.exit_rules import phase2_momentum_check as _phase2_fn
+
         _phase2_fn(
-            bar_date, prev_date, positions, klines, trades, engine=self,
-            alpha_signals=alpha_signals, sector_ctx=sector_ctx,
-            weak_streak=weak_streak, recent_exits=recent_exits,
-            bar_count=bar_count, cash=cash,
+            bar_date,
+            prev_date,
+            positions,
+            klines,
+            trades,
+            engine=self,
+            alpha_signals=alpha_signals,
+            sector_ctx=sector_ctx,
+            weak_streak=weak_streak,
+            recent_exits=recent_exits,
+            bar_count=bar_count,
+            cash=cash,
         )
 
     def _phase4_open_replacements(
@@ -381,15 +435,27 @@ class EnhancedBacktestEngine:
         Delegates to entry_rules.phase4_open_replacements.
         """
         from aimoon.enhanced_backtest.entry_rules import phase4_open_replacements as _phase4_fn
+
         _phase4_fn(
-            bar_date, prev_date, positions, pending_entries, klines, trades,
-            names, sector_map, engine=self,
-            alpha_signals=alpha_signals, sector_ctx=sector_ctx,
-            recent_exits=recent_exits, stop_loss_count=stop_loss_count,
+            bar_date,
+            prev_date,
+            positions,
+            pending_entries,
+            klines,
+            trades,
+            names,
+            sector_map,
+            engine=self,
+            alpha_signals=alpha_signals,
+            sector_ctx=sector_ctx,
+            recent_exits=recent_exits,
+            stop_loss_count=stop_loss_count,
             effective_positions=effective_positions,
             effective_threshold=effective_threshold,
-            current_regime=current_regime, dd_scale=dd_scale,
-            bar_count=bar_count, rumi_signals=rumi_signals,
+            current_regime=current_regime,
+            dd_scale=dd_scale,
+            bar_count=bar_count,
+            rumi_signals=rumi_signals,
         )
 
     def run_portfolio(self, klines, names=None, sectors=None, ctx=None):
@@ -406,9 +472,14 @@ class EnhancedBacktestEngine:
         ic_dates=None,
     ):
         from aimoon.enhanced_backtest.metrics import compute_metrics as _compute_metrics_fn
+
         return _compute_metrics_fn(
-            trades, equity, dd_curve, benchmark_equity,
-            ic_series=ic_series, ic_dates=ic_dates,
+            trades,
+            equity,
+            dd_curve,
+            benchmark_equity,
+            ic_series=ic_series,
+            ic_dates=ic_dates,
         )
 
     def _compute_position_weights(
@@ -430,39 +501,37 @@ class EnhancedBacktestEngine:
             regime=regime,
         )
 
-
-# ── Standalone helpers (delegated to backtest.risk_controls) ──
+    # ── Standalone helpers (delegated to backtest.risk_controls) ──
 
     def run_parallel(
         self,
-        klines: dict[str, "pd.DataFrame"],
+        klines: dict[str, pd.DataFrame],
         names: dict[str, str],
         n_workers: int | None = None,
         date_slices: list[tuple[str, str]] | None = None,
-    ) -> "Any":
-        """???????????????
+    ) -> Any:
+        """Run parallel backtest by splitting date range into slices.
 
-        ????????????? worker ????????
-        ???????
+        Each slice runs sequentially (ProcessPoolExecutor can't pickle self).
+        Combined results are merged into a single BacktestResult.
 
         Parameters
         ----------
         klines : dict
-            K????
+            K-line data dict
         names : dict
-            ???????
+            Stock name mapping
         n_workers : int | None
-            ????????? CPU ???
+            Worker count (default: min(CPU, 4))
         date_slices : list[tuple[str, str]] | None
-            ?????? [(start, end), ...]????????
+            Optional date ranges [(start, end), ...]
 
         Returns
         -------
         BacktestResult
-            ?????????
+            Combined backtest result
         """
         import multiprocessing
-        from concurrent.futures import ProcessPoolExecutor, as_completed
 
         if n_workers is None:
             n_workers = min(multiprocessing.cpu_count(), 4)
@@ -506,17 +575,12 @@ class EnhancedBacktestEngine:
 
         logger.info(
             "Parallel backtest: %d slices across %d workers",
-            len(slice_data), n_workers,
+            len(slice_data),
+            n_workers,
         )
 
-        # ?????????ProcessPoolExecutor ????? self?
-        # ????????????????
-        from aimoon.enhanced_backtest.models import BacktestResult
-        combined_trades: list[Any] = []
+        combined_trades: list[EnhancedTrade] = []
         combined_equity: list[float] = []
-        peak_equity = 0.0
-        max_drawdown = 0.0
-        total_return = 0.0
 
         for start, end, slice_klines in slice_data:
             try:
@@ -528,11 +592,41 @@ class EnhancedBacktestEngine:
             except Exception as e:
                 logger.warning("Slice %s-%s failed: %s", start, end, e)
 
-        # ????
-        if hasattr(self, "_last_result") and self._last_result is not None:
-            return self._last_result
+        if not combined_trades and not combined_equity:
+            return self.run_portfolio(klines, names)
 
-        # ??????
-        return self.run_portfolio(klines, names)
+        # Build drawdown curve from combined equity
+        if combined_equity:
+            peak = combined_equity[0]
+            dd_curve = [0.0]
+            for eq in combined_equity[1:]:
+                peak = max(peak, eq)
+                dd = (peak - eq) / peak if peak > 0 else 0.0
+                dd_curve.append(dd)
+        else:
+            dd_curve = [0.0]
 
+        self._last_result = self._compute_metrics(combined_trades, combined_equity, dd_curve, None)
+        return self._last_result
 
+    def _release_memory(self) -> None:
+        """释放引擎持有的大对象引用，帮助 GC 回收内存。"""
+        self._last_result = None
+        self._ml_predictor = None
+        self._ml_panel = None
+        self._ml_registry = None
+        self._ml_score_cache.clear()
+        self._ml_model_hash = None
+        self._alpha_cache = None
+        for attr in (
+            "_factor_cache",
+            "_filtered_factor_ids",
+            "_icir_weights",
+            "_decay_factors",
+            "_decay_alerts",
+            "_group_decay_alert",
+            "_adaptive_halflife",
+        ):
+            setattr(self, attr, None)
+        self.slippage_model = None
+        self._perf = None

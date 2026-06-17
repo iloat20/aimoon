@@ -20,9 +20,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -89,11 +90,16 @@ class SignalEngine:
         """??????????????"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None, self._compute_sync, code, kline,
+            None,
+            self._compute_sync,
+            code,
+            kline,
         )
 
     def _compute_sync(
-        self, code: str, kline: pd.DataFrame,
+        self,
+        code: str,
+        kline: pd.DataFrame,
     ) -> dict[str, float]:
         """????????????????"""
         from aimoon.indicators.technical import TechInd
@@ -107,6 +113,7 @@ class SignalEngine:
             signals = collect_signals(ti, code=code)
             if signals:
                 from aimoon.scoring import hybrid_score
+
                 score = hybrid_score(signals)
                 result["score"] = float(score)
                 result["signals"] = float(len(signals))
@@ -228,7 +235,8 @@ class AsyncTradingFramework:
         # 1. ??????
         if self._current_prices:
             self._engine.update_positions(
-                self._current_prices, self._current_scores,
+                self._current_prices,
+                self._current_scores,
             )
 
         # 2. ??????
@@ -240,9 +248,7 @@ class AsyncTradingFramework:
     async def _update_signals(self) -> None:
         """???????????"""
         positions_klines = {
-            code: self._klines[code]
-            for code in self._engine.positions
-            if code in self._klines
+            code: self._klines[code] for code in self._engine.positions if code in self._klines
         }
         if not positions_klines:
             return
@@ -252,7 +258,8 @@ class AsyncTradingFramework:
             self._current_scores[code] = data.get("score", 50.0)
 
     async def on_price_update(
-        self, prices: dict[str, float],
+        self,
+        prices: dict[str, float],
     ) -> list[Any]:
         """???????"""
         self._current_prices = prices
@@ -260,7 +267,9 @@ class AsyncTradingFramework:
         return closed_trades
 
     async def on_signal_update(
-        self, code: str, kline: pd.DataFrame,
+        self,
+        code: str,
+        kline: pd.DataFrame,
     ) -> None:
         """???????"""
         result = await self._signal_engine.compute_signals(code, kline)
@@ -281,6 +290,7 @@ class AsyncTradingFramework:
             "filled_orders": len(self._order_manager.filled_orders),
             "signal_cache_size": len(self._current_scores),
         }
+
 
 async def run_async_backtest(
     engine: Any,
@@ -304,7 +314,6 @@ async def run_async_backtest(
         return {"error": "No dates available"}
 
     # ?????
-    tick_interval = 10.0  # ? 10 ??????
     total_ticks = min(days, len(sorted_dates))
 
     for tick in range(total_ticks):

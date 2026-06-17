@@ -1,6 +1,7 @@
 """Tests for extended trend factors"""
 import numpy as np
 import pandas as pd
+
 from aimoon.indicators.technical import TechInd
 from aimoon.scoring.trend_ext import score_trend_ext
 

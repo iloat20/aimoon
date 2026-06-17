@@ -1,4 +1,11 @@
-"""因子评估 — IC/ICIR 分析"""
+"""Factor evaluation -- IC/ICIR analysis.
+
+WARNING: This module uses FORWARD returns (future data) for evaluation.
+It is intended for OFFLINE factor research and model diagnostics ONLY.
+Do NOT use evaluate_all_scorers or evaluate_factor in live trading or
+signal generation -- doing so would introduce look-ahead bias.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -17,13 +24,14 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class FactorEval:
     """单个因子的评估结果。"""
+
     name: str
-    mean_ic: float           # 平均 IC（Spearman 秩相关系数）
-    ic_std: float            # IC 标准差
-    icir: float              # IC / std(IC)，衡量稳定性
+    mean_ic: float  # 平均 IC（Spearman 秩相关系数）
+    ic_std: float  # IC 标准差
+    icir: float  # IC / std(IC)，衡量稳定性
     ic_positive_ratio: float  # IC > 0 的比例
     tier_returns: tuple[float, ...]  # 五分位收益（1-5 组）
-    long_short: float        # top 组 - bottom 组 收益
+    long_short: float  # top 组 - bottom 组 收益
 
 
 def evaluate_factor(
@@ -55,8 +63,7 @@ def evaluate_factor(
         end = int((i + 1) * n / 5)
         quintile[order[start:end]] = i
     tier_returns = tuple(
-        float(fr[quintile == i].mean()) if (quintile == i).any() else 0.0
-        for i in range(5)
+        float(fr[quintile == i].mean()) if (quintile == i).any() else 0.0 for i in range(5)
     )
 
     return FactorEval(
@@ -72,7 +79,7 @@ def evaluate_factor(
 
 def evaluate_all_scorers(
     universe_klines: dict[str, pd.DataFrame],
-    forward_days: int = 5,
+    forward_days: int = 22,
     eval_days: int = 60,
 ) -> list[FactorEval]:
     """对所有 scorer 做逐日 IC 分析，返回每个因子的汇总评估。
@@ -122,7 +129,7 @@ def evaluate_all_scorers(
             if loc < 60:
                 continue
 
-            window = kline.iloc[:loc + 1]
+            window = kline.iloc[: loc + 1]
             try:
                 ti = TechInd(window)
             except Exception:
@@ -180,15 +187,17 @@ def evaluate_all_scorers(
         fr_final = final_fr
         eval_result = evaluate_factor(fv_final, fr_final)
 
-        results.append(FactorEval(
-            name=name,
-            mean_ic=mean_ic,
-            ic_std=ic_std,
-            icir=icir,
-            ic_positive_ratio=pos_ratio,
-            tier_returns=eval_result.tier_returns if eval_result else (0.0,) * 5,
-            long_short=eval_result.long_short if eval_result else 0.0,
-        ))
+        results.append(
+            FactorEval(
+                name=name,
+                mean_ic=mean_ic,
+                ic_std=ic_std,
+                icir=icir,
+                ic_positive_ratio=pos_ratio,
+                tier_returns=eval_result.tier_returns if eval_result else (0.0,) * 5,
+                long_short=eval_result.long_short if eval_result else 0.0,
+            )
+        )
 
     results.sort(key=lambda x: abs(x.mean_ic), reverse=True)
     return results

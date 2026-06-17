@@ -5,42 +5,29 @@ Formula (verbatim from the report):
 
 Notes: Average True Range (12).
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_161"
 
 __alpha_meta__ = {
-    'id': 'gtja191_161',
-    'theme': ['volatility'],
-    'formula_latex': 'mean(true_range,12)',
-    'columns_required': ['close', 'high', 'low'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 12,
-    'min_warmup_bars': 13,
-    'notes': 'Average True Range (12).',
+    "id": "gtja191_161",
+    "theme": ["volatility"],
+    "formula_latex": "mean(true_range,12)",
+    "columns_required": ["close", "high", "low"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 12,
+    "min_warmup_bars": 13,
+    "notes": "Average True Range (12).",
 }
 
 

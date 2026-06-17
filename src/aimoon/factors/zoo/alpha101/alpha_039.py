@@ -6,7 +6,6 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 39.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
@@ -14,34 +13,24 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_039"
 
 __alpha_meta__ = {
-    'id': 'alpha101_039',
-    'nickname': 'Kakushadze Alpha #39',
-    'theme': ['momentum', 'volume'],
-    'formula_latex': '(-1*rank(delta(close,7)*(1-rank(decay_linear(volume/adv20,9))))) * (1+rank(sum(returns,250)))',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 250,
-    'notes': 'Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.',
+    "id": "alpha101_039",
+    "nickname": "Kakushadze Alpha #39",
+    "theme": ["momentum", "volume"],
+    "formula_latex": "(-1*rank(delta(close,7)*(1-rank(decay_linear(volume/adv20,9))))) * (1+rank(sum(returns,250)))",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 250,
+    "notes": "Very long lookback (>= ~100 bars); produces NaN warmup on short panels which may trigger the >95% NaN registry guard.",
 }
 
 
@@ -55,8 +44,10 @@ def compute(panel: dict) -> pd.DataFrame:
     close = panel["close"]
     volume = panel["volume"]
     adv20 = ts_mean(volume, 20)
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum
-    out = (-1.0 * rank(delta(close, 7) * (1.0 - rank(decay_linear(safe_div(volume, adv20), 9))))) * (1.0 + rank(rolling_sum(returns, 250)))
+    out = (
+        -1.0 * rank(delta(close, 7) * (1.0 - rank(decay_linear(safe_div(volume, adv20), 9))))
+    ) * (1.0 + rank(rolling_sum(returns, 250)))
     return out

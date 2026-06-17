@@ -3,45 +3,32 @@
 Formula (verbatim from the report):
     (CLOSE-VWAP)/DECAYLINEAR(RANK(TSMAX(CLOSE,30)),2)
 
-Notes: 
+Notes:
 """
-from __future__ import annotations
 
-import numpy as np
-import pandas as pd
+from __future__ import annotations
 
 from aimoon.factors.base import (
     decay_linear,
-    delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
     ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
     vwap,
 )
 
 ALPHA_ID = "gtja191_124"
 
 __alpha_meta__ = {
-    'id': 'gtja191_124',
-    'theme': ['reversal'],
-    'formula_latex': '(close-vwap)/decay_linear(rank(tsmax(close,30)),2)',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume', 'amount'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 30,
-    'min_warmup_bars': 32,
-    'notes': '',
+    "id": "gtja191_124",
+    "theme": ["reversal"],
+    "formula_latex": "(close-vwap)/decay_linear(rank(tsmax(close,30)),2)",
+    "columns_required": ["open", "high", "low", "close", "volume", "amount"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 30,
+    "min_warmup_bars": 32,
+    "notes": "",
 }
 
 

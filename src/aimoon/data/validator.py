@@ -54,9 +54,7 @@ def validate_kline(kline: pd.DataFrame, code: str = "") -> bool:
         return False
     na_ratio = close.isna().mean()
     if na_ratio > 0.05:
-        logger.warning(
-            "High ratio of NaN close prices for %s: %.1f%%", code, na_ratio * 100
-        )
+        logger.warning("High ratio of NaN close prices for %s: %.1f%%", code, na_ratio * 100)
         return False
 
     return True
@@ -88,9 +86,7 @@ def fix_kline_dates(kline: pd.DataFrame, code: str = "") -> pd.DataFrame:
                 kline = kline.set_index("date").sort_index()
                 return kline
             except Exception as e:
-                logger.warning(
-                    "Failed to fix dates using date column for %s: %s", code, e
-                )
+                logger.warning("Failed to fix dates using date column for %s: %s", code, e)
 
         # 没有 date 列：记录警告并返回原始数据，不猜测日期
         logger.error(
@@ -100,7 +96,6 @@ def fix_kline_dates(kline: pd.DataFrame, code: str = "") -> pd.DataFrame:
         return kline
 
     return kline
-
 
 
 def detect_halt_days(kline: pd.DataFrame, min_zero_vol_days: int = 3) -> set:
@@ -172,31 +167,3 @@ def validate_and_fix_klines(
     )
 
     return fixed_klines
-
-
-def get_validated_klines(
-    codes: list[str],
-    days: int,
-    cache,
-) -> dict[str, pd.DataFrame]:
-    """获取并验证 K 线数据
-
-    Args:
-        codes: 股票代码列表
-        days: 历史天数
-        cache: 缓存对象
-
-    Returns:
-        dict: 验证后的 K 线数据字典
-    """
-    from aimoon.data.history import get_kline
-
-    klines = {}
-    for code in codes:
-        r = get_kline(code, days, cache)
-        if r.is_ok():
-            kline = r.unwrap()
-            klines[code] = kline
-
-    # 验证并修复所有数据
-    return validate_and_fix_klines(klines)

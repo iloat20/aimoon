@@ -3,44 +3,29 @@
 Formula (verbatim from the report):
     SMA(MEAN(DELAY(SMA(DELAY(CLOSE/DELAY(CLOSE,9),1),9,1),1),12)-MEAN(DELAY(SMA(DELAY(CLOSE/DELAY(CLOSE,9),1),9,1),1),26),9,1)
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_152"
 
 __alpha_meta__ = {
-    'id': 'gtja191_152',
-    'theme': ['momentum'],
-    'formula_latex': 'see body',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 26,
-    'min_warmup_bars': 50,
-    'notes': '',
+    "id": "gtja191_152",
+    "theme": ["momentum"],
+    "formula_latex": "see body",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 26,
+    "min_warmup_bars": 50,
+    "notes": "",
 }
 
 
@@ -53,9 +38,11 @@ def compute(panel):
     Returns:
         pd.DataFrame with index = panel["close"].index, columns = panel["close"].columns.
     """
+
     def _sma(x, n, m):
         """SMA(x, n, m) per GTJA convention -> ewm with alpha = m/n."""
         return x.ewm(alpha=m / n, adjust=False).mean()
+
     c = panel["close"]
     s = _sma(safe_div(c, c.shift(9)).shift(1), 9, 1).shift(1)
     left = ts_mean(s, 12)

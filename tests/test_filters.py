@@ -1,6 +1,7 @@
 """Tests for data filters"""
 import pandas as pd
 import pytest
+
 from aimoon.config import Config
 from aimoon.data.filters import filter_universe
 

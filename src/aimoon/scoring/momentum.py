@@ -21,9 +21,7 @@ from aimoon.indicators.technical import TechInd
 from aimoon.models import Signal
 
 
-def score_momentum(
-    ti: TechInd, *, code: str = "", ctx: dict | None = None
-) -> list[Signal]:
+def score_momentum(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> list[Signal]:
     signals: list[Signal] = []
 
     roc5 = ti.roc_signal(5)

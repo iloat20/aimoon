@@ -1,39 +1,41 @@
-"""academic CMA: investment factor as inverse 60-day volume growth.
+"""academic CMA: investment factor — 价格增长代理。
 
 Reference:
     Fama, E. F., & French, K. R. (2015). "A five-factor asset pricing model."
     Journal of Financial Economics, 116(1), 1-22.
 
-This is a price-based proxy: the original CMA (Conservative Minus Aggressive)
-sorts on asset growth from balance-sheet data. We use the negative of 60-day
-log-volume change — firms aggressively scaling activity tend to show rising
-trading volume; conservative firms show stable / shrinking volume. Higher
-z-scores = volume contraction (conservative).
+原始 CMA (Conservative Minus Aggressive) 按总资产增长率排序。
+这里用 60 日价格增长率的负值作为代理——价格快速增长的公司
+通常处于扩张阶段（激进），价格稳定/收缩的公司更保守。
+负值排名：高分 = 保守（低增长），低分 = 激进（高增长）。
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from aimoon.factors.base import delta, ts_mean
+from aimoon.factors.base import delta, safe_div
 
 __alpha_meta__ = {
-    'id': 'academic_cma',
-    'nickname': '[PRICE PROXY] FF2015 CMA — investment via inverse volume growth',
-    'theme': ['quality'],
-    'formula_latex': r'\mathrm{zscore}_{x}\bigl(-\Delta_{60}\log(\mathrm{ts\_mean}(\mathrm{volume},\,60) + 1)\bigr)',
-    'columns_required': ['volume'],
-    'universe': ['equity_us', 'equity_cn', 'equity_hk'],
-    'frequency': ['1d'],
-    'decay_horizon': 60,
-    'min_warmup_bars': 120,
-    'notes': (
-        '[PRICE PROXY] for the Fama-French (2015) CMA (Conservative Minus '
-        'Aggressive) investment factor. The original definition uses total-asset '
-        'growth from fundamental data; here we use the negative 60-day change in '
-        'log average volume as an activity-growth proxy, then cross-sectional '
-        'z-score per date for long-short ranking. Top z-scores = volume contraction '
-        '(conservative / low-growth proxy).'
+    "id": "academic_cma",
+    "nickname": "[PRICE PROXY] FF2015 CMA — investment via 60d price growth",
+    "theme": ["quality"],
+    "formula_latex": (
+        r"\mathrm{zscore}_{x}\bigl(-(\mathrm{close}_t - "
+        r"\mathrm{close}_{t-60}) / \mathrm{close}_{t-60}\bigr)"
+    ),
+    "columns_required": ["close"],
+    "universe": ["equity_us", "equity_cn", "equity_hk"],
+    "frequency": ["1d"],
+    "decay_horizon": 60,
+    "min_warmup_bars": 120,
+    "notes": (
+        "[PRICE PROXY] for the Fama-French (2015) CMA (Conservative Minus "
+        "Aggressive) investment factor. The original definition uses total-asset "
+        "growth from fundamental data; here we use the negative 60-day price "
+        "change as a growth proxy, then cross-sectional z-score per date for "
+        "long-short ranking. Top z-scores = low growth (conservative proxy)."
     ),
 }
 
@@ -48,14 +50,13 @@ def _cross_sectional_zscore(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute(panel: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Return inverse 60-day log-volume change z-score per stock.
+    """Return inverse 60-day price change cross-sectional z-score per stock.
 
-    Uses the canonical 60-bar rolling mean + 60-bar delta windows without
-    silent shrink on short panels. Short panels produce all-NaN; the
-    registry surfaces this as >95% NaN (RegistryError) so the user sees
-    "insufficient history" rather than a misleading shrunk-window value.
+    Uses the canonical 60-bar window without silent shrink on short panels.
+    Short panels produce an all-NaN result, which the registry surfaces as a
+    >95% NaN error so the user sees "insufficient history" rather than a
+    misleading shrunk-window value.
     """
-    volume = panel['volume']
-    log_avg_vol = np.log(ts_mean(volume, 60) + 1.0)
-    growth = delta(log_avg_vol, 60)
+    close = panel["close"]
+    growth = safe_div(delta(close, 60), close.shift(60))
     return _cross_sectional_zscore(-growth)

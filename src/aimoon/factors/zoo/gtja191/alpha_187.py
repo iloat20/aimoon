@@ -3,44 +3,27 @@
 Formula (verbatim from the report):
     SUM((OPEN<=DELAY(OPEN,1) ? 0 : MAX(HIGH-OPEN, OPEN-DELAY(OPEN,1))), 20)
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
-)
-
 ALPHA_ID = "gtja191_187"
 
 __alpha_meta__ = {
-    'id': 'gtja191_187',
-    'theme': ['reversal'],
-    'formula_latex': 'see body',
-    'columns_required': ['open', 'high'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 21,
-    'notes': '',
+    "id": "gtja191_187",
+    "theme": ["reversal"],
+    "formula_latex": "see body",
+    "columns_required": ["open", "high"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 21,
+    "notes": "",
 }
 
 

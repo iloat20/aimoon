@@ -21,7 +21,9 @@ TRAILING_STOP_TIERS: tuple[tuple[float, float], ...] = (
 HARD_LOSS_CAP: float = 0.05  # 单笔最大亏损 5%（进一步收紧止损，小亏）
 
 # ── 利润保护参数 ──
-PROFIT_PROTECTION_PEAK_THRESHOLD: float = 0.12  # 峰值利润 >= 12% 时启用（从8%提高，进一步避免过早保护）
+PROFIT_PROTECTION_PEAK_THRESHOLD: float = (
+    0.12  # 峰值利润 >= 12% 时启用（从8%提高，进一步避免过早保护）
+)
 PROFIT_PROTECTION_FLOOR: float = 0.05  # 当前利润 <= 5% 时触发（从3%提高，更宽松）
 
 # ── 时间衰减参数 ──
@@ -30,7 +32,7 @@ TIME_DECAY_LOSS_DAYS: int = 12  # 持仓超过 12 天仍在亏损时收紧止损
 TIME_DECAY_TIGHTEN_RATIO: float = 0.80  # 收紧后的止损为原始止损的 80%
 
 # ── Chandelier Exit 参数 ──
-CHANDELIER_ATR_MULTIPLIER: float = 2.5  # ATR 倍数（从3.0降低，更紧凑）
+CHANDELIER_ATR_MULTIPLIER: float = 2.0  # ATR 倍数（初始止损=买入价-2×ATR，移动止损=峰值-2×ATR）
 
 # ── ATR 动态止损止盈参数 ──
 STOP_LOSS_ATR_MULTIPLIER: float = 1.0  # 止损 ATR 倍数
@@ -49,11 +51,11 @@ DD_THRESHOLDS: tuple[tuple[float, float], ...] = (
 
 # ── Regime-based take-profit levels ──
 REGIME_TAKE_PROFIT: dict[str, float] = {
-    "bull": 0.20,           # 20%: let winners run in bull markets
-    "sideways": 0.15,       # 15%: moderate target in range-bound markets
-    "bear": 0.08,           # 8%: tight target in bear markets
-    "high_volatility": 0.18, # 18%: balanced in volatile conditions
-    "crisis": 0.05,         # 5%: 危机模式快速止盈
+    "bull": 0.20,  # 20%: let winners run in bull markets
+    "sideways": 0.15,  # 15%: moderate target in range-bound markets
+    "bear": 0.08,  # 8%: tight target in bear markets
+    "high_volatility": 0.18,  # 18%: balanced in volatile conditions
+    "crisis": 0.05,  # 5%: 危机模式快速止盈
 }
 
 
@@ -69,9 +71,7 @@ def get_atr_value(kline: pd.DataFrame) -> float:
         return 0.0
 
 
-def compute_atr_stop_loss(
-    atr_pct: float, multiplier: float = STOP_LOSS_ATR_MULTIPLIER
-) -> float:
+def compute_atr_stop_loss(atr_pct: float, multiplier: float = STOP_LOSS_ATR_MULTIPLIER) -> float:
     """Compute ATR-based stop-loss percentage.
 
     Args:
@@ -115,6 +115,8 @@ def compute_trailing_stop(pnl: float, peak_pnl: float) -> float | None:
                 return 0.0  # breakeven protection
             return max(0.0, lock_ratio * peak_pnl)
     return None
+
+
 # ── 分批止盈参数 ──
 PARTIAL_PROFIT_TAKE_PNL: float = 0.15  # 盈利 15% 时止盈 50%
 PARTIAL_PROFIT_TAKE_RATIO: float = 0.50  # 卖出 50% 仓位

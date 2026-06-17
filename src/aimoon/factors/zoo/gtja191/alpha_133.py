@@ -3,44 +3,29 @@
 Formula (verbatim from the report):
     ((20-HIGHDAY(HIGH,20))/20)*100 - ((20-LOWDAY(LOW,20))/20)*100
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
     ts_argmax,
     ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_133"
 
 __alpha_meta__ = {
-    'id': 'gtja191_133',
-    'theme': ['momentum'],
-    'formula_latex': '((20-highday(high,20))/20)*100-((20-lowday(low,20))/20)*100',
-    'columns_required': ['close', 'high', 'low'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 20,
-    'notes': '',
+    "id": "gtja191_133",
+    "theme": ["momentum"],
+    "formula_latex": "((20-highday(high,20))/20)*100-((20-lowday(low,20))/20)*100",
+    "columns_required": ["close", "high", "low"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 20,
+    "notes": "",
 }
 
 

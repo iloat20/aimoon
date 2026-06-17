@@ -18,9 +18,26 @@ logger = logging.getLogger(__name__)
 def empty_result() -> EnhancedPortfolioResult:
     """Return a zeroed result for empty backtest runs."""
     return EnhancedPortfolioResult(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, (), (100.0,), (0.0,),
-        profit_loss_ratio=0.0, max_consecutive_loss=0, information_ratio=0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        (),
+        (100.0,),
+        (0.0,),
+        profit_loss_ratio=0.0,
+        max_consecutive_loss=0,
+        information_ratio=0.0,
     )
 
 

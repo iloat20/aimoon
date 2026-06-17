@@ -3,44 +3,30 @@
 Formula (verbatim from the report):
     (MEAN((100*(CLOSE-MAX(CLOSE,12))/MAX(CLOSE,12))^2,12))^(1/2)
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
     ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_127"
 
 __alpha_meta__ = {
-    'id': 'gtja191_127',
-    'theme': ['volatility'],
-    'formula_latex': 'sqrt(mean((100*(c-tsmax(c,12))/tsmax(c,12))^2,12))',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 12,
-    'min_warmup_bars': 24,
-    'notes': '',
+    "id": "gtja191_127",
+    "theme": ["volatility"],
+    "formula_latex": "sqrt(mean((100*(c-tsmax(c,12))/tsmax(c,12))^2,12))",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 12,
+    "min_warmup_bars": 24,
+    "notes": "",
 }
 
 
@@ -55,5 +41,5 @@ def compute(panel):
     """
     c = panel["close"]
     ratio = safe_div(c - ts_max(c, 12), ts_max(c, 12)) * 100.0
-    out = ts_mean(ratio ** 2, 12) ** 0.5
+    out = ts_mean(ratio**2, 12) ** 0.5
     return out

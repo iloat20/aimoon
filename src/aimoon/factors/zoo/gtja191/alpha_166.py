@@ -5,42 +5,27 @@ Formula (verbatim from the report):
 
 Notes: Skewness-style; constants from report.
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_166"
 
 __alpha_meta__ = {
-    'id': 'gtja191_166',
-    'theme': ['volatility'],
-    'formula_latex': 'see body',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 40,
-    'notes': 'Skewness-style; constants from report.',
+    "id": "gtja191_166",
+    "theme": ["volatility"],
+    "formula_latex": "see body",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 40,
+    "notes": "Skewness-style; constants from report.",
 }
 
 
@@ -57,6 +42,6 @@ def compute(panel):
     ret = safe_div(c, c.shift(1)) - 1.0
     m = ts_mean(ret, 20)
     num = (ret - m).rolling(20).sum() * -20.0 * (20.0 - 1.0) ** 1.5
-    den = (20.0 - 1.0) * (20.0 - 2.0) * (ret ** 2).rolling(20).sum() ** 1.5
+    den = (20.0 - 1.0) * (20.0 - 2.0) * (ret**2).rolling(20).sum() ** 1.5
     out = safe_div(num, den)
     return out

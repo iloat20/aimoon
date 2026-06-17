@@ -3,45 +3,31 @@
 Formula (verbatim from the report):
     RANK(((((-1 * RET) * MEAN(VOLUME,20)) * VWAP) * (HIGH - CLOSE)))
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
     vwap,
 )
 
 ALPHA_ID = "gtja191_163"
 
 __alpha_meta__ = {
-    'id': 'gtja191_163',
-    'theme': ['volume'],
-    'formula_latex': 'rank(((-1*ret)*mean(v,20))*vwap*(high-close))',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume', 'amount'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 21,
-    'notes': '',
+    "id": "gtja191_163",
+    "theme": ["volume"],
+    "formula_latex": "rank(((-1*ret)*mean(v,20))*vwap*(high-close))",
+    "columns_required": ["open", "high", "low", "close", "volume", "amount"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 21,
+    "notes": "",
 }
 
 

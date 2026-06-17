@@ -14,34 +14,24 @@ from aimoon.factors.base import (
     delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_073"
 
 __alpha_meta__ = {
-    'id': 'alpha101_073',
-    'nickname': 'Kakushadze Alpha #73',
-    'theme': ['volume'],
-    'formula_latex': 'max(rank(decay_linear(delta(vwap,5), 3)), Ts_Rank(decay_linear(-1*(delta(0.147*open+0.853*low,2)/(0.147*open+0.853*low)), 3), 17)) * -1',
-    'columns_required': ['open', 'low', 'vwap', 'close'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 21,
-    'notes': '',
+    "id": "alpha101_073",
+    "nickname": "Kakushadze Alpha #73",
+    "theme": ["volume"],
+    "formula_latex": "max(rank(decay_linear(delta(vwap,5), 3)), Ts_Rank(decay_linear(-1*(delta(0.147*open+0.853*low,2)/(0.147*open+0.853*low)), 3), 17)) * -1",
+    "columns_required": ["open", "low", "vwap", "close"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 21,
+    "notes": "",
 }
 
 
@@ -51,7 +41,6 @@ def compute(panel: dict) -> pd.DataFrame:
     open_ = panel["open"]
     low = panel["low"]
     vwap = panel["vwap"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     a = rank(decay_linear(delta(vwap, 5), 3))

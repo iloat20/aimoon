@@ -3,45 +3,33 @@
 Formula (verbatim from the report):
     ((((RANK((1/CLOSE))*VOLUME)/MEAN(VOLUME,20)) * ((HIGH * RANK((HIGH-CLOSE))) / (SUM(HIGH,5)/5))) - RANK((VWAP - DELAY(VWAP,5))))
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
     vwap,
 )
 
 ALPHA_ID = "gtja191_170"
 
 __alpha_meta__ = {
-    'id': 'gtja191_170',
-    'theme': ['volume'],
-    'formula_latex': 'see body',
-    'columns_required': ['open', 'high', 'low', 'close', 'volume', 'amount'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 20,
-    'min_warmup_bars': 21,
-    'notes': '',
+    "id": "gtja191_170",
+    "theme": ["volume"],
+    "formula_latex": "see body",
+    "columns_required": ["open", "high", "low", "close", "volume", "amount"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 20,
+    "min_warmup_bars": 21,
+    "notes": "",
 }
 
 
@@ -59,7 +47,10 @@ def compute(panel):
     v = panel["volume"]
     vw = vwap(panel, "equity_cn")
 
-    a = safe_div(rank(safe_div(pd.DataFrame(1.0, index=c.index, columns=c.columns), c)) * v, ts_mean(v, 20))
+    a = safe_div(
+        rank(safe_div(pd.DataFrame(1.0, index=c.index, columns=c.columns), c)) * v,
+        ts_mean(v, 20),
+    )
     b = safe_div(h * rank(h - c), c.rolling(5).sum() / 5.0)
     d = rank(vw - vw.shift(5))
     out = a * b - d

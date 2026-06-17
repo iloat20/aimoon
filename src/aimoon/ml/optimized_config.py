@@ -36,22 +36,22 @@ XGB_OPTIMIZED_PARAMS: dict[str, Any] = {
     "eval_metric": "rmse",
 }
 
-# LightGBM 优化配置 — 强正则化防过拟合
-# M6: 移除 max_depth=2（与 num_leaves=7 矛盾，num_leaves 优先）
+# LightGBM 优化配置 — 适度正则化（诊断修复：原配置严重欠拟合）
+# 原 num_leaves=7, subsample=0.3, colsample_bytree=0.15, reg_lambda=30 导致模型无法学习
 LGBM_OPTIMIZED_PARAMS: dict[str, Any] = {
-    # 树结构参数 — num_leaves 控制复杂度，无需 max_depth
-    "num_leaves": 7,
-    "min_child_samples": 100,
+    # 树结构参数 — num_leaves 控制复杂度
+    "num_leaves": 21,
+    "min_child_samples": 50,
     # 学习率和迭代
-    "learning_rate": 0.01,
+    "learning_rate": 0.02,
     "n_estimators": 500,
-    # 随机性和正则化
-    "subsample": 0.3,
-    "colsample_bytree": 0.15,
-    "feature_fraction": 0.2,
-    "bagging_fraction": 0.4,
-    "reg_lambda": 30.0,
-    "reg_alpha": 5.0,
+    # 随机性和正则化 — 适度采样，不过度限制
+    "subsample": 0.7,
+    "colsample_bytree": 0.6,
+    "feature_fraction": 0.6,
+    "bagging_fraction": 0.7,
+    "reg_lambda": 5.0,
+    "reg_alpha": 2.0,
     # 早停
     "early_stopping_rounds": 30,
     # 其他
@@ -96,6 +96,29 @@ INCREMENTAL_CONFIG: dict[str, Any] = {
     "warm_start": True,
     "max_incremental_rounds": 100,
     "incremental_learning_rate_factor": 0.5,
+}
+
+# 智能增量学习配置 — A/B 双模型 + EWC 正则 + 自适应权重
+SMART_INCREMENTAL_CONFIG: dict[str, Any] = {
+    # EWC 正则
+    "ewc_lambda": 50.0,
+    "fisher_samples": 200,
+    # IC 衰减检测
+    "ic_decay_threshold": 0.02,
+    "ic_decay_window": 20,
+    # 性能滑坡检测
+    "slide_threshold": 0.3,
+    "slide_n_splits": 5,
+    "slide_purge_days": 5,
+    "slide_embargo_days": 15,
+    # 训练控制
+    "incremental_rounds": 100,
+    "a_retrain_days": 7,
+    "b_retrain_on_slide": True,
+    # 权重分配
+    "weight_boost_on_decay": 0.7,
+    "weight_normal": 0.7,
+    "min_weight_b": 0.1,
 }
 
 # 特征工程配置
@@ -307,5 +330,3 @@ if __name__ == "__main__":
     # 使用 hyperopt
     xgb_hyperopt = get_xgb_params(use_hyperopt=True)
     print(f"XGBoost with hyperopt: {xgb_hyperopt}")
-
-

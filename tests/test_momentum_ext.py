@@ -1,6 +1,7 @@
 """Tests for extended momentum factors"""
 import numpy as np
 import pandas as pd
+
 from aimoon.indicators.technical import TechInd
 from aimoon.scoring.momentum_ext import score_momentum_ext
 

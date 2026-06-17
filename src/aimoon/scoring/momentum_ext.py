@@ -91,9 +91,7 @@ def score_momentum_ext(
             Signal("momentum_exhaustion", "动量过热(触上轨+急涨)", -3, category="momentum")
         )
     if roc5 < -10:
-        signals.append(
-            Signal("crash_filter", f"5日暴跌{roc5:.1f}%", -3, category="momentum")
-        )
+        signals.append(Signal("crash_filter", f"5日暴跌{roc5:.1f}%", -3, category="momentum"))
 
     # ── 8. 最大回撤恢复（深跌后反弹能力） ──
     recovery = ti.drawdown_recovery(60)

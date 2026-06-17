@@ -1,11 +1,12 @@
 """Tests for output formatter"""
 import os
-import pytest
-from unittest.mock import patch
 from dataclasses import replace
+from unittest.mock import patch
+
+import pytest
 
 from aimoon.config import Config
-from aimoon.models import Signal, ScoredStock
+from aimoon.models import ScoredStock, Signal
 from aimoon.output import OutputFormatter
 
 

@@ -2,9 +2,10 @@
 import numpy as np
 import pandas as pd
 import pytest
-from aimoon.optimizer import grid_search, walk_forward_validate, OptResult, WalkForwardResult
-from aimoon.config import Config
+
 from aimoon.cache import DataCache
+from aimoon.config import Config
+from aimoon.optimizer import OptResult, WalkForwardResult, grid_search, walk_forward_validate
 
 
 @pytest.fixture

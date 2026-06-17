@@ -5,42 +5,32 @@ Formula (verbatim from the report):
 
 Notes: Rolling OLS slope of MA12 against linear index, window 12.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
     ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
     ts_std,
 )
 
 ALPHA_ID = "gtja191_147"
 
 __alpha_meta__ = {
-    'id': 'gtja191_147',
-    'theme': ['momentum'],
-    'formula_latex': 'regbeta(mean(close,12),sequence(12))',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 12,
-    'min_warmup_bars': 24,
-    'notes': 'Rolling OLS slope of MA12 against linear index, window 12.',
+    "id": "gtja191_147",
+    "theme": ["momentum"],
+    "formula_latex": "regbeta(mean(close,12),sequence(12))",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 12,
+    "min_warmup_bars": 24,
+    "notes": "Rolling OLS slope of MA12 against linear index, window 12.",
 }
 
 
@@ -58,7 +48,8 @@ def compute(panel):
     m = ts_mean(c, 12)
     t = pd.DataFrame(
         np.tile(np.arange(c.shape[0], dtype=np.float64).reshape(-1, 1), (1, c.shape[1])),
-        index=c.index, columns=c.columns,
+        index=c.index,
+        columns=c.columns,
     )
     out = safe_div(ts_cov(m, t, n), ts_std(t, n) ** 2)
     return out

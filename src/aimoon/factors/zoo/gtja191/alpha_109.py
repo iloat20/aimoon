@@ -5,42 +5,26 @@ Formula (verbatim from the report):
 
 Notes: SMA -> ewm(alpha=2/10).
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_109"
 
 __alpha_meta__ = {
-    'id': 'gtja191_109',
-    'theme': ['volatility'],
-    'formula_latex': 'sma(high-low,10,2)/sma(sma(high-low,10,2),10,2)',
-    'columns_required': ['close', 'high', 'low'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 10,
-    'min_warmup_bars': 20,
-    'notes': 'SMA -> ewm(alpha=2/10).',
+    "id": "gtja191_109",
+    "theme": ["volatility"],
+    "formula_latex": "sma(high-low,10,2)/sma(sma(high-low,10,2),10,2)",
+    "columns_required": ["close", "high", "low"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 10,
+    "min_warmup_bars": 20,
+    "notes": "SMA -> ewm(alpha=2/10).",
 }
 
 
@@ -53,9 +37,11 @@ def compute(panel):
     Returns:
         pd.DataFrame with index = panel["close"].index, columns = panel["close"].columns.
     """
+
     def _sma(x, n, m):
         """SMA(x, n, m) per GTJA convention -> ewm with alpha = m/n."""
         return x.ewm(alpha=m / n, adjust=False).mean()
+
     h = panel["high"]
     l = panel["low"]
     hl = h - l

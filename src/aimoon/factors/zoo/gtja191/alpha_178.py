@@ -3,44 +3,28 @@
 Formula (verbatim from the report):
     (CLOSE-DELAY(CLOSE,1))/DELAY(CLOSE,1)*VOLUME
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_178"
 
 __alpha_meta__ = {
-    'id': 'gtja191_178',
-    'theme': ['momentum', 'volume'],
-    'formula_latex': '(c-delay(c,1))/delay(c,1)*v',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 1,
-    'min_warmup_bars': 2,
-    'notes': '',
+    "id": "gtja191_178",
+    "theme": ["momentum", "volume"],
+    "formula_latex": "(c-delay(c,1))/delay(c,1)*v",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 1,
+    "min_warmup_bars": 2,
+    "notes": "",
 }
 
 

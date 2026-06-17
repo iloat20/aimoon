@@ -19,11 +19,13 @@ import pandas as pd
 # Numba JIT kernels for performance-critical rolling operators
 try:
     from numba import njit as _njit
+
     _HAS_NUMBA = True
 except ImportError:
     _HAS_NUMBA = False
 
 if _HAS_NUMBA:
+
     @_njit(cache=True)
     def _ts_corr_kernel(x, y, n):
         T = len(x)

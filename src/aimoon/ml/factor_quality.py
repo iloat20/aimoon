@@ -139,8 +139,8 @@ def run_quality_filter(
             factor_cache=factor_cache,
         )
     except (ValueError, RuntimeError, KeyError) as e:
-            logger.warning("因子相关性矩阵计算失败: %s", e)
-            factor_correlations = pd.DataFrame()
+        logger.warning("因子相关性矩阵计算失败: %s", e)
+        factor_correlations = pd.DataFrame()
 
     # Step 4: 三网关过滤
     filtered_ids = filter_factors(
@@ -326,7 +326,7 @@ def get_or_compute_filtered_ids(
     registry: Registry | None = None,
     *,
     force_refresh: bool = False,
-    cache_dir: Path = _DEFAULT_CACHE_DIR,
+    cache_dir: Path | None = None,
 ) -> list[str]:
     """获取过滤后的因子 ID 列表（从缓存或实时计算）。
 
@@ -342,7 +342,7 @@ def get_or_compute_filtered_ids(
         因子注册表。
     force_refresh : bool
         强制重新计算。
-    cache_dir : Path
+    cache_dir : Path | None
         缓存目录路径。
 
     Returns
@@ -355,7 +355,7 @@ def get_or_compute_filtered_ids(
     本函数使用文件锁防止多进程并行计算。如果锁获取失败（超时），
     返回现有的缓存数据（即使已过期），避免阻塞主流程。
     """
-    cache_dir = Path(cache_dir)
+    cache_dir = Path(cache_dir) if cache_dir is not None else _DEFAULT_CACHE_DIR
 
     if not force_refresh:
         cached = load_filtered_ids(cache_dir=cache_dir)
@@ -459,4 +459,3 @@ def select_top_factors_for_ml(
             break
 
     return selected[:max_count]
-

@@ -1,0 +1,59 @@
+{
+  "phases": [
+    {
+      "name": "Phase 1: 模拟验证",
+      "capital": 0,
+      "duration_days": 30,
+      "target_win_rate": 55.0,
+      "target_profit_factor": 1.0,
+      "max_drawdown": 10.0,
+      "status": "pending"
+    },
+    {
+      "name": "Phase 2: 小资金测试",
+      "capital": 100000,
+      "duration_days": 30,
+      "target_win_rate": 58.0,
+      "target_profit_factor": 1.2,
+      "max_drawdown": 8.0,
+      "status": "pending"
+    },
+    {
+      "name": "Phase 3: 中等资金",
+      "capital": 500000,
+      "duration_days": 60,
+      "target_win_rate": 60.0,
+      "target_profit_factor": 1.5,
+      "max_drawdown": 6.0,
+      "status": "pending"
+    },
+    {
+      "name": "Phase 4: 全面部署",
+      "capital": 1000000,
+      "duration_days": 90,
+      "target_win_rate": 62.0,
+      "target_profit_factor": 1.8,
+      "max_drawdown": 5.0,
+      "status": "pending"
+    }
+  ],
+  "current_phase": 0,
+  "start_date": "2026-06-02T17:23:42.131363",
+  "trading_params": {
+    "initial_capital": 1000000,
+    "max_positions": 5,
+    "entry_threshold": 60,
+    "stop_loss_pct": 0.07,
+    "take_profit_pct": 0.15,
+    "trailing_stop_start": 0.03,
+    "trailing_stop_pct": 0.6,
+    "profit_protection_start": 0.05,
+    "profit_protection_floor": 0.01
+  },
+  "risk_limits": {
+    "max_daily_loss": 0.03,
+    "max_weekly_loss": 0.05,
+    "max_monthly_loss": 0.08,
+    "max_drawdown": 0.1
+  }
+}

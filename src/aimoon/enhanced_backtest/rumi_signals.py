@@ -44,7 +44,8 @@ def generate_rumi_signals(
             continue
         window = kline.iloc[: loc + 1]
         rumi_score, momentum_score, relative_strength, volatility = compute_rumi_score(
-            window, lookback=_RUMI_LOOKBACK,
+            window,
+            lookback=_RUMI_LOOKBACK,
             momentum_weight=_RUMI_MOMENTUM_WEIGHT,
             relative_strength_weight=_RUMI_RELATIVE_STRENGTH_WEIGHT,
             volatility_weight=_RUMI_VOLATILITY_WEIGHT,
@@ -56,9 +57,12 @@ def generate_rumi_signals(
         else:
             signal_type = "hold"
         rumi_signals[code] = RumiSignal(
-            code=code, name=names.get(code, code),
-            rumi_score=rumi_score, momentum_score=momentum_score,
-            relative_strength=relative_strength, volatility=volatility,
+            code=code,
+            name=names.get(code, code),
+            rumi_score=rumi_score,
+            momentum_score=momentum_score,
+            relative_strength=relative_strength,
+            volatility=volatility,
             signal_type=signal_type,
         )
     return rumi_signals
@@ -76,19 +80,27 @@ def check_rumi_exit(
     if code not in klines or bar_date not in klines[code].index:
         return None
     rumi_position = RumiPosition(
-        code=code, name=position.name,
-        entry_price=position.entry_price, entry_date=position.entry_date,
+        code=code,
+        name=position.name,
+        entry_price=position.entry_price,
+        entry_date=position.entry_date,
         current_price=float(klines[code].loc[bar_date, "close"]),
         highest_price=position.highest_price,
         lowest_price=position.entry_price * 0.92,
         rumi_score=rumi_score,
         atr_at_entry=position.atr_at_entry,
-        krange_upper=0.0, krange_lower=0.0,
+        krange_upper=0.0,
+        krange_lower=0.0,
         trailing_stop=position.stop_loss,
-        pnl=(float(klines[code].loc[bar_date, "close"]) - position.entry_price) / position.entry_price,
+        pnl=(float(klines[code].loc[bar_date, "close"]) - position.entry_price)
+        / position.entry_price,
         hold_days=(pd.Timestamp(bar_date) - position.entry_date).days,
     )
     return check_krange_exit(
-        position=rumi_position, kline=klines[code], current_date=bar_date,
-        rumi_score=rumi_score, regime=regime, exit_threshold=_KRANGE_EXIT_THRESHOLD,
+        position=rumi_position,
+        kline=klines[code],
+        current_date=bar_date,
+        rumi_score=rumi_score,
+        regime=regime,
+        exit_threshold=_KRANGE_EXIT_THRESHOLD,
     )

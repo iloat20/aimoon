@@ -15,8 +15,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
-from scipy.stats import spearmanr
 
 from aimoon.ml.ensemble_signals import (  # noqa: F401 — re-export for backward compat
     compute_optimal_weights,
@@ -37,7 +35,12 @@ class EnsemblePredictor:
     """XGBoost + LightGBM 集成预测器。
 
     对同一特征矩阵分别用两个模型预测，然后加权平均。
-    权重基于各模型在验证集上的 IC 动态计算。
+    权重基于各模型在验证集上的 IC 动态计算，或通过
+    DynamicMetaEnsemble 元学习器自适应调整。
+
+    支持双模型 (A/B) 增量学习：
+    - Model A: 长期全量模型
+    - Model B: 短期增量模型（可选，当有增量数据时使用）
     """
 
     def __init__(
@@ -53,6 +56,8 @@ class EnsemblePredictor:
         feature_medians: pd.Series | None = None,  # M5: 用于填充缺失特征
         zoo_factor_ids: list[str] | None = None,  # 训练时因子子集，确保回测一致
         cache_dir: str | Path | None = None,  # ML 缓存目录
+        meta_ensemble: Any = None,  # DynamicMetaEnsemble 元学习器
+        dual_model: Any = None,  # DualModel 增量学习器
     ):
         self._xgb = xgb_model
         self._lgbm = lgbm_model
@@ -65,6 +70,8 @@ class EnsemblePredictor:
         self._feature_medians = feature_medians
         self._zoo_factor_ids = zoo_factor_ids
         self._cache_dir = Path(cache_dir) if cache_dir else _DEFAULT_CACHE_DIR
+        self._meta_ensemble = meta_ensemble
+        self._dual_model = dual_model
 
     @classmethod
     def from_cache(cls, cache_dir: str | Path | None = None) -> EnsemblePredictor:
@@ -83,9 +90,7 @@ class EnsemblePredictor:
         if canonical_fn.exists():
             with open(canonical_fn, encoding="utf-8") as f:
                 feature_names = json.load(f)
-            logger.info(
-                "Loaded canonical feature names: %d features", len(feature_names)
-            )
+            logger.info("Loaded canonical feature names: %d features", len(feature_names))
         elif xgb_fn.exists():
             with open(xgb_fn, encoding="utf-8") as f:
                 feature_names = json.load(f)
@@ -130,8 +135,7 @@ class EnsemblePredictor:
                 en_model = ElasticNet()
                 en_model.coef_ = np.array(en_data["coef"], dtype=np.float64)
                 en_model.intercept_ = float(en_data["intercept"])
-                en_model.n_features_in_ = en_data.get(
-                    "n_features_in", len(en_data["coef"]))
+                en_model.n_features_in_ = en_data.get("n_features_in", len(en_data["coef"]))
 
                 en_scaler = StandardScaler()
                 en_scaler.mean_ = np.array(en_data["scaler_mean"], dtype=np.float64)
@@ -166,6 +170,35 @@ class EnsemblePredictor:
             except (json.JSONDecodeError, OSError, TypeError):
                 logger.debug("Failed to load zoo_factor_ids from %s", ensemble_meta)
 
+        # Load DynamicMetaEnsemble
+        meta_ensemble = None
+        try:
+            from aimoon.ml.meta_ensemble import DynamicMetaEnsemble
+
+            meta_ensemble = DynamicMetaEnsemble.load()
+            if meta_ensemble.is_ridge_active:
+                logger.info(
+                    "DynamicMetaEnsemble loaded: ridge active, %d refits", meta_ensemble.n_refits
+                )
+        except Exception as e:
+            logger.debug("DynamicMetaEnsemble load failed: %s", e)
+
+        # Load SmartDualModel / DualModel (incremental learning)
+        dual_model = None
+        try:
+            from aimoon.ml.incremental_trainer import load_dual_model
+
+            dual_model = load_dual_model(cache)
+            if dual_model is not None:
+                logger.info(
+                    "DualModel loaded: w_a=%.2f, w_b=%.2f, b_trains=%d",
+                    dual_model.weight_a,
+                    dual_model.weight_b,
+                    dual_model.b_train_count,
+                )
+        except Exception as e:
+            logger.debug("DualModel load failed: %s", e)
+
         return cls(
             xgb_model=xgb_model,
             lgbm_model=lgbm_model,
@@ -177,6 +210,8 @@ class EnsemblePredictor:
             en_weight=en_weight,
             zoo_factor_ids=zoo_factor_ids,
             cache_dir=cache_dir,
+            meta_ensemble=meta_ensemble,
+            dual_model=dual_model,
         )
 
     def predict(
@@ -201,7 +236,10 @@ class EnsemblePredictor:
         target_date = close.index[-1] if close is not None and len(close) > 0 else None
 
         features = extract_features(
-            panel, registry, target_date=target_date, sector_map=sector_map,
+            panel,
+            registry,
+            target_date=target_date,
+            sector_map=sector_map,
             zoo_factor_ids=self._zoo_factor_ids,
         )
         if features.empty:
@@ -228,9 +266,7 @@ class EnsemblePredictor:
                     )
                 # M5: 用训练集中位数填充缺失特征（而非0）
                 if self._feature_medians is not None:
-                    medians = self._feature_medians.reindex(
-                        list(missing), fill_value=0.0
-                    )
+                    medians = self._feature_medians.reindex(list(missing), fill_value=0.0)
                     for col in missing:
                         features[col] = medians.get(col, 0.0)
                 else:
@@ -262,9 +298,7 @@ class EnsemblePredictor:
         if self._en is not None and self._en_scaler is not None:
             try:
                 if self._feature_names:
-                    features_en = features.reindex(
-                        columns=self._feature_names, fill_value=0.0
-                    )
+                    features_en = features.reindex(columns=self._feature_names, fill_value=0.0)
                 else:
                     features_en = features
                 en_scaled = self._en_scaler.transform(features_en.values)
@@ -275,15 +309,53 @@ class EnsemblePredictor:
         if not predictions:
             return pd.Series(dtype=float)
 
-        # Weighted average of available models
+        # ── 双模型 (A/B) 加权 ──
+        # 如果有 DualModel 且有 A/B 模型，优先使用双模型预测
+        if (
+            self._dual_model is not None
+            and self._dual_model.model_a is not None
+            and self._dual_model.model_b is not None
+        ):
+            try:
+                from aimoon.ml.incremental_trainer import predict_dual
+
+                dual_pred = predict_dual(self._dual_model, features)
+                if len(dual_pred) == len(features):
+                    dual_weight = self._dual_model.weight_a + self._dual_model.weight_b
+                    predictions["dual"] = dual_pred * dual_weight
+                    logger.info(
+                        "DualModel prediction used: w_a=%.2f, w_b=%.2f, "
+                        "decay=%.4f, ewc=%.4f, slide=%s",
+                        self._dual_model.weight_a,
+                        self._dual_model.weight_b,
+                        self._dual_model.ic_decay_speed,
+                        getattr(self._dual_model, "ewc_loss", 0.0),
+                        getattr(self._dual_model, "slide_detected", False),
+                    )
+            except Exception as e:
+                logger.debug("DualModel prediction failed: %s", e)
+
+        # Weighted average — prefer meta ensemble weights, fallback to IC weights
         active_weights: dict[str, float] = {}
-        for name in predictions:
-            if name == "xgb":
-                active_weights[name] = self._xgb_weight
-            elif name == "lgbm":
-                active_weights[name] = self._lgbm_weight
-            elif name == "en":
-                active_weights[name] = self._en_weight
+
+        # Try DynamicMetaEnsemble weights first
+        if self._meta_ensemble is not None and self._meta_ensemble.is_ridge_active:
+            meta_w = self._meta_ensemble.update_weights()
+            for name in predictions:
+                if name in meta_w:
+                    active_weights[name] = meta_w[name]
+                elif name == "en":
+                    active_weights[name] = self._en_weight
+
+        # Fallback to stored IC weights
+        if not active_weights:
+            for name in predictions:
+                if name == "xgb":
+                    active_weights[name] = self._xgb_weight
+                elif name == "lgbm":
+                    active_weights[name] = self._lgbm_weight
+                elif name == "en":
+                    active_weights[name] = self._en_weight
 
         total_weight = sum(active_weights.values())
         if total_weight <= 0:
@@ -330,21 +402,24 @@ class EnsemblePredictor:
         klines: dict[str, pd.DataFrame],
         registry: Any = None,
         lookback_dates: int = 3,
-        forward_days: int = 5,
+        forward_days: int = 22,
         decay_eta: float = 0.05,
         factor_cache: dict[str, pd.DataFrame] | None = None,
         realtime: bool = False,  # M3: 新增 realtime 模式
     ) -> None:
         """自适应权重：基于最近 N 天的滚动 IC 动态调整 XGB/LGBM 权重。
 
-       结果缓存 24 小时，避免每次筛选都重新计算。
+        结果缓存 24 小时，避免每次筛选都重新计算。
 
-        Parameters
-        ----------
-        realtime : bool
-            M3: 实时模式。True 时使用已实现收益（无需未来数据），
-            False 时使用前瞻收益（仅回测可用）。
+         Parameters
+         ----------
+         realtime : bool
+             M3: 实时模式。True 时使用已实现收益（无需未来数据），
+             False 时使用前瞻收益（仅回测可用）。
         """
+        import xgboost as xgb
+        from scipy.stats import spearmanr
+
         # 检查缓存
         cache_file = self._cache_dir / "adaptive_weights.json"
         if cache_file.exists():
@@ -391,6 +466,7 @@ class EnsemblePredictor:
             else:
                 # 回测模式：使用前瞻收益（与训练一致）
                 from aimoon.ml.label_engine import generate_reversal_labels
+
                 labels = generate_reversal_labels(klines, date, forward_days, lookback_days=20)
             common = features.index.intersection(labels.index)
             if len(common) < 20:
@@ -400,9 +476,7 @@ class EnsemblePredictor:
                 if self._xgb is not None:
                     preds_xgb = self._xgb.predict(xgb.DMatrix(features.loc[common]))
                     with warnings.catch_warnings():
-                        warnings.filterwarnings(
-                            "ignore", message="An input array is constant"
-                        )
+                        warnings.filterwarnings("ignore", message="An input array is constant")
                         ic_xgb, _ = spearmanr(preds_xgb, labels[common].values)
                     if not np.isnan(ic_xgb):
                         xgb_ics.append(float(ic_xgb))
@@ -410,9 +484,7 @@ class EnsemblePredictor:
                 if self._lgbm is not None:
                     preds_lgbm = self._lgbm.predict(features.loc[common])
                     with warnings.catch_warnings():
-                        warnings.filterwarnings(
-                            "ignore", message="An input array is constant"
-                        )
+                        warnings.filterwarnings("ignore", message="An input array is constant")
                         ic_lgbm, _ = spearmanr(preds_lgbm, labels[common].values)
                     if not np.isnan(ic_lgbm):
                         lgbm_ics.append(float(ic_lgbm))
@@ -453,8 +525,16 @@ class EnsemblePredictor:
         total = exp_xgb + exp_lgbm
 
         if total > 0:
-            self._xgb_weight = float(exp_xgb / total)
-            self._lgbm_weight = float(exp_lgbm / total)
+            raw_xgb = float(exp_xgb / total)
+            raw_lgbm = float(exp_lgbm / total)
+            # 最低权重保护：防止单个模型因近期IC优势主导集成（过拟合近期regime）
+            min_weight = 0.20
+            self._xgb_weight = max(raw_xgb, min_weight) if raw_xgb > 0.5 else raw_xgb
+            self._lgbm_weight = max(raw_lgbm, min_weight) if raw_lgbm > 0.5 else raw_lgbm
+            # 重新归一化
+            w_sum = self._xgb_weight + self._lgbm_weight
+            self._xgb_weight /= w_sum
+            self._lgbm_weight /= w_sum
             logger.info(
                 "Ensemble weights adapted: XGB_IC=%.4f, LGBM_IC=%.4f → w_xgb=%.2f, w_lgbm=%.2f",
                 avg_ic_xgb,
@@ -494,9 +574,7 @@ class EnsemblePredictor:
                 # Average IC across the 5 days
                 avg_ic = ic_df.mean().dropna().to_dict()
                 if avg_ic:
-                    weighter = EWMAFactorWeighter.load() or EWMAFactorWeighter(
-                        decay=0.95
-                    )
+                    weighter = EWMAFactorWeighter.load() or EWMAFactorWeighter(decay=0.95)
                     weights = weighter.update(avg_ic)
                     weighter.save()
                     logger.info(
@@ -506,3 +584,53 @@ class EnsemblePredictor:
                     )
         except Exception as e:
             logger.warning("EWMA factor weight update failed: %s", e)
+
+        # ── Factor covariance + Sharpe diagnostic ──
+        try:
+            from aimoon.ml.icir_weighter import (
+                compute_factor_covariance_and_sharpe,
+                compute_icir_weights,
+            )
+
+            if not ic_df.empty and len(ic_df) >= 30:
+                # Compute ICIR weights from the full IC series
+                icir_w = compute_icir_weights(ic_df)
+                if icir_w:
+                    cov_result = compute_factor_covariance_and_sharpe(
+                        ic_df,
+                        icir_w,
+                        denoise=True,
+                    )
+                    if cov_result is not None:
+                        sharpe = cov_result.get("sharpe")
+                        n_eff = cov_result.get("n_effective", 0)
+                        shrinkage = cov_result.get("shrinkage", 0)
+                        logger.info(
+                            "Factor cov: sharpe=%.3f, n_eff=%.1f, shrinkage=%.3f",
+                            sharpe if sharpe is not None else 0.0,
+                            n_eff,
+                            shrinkage,
+                        )
+        except Exception as e:
+            logger.debug("Factor covariance diagnostic failed: %s", e)
+
+        # ── DynamicMetaEnsemble update ──
+        if self._meta_ensemble is not None:
+            try:
+                # Record this day's OOS predictions for meta learner training
+                meta_w = self._meta_ensemble.update_weights(
+                    xgb_ic=avg_ic_xgb if xgb_ics else 0.0,
+                    lgbm_ic=avg_ic_lgbm if lgbm_ics else 0.0,
+                )
+                # Update stored weights from meta ensemble
+                self._xgb_weight = meta_w.get("xgb", self._xgb_weight)
+                self._lgbm_weight = meta_w.get("lgbm", self._lgbm_weight)
+                self._meta_ensemble.save()
+                logger.info(
+                    "MetaEnsemble updated: ridge=%s, xgb_w=%.3f, lgbm_w=%.3f",
+                    self._meta_ensemble.is_ridge_active,
+                    self._xgb_weight,
+                    self._lgbm_weight,
+                )
+            except Exception as e:
+                logger.debug("MetaEnsemble update failed: %s", e)

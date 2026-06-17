@@ -34,4 +34,3 @@ def score_rsi(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> Signal
         return Signal("rsi_mild_bear", f"RSI偏空({val:.0f})", -1, category="reversal")
     # 45-50: slightly bearish
     return Signal("rsi_slight_bear", f"RSI略偏空({val:.0f})", -1, category="reversal")
-

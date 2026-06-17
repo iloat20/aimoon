@@ -84,13 +84,9 @@ def score_reversal(
     # ── 4. 连续下跌后放量大阳线（恐慌出清后的反转） ──
     if len(close) >= 6:
         recent = close.iloc[-5:-1]
-        down_days = sum(
-            1 for i in range(1, len(recent)) if recent.iloc[i] < recent.iloc[i - 1]
-        )
+        down_days = sum(1 for i in range(1, len(recent)) if recent.iloc[i] < recent.iloc[i - 1])
         today_return = (
-            (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100
-            if close.iloc[-2] > 0
-            else 0
+            (close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100 if close.iloc[-2] > 0 else 0
         )
         vol_ratio = ti.volume_ratio()
         if down_days >= 3 and today_return > 2 and vol_ratio > 1.5:

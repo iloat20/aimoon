@@ -33,7 +33,6 @@ dependencies = [
     "httpx>=0.27",
     "tenacity>=8.0",
     "pendulum>=3.0",
-    "empyrical>=0.5",
     "pandas-ta>=0.3",
     "PyPortfolioOpt>=1.5",
     "gplearn>=0.4",
@@ -54,9 +53,14 @@ Repository = "https://github.com/iloat20/aimoon"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
+preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
@@ -80,6 +84,8 @@ ignore = ["E741", "N806", "N803"]
 "src/aimoon/run_paper_trading.py" = ["E501"]
 "src/aimoon/self_learning.py" = ["E501"]
 "src/aimoon/start_paper_trading.py" = ["E501"]
+# warnings.filterwarnings must run before imports
+"src/aimoon/cli.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -90,3 +96,6 @@ filterwarnings = [
     "ignore::DeprecationWarning:pkg_resources",
     "ignore::UserWarning:pkg_resources",
 ]
+
+[tool.uv]
+python-preference = "only-managed"

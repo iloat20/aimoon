@@ -10,38 +10,28 @@ import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
     delta,
     rank,
-    safe_div,
     scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
     ts_min,
     ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_029"
 
 __alpha_meta__ = {
-    'id': 'alpha101_029',
-    'nickname': 'Kakushadze Alpha #29',
-    'theme': ['reversal', 'volume'],
-    'formula_latex': 'min(product(rank(rank(scale(log(sum(ts_min(rank(rank(-1*rank(delta(close-1,5)))),2),1))))),1),5) + ts_rank(delay(-1*returns,6),5)',
-    'columns_required': ['close', 'volume'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 12,
-    'notes': '',
+    "id": "alpha101_029",
+    "nickname": "Kakushadze Alpha #29",
+    "theme": ["reversal", "volume"],
+    "formula_latex": "min(product(rank(rank(scale(log(sum(ts_min(rank(rank(-1*rank(delta(close-1,5)))),2),1))))),1),5) + ts_rank(delay(-1*returns,6),5)",
+    "columns_required": ["close", "volume"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 12,
+    "notes": "",
 }
 
 
@@ -65,7 +55,7 @@ def _delay(df: pd.DataFrame, n: int) -> pd.DataFrame:
 def compute(panel: dict) -> pd.DataFrame:
     """Compute the alpha on the OHLCV+ panel and return a wide DataFrame."""
     close = panel["close"]
-    returns = close.pct_change()
+    returns = close.pct_change(fill_method=None)
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum
     rolling_prod = _rolling_prod

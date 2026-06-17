@@ -5,42 +5,30 @@ Formula (verbatim from the report):
 
 Notes: Wilder's ADX-style indicator; mean over last 6 bars.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_172"
 
 __alpha_meta__ = {
-    'id': 'gtja191_172',
-    'theme': ['momentum'],
-    'formula_latex': 'see body',
-    'columns_required': ['close', 'high', 'low'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 14,
-    'min_warmup_bars': 20,
-    'notes': "Wilder's ADX-style indicator; mean over last 6 bars.",
+    "id": "gtja191_172",
+    "theme": ["momentum"],
+    "formula_latex": "see body",
+    "columns_required": ["close", "high", "low"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 14,
+    "min_warmup_bars": 20,
+    "notes": "Wilder's ADX-style indicator; mean over last 6 bars.",
 }
 
 

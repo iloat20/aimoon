@@ -30,9 +30,7 @@ def _tencent_kline(stock_code: str | int, days: int) -> Result[pd.DataFrame, str
     url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
     params = {"param": f"{secid},day,,,{days},qfq"}
     try:
-        r = httpx.get(
-            url, params=params, headers={"User-Agent": "Mozilla/5.0"}, timeout=15
-        )
+        r = httpx.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
         r.raise_for_status()
         data = r.json()
         if data.get("code") != 0:
@@ -72,6 +70,7 @@ def _akshare_kline(
     code: str, start_date: str, end_date: str, retries: int = 2
 ) -> Result[pd.DataFrame, str]:
     """AKShare 获取 K 线，带信号量限流 + tenacity 重试。"""
+
     @retry(
         stop=stop_after_attempt(retries + 1),
         wait=wait_exponential(multiplier=0.5, min=0.5, max=5),
@@ -153,8 +152,7 @@ def _akshare_index_kline(
             # 过滤日期范围
             df["date"] = pd.to_datetime(df["date"])
             df = df[
-                (df["date"] >= pd.Timestamp(start_date))
-                & (df["date"] <= pd.Timestamp(end_date))
+                (df["date"] >= pd.Timestamp(start_date)) & (df["date"] <= pd.Timestamp(end_date))
             ]
             if df.empty:
                 return Err(f"{code}: no data in date range {start_date}~{end_date}")
@@ -164,15 +162,11 @@ def _akshare_index_kline(
             if attempt < retries:
                 time.sleep(0.5 * (attempt + 1))
             else:
-                return Err(
-                    f"{code}: AKShare index failed after {retries + 1} attempts: {e}"
-                )
+                return Err(f"{code}: AKShare index failed after {retries + 1} attempts: {e}")
     return Err(f"{code}: unreachable")
 
 
-def get_kline(
-    code: str | int, days: int, cache: DataCache
-) -> Result[pd.DataFrame, str]:
+def get_kline(code: str | int, days: int, cache: DataCache) -> Result[pd.DataFrame, str]:
     """获取历史 K 线。mootdx 优先（TCP 直连，仅个股），腾讯备用，AKShare 兜底，带缓存。
 
     指数代码（000300, 000001, 399001 等）直接走 AKShare 指数专用接口，
@@ -202,8 +196,15 @@ def get_kline(
     # 深圳指数：399001(深证成指), 399006(创业板指), 399005(中小板指), 399673(创业板50)
     # 其他：880003(中证500), sh000001, sz399001 等带前缀格式
     _INDEX_CODES = {
-        "000001", "000016", "000300", "000852", "000905",
-        "399001", "399005", "399006", "399673",
+        "000001",
+        "000016",
+        "000300",
+        "000852",
+        "000905",
+        "399001",
+        "399005",
+        "399006",
+        "399673",
     }
     is_index = code in _INDEX_CODES or code.startswith(("sh", "sz"))
 

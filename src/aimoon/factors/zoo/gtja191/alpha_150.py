@@ -3,44 +3,24 @@
 Formula (verbatim from the report):
     (CLOSE+HIGH+LOW)/3*VOLUME
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
-
-import numpy as np
-import pandas as pd
-
-from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
-)
 
 ALPHA_ID = "gtja191_150"
 
 __alpha_meta__ = {
-    'id': 'gtja191_150',
-    'theme': ['volume'],
-    'formula_latex': '(close+high+low)/3*volume',
-    'columns_required': ['close', 'high', 'low', 'volume'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 1,
-    'min_warmup_bars': 1,
-    'notes': '',
+    "id": "gtja191_150",
+    "theme": ["volume"],
+    "formula_latex": "(close+high+low)/3*volume",
+    "columns_required": ["close", "high", "low", "volume"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 1,
+    "min_warmup_bars": 1,
+    "notes": "",
 }
 
 

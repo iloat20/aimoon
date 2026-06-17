@@ -121,7 +121,13 @@ def compute_alpha_signals(
             if score == 0:
                 continue
 
-            scaled_score = int(round(score * icir_mult * decay_mult))
+            # Use floor instead of round to avoid truncating small scores to 0
+            # Original: int(round(score * icir_mult * decay_mult)) → 0 for <0.5
+            # Fixed: max(1, int(floor(...))) preserves weak-but-valid signals
+            import math
+
+            raw_score = score * icir_mult * decay_mult
+            scaled_score = max(1, int(math.floor(abs(raw_score)))) * (1 if raw_score >= 0 else -1)
 
             signal = Signal(
                 name=f"alpha_{alpha_id}",

@@ -1,8 +1,20 @@
 """结果类型，用于错误处理"""
+
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import NoReturn
+
+
+def _rich_print(msg: str) -> None:
+    """Rich 可用时使用 rich 输出，否则 fallback 到普通 print。"""
+    try:
+        from rich.console import Console
+
+        Console().print(f"[red]{msg}[/red]")
+    except ImportError:
+        print(f"ERROR: {msg}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +48,7 @@ class Err[E]:
         raise RuntimeError(f"Called unwrap on Err: {self.error}")
 
     def unwrap_or_exit(self, msg: str = "") -> NoReturn:
-        import sys
-        print(f"[red]{msg or self.error}[/red]")
+        _rich_print(msg or str(self.error))
         sys.exit(1)
 
 

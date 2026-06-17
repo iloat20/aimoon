@@ -6,42 +6,28 @@ Source: Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991, eq. 83.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
     rank,
     safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
-    ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "alpha101_083"
 
 __alpha_meta__ = {
-    'id': 'alpha101_083',
-    'nickname': 'Kakushadze Alpha #83',
-    'theme': ['volume', 'volatility'],
-    'formula_latex': '(rank(delay((high-low)/(sum(close,5)/5), 2)) * rank(rank(volume))) / (((high-low)/(sum(close,5)/5)) / (vwap-close))',
-    'columns_required': ['high', 'low', 'close', 'volume', 'vwap'],
-    'extras_required': [],
-    'requires_sector': False,
-    'universe': ['equity_us'],
-    'frequency': ['1D'],
-    'decay_horizon': 5,
-    'min_warmup_bars': 7,
-    'notes': '',
+    "id": "alpha101_083",
+    "nickname": "Kakushadze Alpha #83",
+    "theme": ["volume", "volatility"],
+    "formula_latex": "(rank(delay((high-low)/(sum(close,5)/5), 2)) * rank(rank(volume))) / (((high-low)/(sum(close,5)/5)) / (vwap-close))",
+    "columns_required": ["high", "low", "close", "volume", "vwap"],
+    "extras_required": [],
+    "requires_sector": False,
+    "universe": ["equity_us"],
+    "frequency": ["1D"],
+    "decay_horizon": 5,
+    "min_warmup_bars": 7,
+    "notes": "",
 }
 
 
@@ -64,7 +50,6 @@ def compute(panel: dict) -> pd.DataFrame:
     low = panel["low"]
     volume = panel["volume"]
     vwap = panel["vwap"]
-
 
     # Helper aliases (local closures keep the file standalone & purity-safe).
     rolling_sum = _rolling_sum

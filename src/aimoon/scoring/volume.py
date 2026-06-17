@@ -6,9 +6,7 @@ from aimoon.indicators.technical import TechInd
 from aimoon.models import Signal
 
 
-def score_volume(
-    ti: TechInd, *, code: str = "", ctx: dict | None = None
-) -> Signal | None:
+def score_volume(ti: TechInd, *, code: str = "", ctx: dict | None = None) -> Signal | None:
     vr = ti.volume_ratio()
     # IC 分析显示成交量是反向指标：放量预测下跌，缩量预测上涨
     if vr > 2.0:
@@ -18,4 +16,3 @@ def score_volume(
     if vr < 0.5:
         return Signal("volume_shrink", f"缩量蓄势({vr:.1f}x)", +1, category="reversal")
     return None
-

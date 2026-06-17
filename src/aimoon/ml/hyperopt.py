@@ -30,14 +30,13 @@ from __future__ import annotations
 import json
 import logging
 import time
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
+
+from aimoon.ml._training_commons import compute_spearmanr_safe
 
 logger = logging.getLogger(__name__)
 

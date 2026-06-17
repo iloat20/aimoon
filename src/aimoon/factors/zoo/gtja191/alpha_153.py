@@ -3,44 +3,28 @@
 Formula (verbatim from the report):
     (MEAN(CLOSE,3)+MEAN(CLOSE,6)+MEAN(CLOSE,12)+MEAN(CLOSE,24))/4
 
-Notes: 
+Notes:
 """
+
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-
 from aimoon.factors.base import (
-    decay_linear,
-    delta,
-    rank,
-    safe_div,
-    scale,
-    signed_power,
-    ts_argmax,
-    ts_argmin,
-    ts_corr,
-    ts_cov,
-    ts_max,
     ts_mean,
-    ts_min,
-    ts_rank,
-    ts_std,
 )
 
 ALPHA_ID = "gtja191_153"
 
 __alpha_meta__ = {
-    'id': 'gtja191_153',
-    'theme': ['momentum'],
-    'formula_latex': '(mean(c,3)+mean(c,6)+mean(c,12)+mean(c,24))/4',
-    'columns_required': ['close'],
-    'extras_required': [],
-    'universe': ['equity_cn'],
-    'frequency': ['1d'],
-    'decay_horizon': 24,
-    'min_warmup_bars': 24,
-    'notes': '',
+    "id": "gtja191_153",
+    "theme": ["momentum"],
+    "formula_latex": "(mean(c,3)+mean(c,6)+mean(c,12)+mean(c,24))/4",
+    "columns_required": ["close"],
+    "extras_required": [],
+    "universe": ["equity_cn"],
+    "frequency": ["1d"],
+    "decay_horizon": 24,
+    "min_warmup_bars": 24,
+    "notes": "",
 }
 
 

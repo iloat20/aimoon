@@ -429,3 +429,99 @@ def reset_default_registry() -> None:
     global _registry_cache
     with _registry_cache_lock:
         _registry_cache = None
+
+
+# Factor Theme Groups
+_THEME_GROUPS = {
+    "value": [
+        "pe_ttm",
+        "pb",
+        "ps_ttm",
+        "pcf_ncf_ttm",
+        "market_cap",
+        "dividend_yield",
+        "total_mv",
+        "circ_mv",
+    ],
+    "momentum": [
+        "roc5",
+        "roc10",
+        "roc20",
+        "roc60",
+        "mom5",
+        "mom10",
+        "mom20",
+        "mom60",
+        "rsi6",
+        "rsi12",
+        "rsi24",
+        "kdj_k",
+        "kdj_d",
+    ],
+    "quality": [
+        "roe_ttm",
+        "roa_ttm",
+        "gross_profit_margin",
+        "net_profit_margin",
+        "asset_turnover",
+        "inventory_turnover",
+        "receivables_turnover",
+    ],
+    "volatility": [
+        "realized_vol_5",
+        "realized_vol_10",
+        "realized_vol_20",
+        "atr_14",
+        "bb_width",
+        "realized_vol_60",
+        "parkinson_vol",
+    ],
+    "growth": [
+        "revenue_yoy",
+        "profit_yoy",
+        "roe_yoy",
+        "total_revenue_yoy",
+        "net_profit_yoy",
+        "rd_expense_ratio",
+    ],
+    "sentiment": [
+        "turnover_rate",
+        "turnover_rate_f",
+        "volume_ratio",
+        "vwap_deviation",
+        "moneyflow",
+        "moneyflow_hsgt",
+        "northbound_flow",
+        "margin_balance",
+    ],
+}
+
+
+def get_factor_theme(factor_id):
+    """Get the theme group for a factor ID."""
+    factor_lower = factor_id.lower()
+    for theme, keywords in _THEME_GROUPS.items():
+        for kw in keywords:
+            if kw in factor_lower:
+                return theme
+    return "unknown"
+
+
+def validate_factor_diversity(factor_ids, min_per_theme=3):
+    """Check that factor selection covers all themes adequately."""
+    import logging
+    from collections import defaultdict
+
+    theme_factors = defaultdict(list)
+    for fid in factor_ids:
+        theme = get_factor_theme(fid)
+        theme_factors[theme].append(fid)
+    for theme, factors in theme_factors.items():
+        if theme != "unknown" and len(factors) < min_per_theme:
+            logging.getLogger(__name__).warning(
+                "Factor diversity: theme '%s' has only %d factors (min=%d)",
+                theme,
+                len(factors),
+                min_per_theme,
+            )
+    return dict(theme_factors)
