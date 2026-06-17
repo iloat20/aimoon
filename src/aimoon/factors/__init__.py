@@ -1,7 +1,13 @@
-"""Alpha Zoo 因子系统 — 基础算子 + 注册表 + 因子库。"""
+"""因子系统 — 基础算子 + A 股因子。"""
 
 from __future__ import annotations
 
+from aimoon.factors.ashare import (
+    ASHARE_FACTORS,
+    build_panel,
+    compute_ashare_factors,
+    robust_zscore,
+)
 from aimoon.factors.base import (
     decay_linear,
     delta,
@@ -22,6 +28,10 @@ from aimoon.factors.base import (
 )
 
 __all__ = [
+    "ASHARE_FACTORS",
+    "build_panel",
+    "compute_ashare_factors",
+    "robust_zscore",
     "decay_linear",
     "delta",
     "rank",
