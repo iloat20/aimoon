@@ -14,10 +14,25 @@ from rich.table import Table
 
 from aimoon.config import Config
 from aimoon.models import ScoredStock
-from aimoon.scoring.hybrid_scorer import get_suggestion
 
 if TYPE_CHECKING:
-    from aimoon.factor_eval import FactorEval
+    pass
+
+
+def _ml_score_to_suggestion(score: int) -> tuple[str, str]:
+    """Convert ML score (0-100) to suggestion text and confidence."""
+    if score >= 80:
+        return "强烈看多", "高"
+    elif score >= 65:
+        return "看多", "中"
+    elif score >= 50:
+        return "中性偏多", "低"
+    elif score >= 35:
+        return "中性偏空", "低"
+    elif score >= 20:
+        return "看空", "中"
+    else:
+        return "强烈看空", "高"
 
 
 def _color_value(v: float, invert: bool = False) -> str:
@@ -42,41 +57,26 @@ class OutputFormatter:
         table.add_column("Name", style="bold", width=10)
         table.add_column("Price", justify="right", width=8)
         table.add_column("Chg%", justify="right", width=8)
-        table.add_column("Score", justify="right", width=6)
-        table.add_column("Turtle", width=12)
+        table.add_column("ML Score", justify="right", width=8)
         table.add_column("Suggestion", width=10)
         table.add_column("Conf.", width=6)
         for i, r in enumerate(results, 1):
             ps = "green" if r.pct_change >= 0 else "red"
+            score = r.ml_score or r.total_score
             ts = (
                 "bold green"
-                if r.total_score >= 65
-                else ("yellow" if r.total_score >= 35 else "red")
+                if score >= 65
+                else ("yellow" if score >= 35 else "red")
             )
-            sug, conf = get_suggestion(r.total_score)
-            ss = "bold green" if "买" in sug else ("red" if "卖" in sug else "dim")
-            # Turtle signal
-            plan = (turtle_plans or {}).get(r.code)
-            if plan is not None:
-                ttype = plan.signal_type
-                if ttype == "buy":
-                    turtle_str = f"[bold green]▲买{plan.entry_price:.1f}[/bold green]"
-                elif ttype == "add":
-                    turtle_str = f"[green]＋{plan.entry_price:.1f}[/green]"
-                elif ttype == "close":
-                    turtle_str = f"[red]▼卖{plan.exit_price:.1f}[/red]"
-                else:
-                    turtle_str = "[dim]─[/dim]"
-            else:
-                turtle_str = "[dim]─[/dim]"
+            sug, conf = _ml_score_to_suggestion(score)
+            ss = "bold green" if "多" in sug else ("red" if "空" in sug else "dim")
             table.add_row(
                 str(i),
                 r.code,
                 r.name,
                 f"{r.price:.2f}",
                 f"[{ps}]{r.pct_change:+.2f}[/{ps}]",
-                f"[{ts}]{r.total_score}[/{ts}]",
-                turtle_str,
+                f"[{ts}]{score}[/{ts}]",
                 f"[{ss}]{sug}[/{ss}]",
                 conf,
             )
@@ -141,7 +141,8 @@ class OutputFormatter:
         filepath = os.path.join(self.cfg.output_dir, filename)
         rows = []
         for r in results:
-            sug, conf = get_suggestion(r.total_score)
+            score = r.ml_score or r.total_score
+            sug, conf = _ml_score_to_suggestion(score)
             rows.append(
                 {
                     "code": r.code,
@@ -152,7 +153,7 @@ class OutputFormatter:
                     "pe": r.pe,
                     "pb": r.pb,
                     "market_cap_yi": r.market_cap_yi,
-                    "total_score": r.total_score,
+                    "ml_score": score,
                     "suggestion": sug,
                     "confidence": conf,
                     **r.rps,
@@ -164,8 +165,6 @@ class OutputFormatter:
     def export_markdown(
         self, results: list[ScoredStock], filename: str | None = None, regime: str | None = None
     ) -> str:
-        from aimoon.scoring import hybrid_score
-
         if not filename:
             filename = f"aimoon_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         os.makedirs(self.cfg.output_dir, exist_ok=True)
@@ -177,53 +176,53 @@ class OutputFormatter:
         if regime:
             lines += [f"**市场状态：{regime}**", ""]
 
-        # Scored with capped score for ranking
-        ranked = sorted(results, key=lambda s: hybrid_score(list(s.signals)), reverse=True)
+        # 按 ml_score 排序
+        ranked = sorted(results, key=lambda s: s.ml_score or s.total_score, reverse=True)
 
         # Trading advice sections
         top1 = ranked[0] if ranked else None
         if top1:
-            top1_score = hybrid_score(list(top1.signals))
+            score = top1.ml_score or top1.total_score
             lines += [
                 "## 交易建议",
                 "",
                 "### 首选买入",
                 "",
-                f"**{top1.code} {top1.name}** — 价格 {top1.price:.2f}，分类评分 {top1_score}",
+                f"**{top1.code} {top1.name}** — 价格 {top1.price:.2f}，ML 评分 {score}",
                 "",
                 f"- 止损：{self.cfg.stop_loss_pct:.0%}  止盈：{self.cfg.take_profit_pct:.0%}  持仓上限：{self.cfg.hold_days}天",
                 "",
             ]
 
         # Strong buy candidates (top 5)
-        strong_buy = [s for s in ranked if hybrid_score(list(s.signals)) >= 15][:5]
+        strong_buy = [s for s in ranked if (s.ml_score or s.total_score) >= 60][:5]
         if len(strong_buy) > 1:
             lines += [
                 "### 强势候选（前5）",
                 "",
-                "| 代码 | 名称 | 价格 | 分类评分 | 建议 |",
-                "|------|------|------|----------|------|",
+                "| 代码 | 名称 | 价格 | ML 评分 | 建议 |",
+                "|------|------|------|---------|------|",
             ]
             for s in strong_buy:
-                cs = hybrid_score(list(s.signals))
-                sug, conf = get_suggestion(s.total_score)
-                lines.append(f"| {s.code} | {s.name} | {s.price:.2f} | {cs} | {sug} |")
+                score = s.ml_score or s.total_score
+                sug, conf = _ml_score_to_suggestion(score)
+                lines.append(f"| {s.code} | {s.name} | {s.price:.2f} | {score} | {sug} |")
             lines.append("")
 
         # Full ranked table
         lines += [
             "## 完整筛选结果",
             "",
-            f"共筛选 {len(ranked)} 只股票（按分类评分排序）",
+            f"共筛选 {len(ranked)} 只股票（按 ML 评分排序）",
             "",
-            "| No. | Code | Name | Price | CapScore | RawScore | Suggestion |",
-            "|-----|------|------|-------|----------|----------|------------|",
+            "| No. | Code | Name | Price | ML Score | Suggestion |",
+            "|-----|------|------|-------|----------|------------|",
         ]
         for i, r in enumerate(ranked, 1):
-            sug, conf = get_suggestion(r.total_score)
-            cs = hybrid_score(list(r.signals))
+            score = r.ml_score or r.total_score
+            sug, conf = _ml_score_to_suggestion(score)
             lines.append(
-                f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {cs} | {r.total_score} | {sug} |"
+                f"| {i} | {r.code} | {r.name} | {r.price:.2f} | {score} | {sug} |"
             )
 
         lines += ["", f"---\n\n*报告生成时间: {now}*"]
