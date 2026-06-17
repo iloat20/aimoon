@@ -46,7 +46,7 @@ CLI (cli.py)
 
 ### 3.2 核心变化：分数 = ML 百分位
 
-`ScoredStock.ml_score`（0-100 百分位）即为最终分数，`total_score = ml_score`。删除 `hybrid_scorer` 四组加权与 `signals` 元组复杂拼装。`signals` 字段保留但置空或仅放 1 个摘要信号（如 `ml_rank`），不再驱动评分。
+`ScoredStock.ml_score`（0-100 百分位）即为最终分数，`total_score = ml_score`。删除 `hybrid_scorer` 四组加权与 `signals` 元组复杂拼装。`signals` 字段保留但**置为空元组**（输出展示直接用 `ml_score`），不再驱动评分。
 
 ### 3.3 删除范围总览
 
@@ -54,7 +54,7 @@ CLI (cli.py)
 |------|------|
 | `scoring/` 下 ~20 个技术信号模块 + `hybrid_scorer` + `combiner` + `signal_map` | `scoring/portfolio.py`（持仓约束，回测仍用）、`scoring/__init__.py`（薄封装） |
 | `factors/zoo/` 全部 452 因子 + `registry`/`panel`/`dag`/`genetic`/`incremental`/`quality`/`weighting`/`scorer` | `factors/base.py`（基础算子，新因子复用）、新 `factors/ashare.py` |
-| `ml/` 中 alpha360、alpha360_robust、stacking、meta_ensemble、hyperopt、incremental_trainer、icir_weighter、factor_decay、factor_quality、factor_importance、covariance_estimator、feature_selector、slippage_model、walk_forward、ensemble、ensemble_signals | `ml/trainer.py`（精简）、`ml/feature_pipeline.py`（精简）、`ml/label_engine.py`、`ml/purged_tscv.py`、`ml/model_persistence.py`、`ml/optimized_config.py`（精简）、`ml/training_loop.py`（精简）、`ml/data_collection.py` |
+| `ml/` 中 alpha360、alpha360_robust、stacking、meta_ensemble、hyperopt、incremental_trainer、icir_weighter、factor_decay、factor_quality、factor_importance、covariance_estimator、feature_selector、slippage_model、walk_forward、ensemble、ensemble_signals | `ml/trainer.py`（精简）、`ml/feature_pipeline.py`（精简）、`ml/label_engine.py`、`ml/purged_tscv.py`、`ml/model_persistence.py`、`ml/optimized_config.py`（精简）、`ml/training_loop.py`（精简）、`ml/data_collection.py`、`ml/_training_commons.py`、新 `ml/predictor.py` |
 | 专有因子族大部分、`regime_enhanced`、`rumi_*`、`adaptive_strategy`、`factor_eval`、`factor_model_optimizer/`、`grid_search`、`optimizer`、`self_learning` | `data/` 全部、`indicators/technical.py`（技术统计/止损复用）、`enhanced_backtest/metrics.py` |
 
 > 删除前用 `Grep` 验证无其他模块引用，避免 import 断链。
@@ -139,7 +139,7 @@ random_state: 42
 
 - 删除 `EnsemblePredictor`，新建 `ml/predictor.py` 的 `MLPredictor`：加载单 LightGBM 模型 + feature_names + feature_medians。
 - `predict(panel)` → 原始分数 → **截面百分位排名 → 0-100** = `ml_score`。
-- `screener.screen_stock` 精简：`total_score = ml_score`，`signals` 置空或仅 1 个摘要信号。
+- `screener.screen_stock` 精简：`total_score = ml_score`，`signals` 置为空元组。
 - 无 ML 模型时：`ml_score = None`，`total_score = 0`，明确提示需训练，**不回退技术信号**。
 
 ### 5.5 训练时间预估
@@ -178,7 +178,7 @@ random_state: 42
   2. 入场检查（空仓槽位可用）：
      - score[t][code] ≥ entry_threshold
      - 用 T 日收盘价买入（用户明确选择；隐含"收盘附近可成交"假设，轻微前瞻）
-     - 等权或按分数加权，受 max_positions 限制
+     - **等权仓位**（每仓 = 总资金 / max_positions），受 max_positions 限制
   3. 记录净值
 ```
 
@@ -256,7 +256,7 @@ random_state: 42
 
 - `scoring/`：hybrid_scorer、combiner、signal_map、momentum、momentum_ext、reversal、mean_reversion、turtle、rsi、macd、kdj、bollinger、trend、trend_ext、volume、sector、rps、fundamentals、adaptive_weight、dedup、_ml_signal（保留 portfolio）
 - `factors/`：zoo/（全部 452）、registry、panel、dag、genetic、incremental、quality、weighting、scorer
-- `ml/`：alpha360、alpha360_robust、stacking、meta_ensemble、hyperopt、incremental_trainer、icir_weighter、factor_decay、factor_quality、factor_importance、covariance_estimator、feature_selector、slippage_model、walk_forward、ensemble、ensemble_signals、_training_commons（部分）、lgbm_trainer（合并入 trainer）
+- `ml/`：alpha360、alpha360_robust、stacking、meta_ensemble、hyperopt、incremental_trainer、icir_weighter、factor_decay、factor_quality、factor_importance、covariance_estimator、feature_selector、slippage_model、walk_forward、ensemble、ensemble_signals、lgbm_trainer（合并入 trainer）。保留 `_training_commons`（共享工具：spearmanr_safe/check_overfit 等）
 - 顶层：regime_enhanced、rumi_strategy、rumi_optimizer、adaptive_strategy、grid_search、optimizer、self_learning、factor_eval、factor_model_optimizer/、qf_backtest/、enhanced_backtest/（除 metrics）、demo 简化
 
 > 删除前 `Grep` 验证无引用，避免 import 断链。
