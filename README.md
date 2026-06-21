@@ -140,7 +140,7 @@ DouyinCollector.login()
 ## 项目结构
 
 ```
-src/stock_ai_analyst/
+src/aimoon/
 ├── main.py              # CLI 入口 + 四步流程编排
 ├── config/settings.py   # 配置管理 (Pydantic + .env)
 ├── models/              # 数据模型

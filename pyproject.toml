@@ -59,7 +59,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [project.scripts]
-aimoon = "stock_ai_analyst.main:main"
+aimoon = "aimoon.main:main"
 
 [tool.ruff]
 target-version = "py312"

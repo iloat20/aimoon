@@ -11,6 +11,68 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aimoon"
+version = "0.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "akshare" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "markdown" },
+    { name = "openai" },
+    { name = "orjson" },
+    { name = "playwright" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pysnowball" },
+    { name = "python-dotenv" },
+    { name = "rich" },
+    { name = "selenium" },
+    { name = "tenacity" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "playwright" },
+    { name = "selenium" },
+]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+selenium = [
+    { name = "selenium" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "akshare", specifier = ">=1.16.0" },
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "jinja2", specifier = ">=3.1.4" },
+    { name = "markdown", specifier = ">=3.10.2" },
+    { name = "openai", specifier = ">=1.60.0" },
+    { name = "orjson", specifier = ">=3.10.0" },
+    { name = "playwright", specifier = ">=1.60.0" },
+    { name = "playwright", marker = "extra == 'all'" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "pydantic-settings", specifier = ">=2.7.0" },
+    { name = "pysnowball", specifier = ">=0.1.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "rich", specifier = ">=13.9.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "selenium", specifier = ">=4.45.0" },
+    { name = "selenium", marker = "extra == 'all'" },
+    { name = "selenium", marker = "extra == 'selenium'", specifier = ">=4.45.0" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+]
+provides-extras = ["dev", "selenium", "all"]
+
+[[package]]
 name = "akracer"
 version = "0.0.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1357,68 +1419,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/47/2c/0a5f6f8ee0d5589e4
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5e/f5/0c41cb68dcae6b7de4fac4188a3a9589e21fb31df21ea3a2e888db95e6c9/soupsieve-2.8.4-py3-none-any.whl", hash = "sha256:e7e6b0769c8f51ed59acab6e994b00621096cfb1c640a7509295987388fbaf65", size = 37304, upload-time = "2026-05-24T13:55:55.406Z" },
 ]
-
-[[package]]
-name = "stock-ai-analyst"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "akshare" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "markdown" },
-    { name = "openai" },
-    { name = "orjson" },
-    { name = "playwright" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pysnowball" },
-    { name = "python-dotenv" },
-    { name = "rich" },
-    { name = "selenium" },
-    { name = "tenacity" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "playwright" },
-    { name = "selenium" },
-]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-selenium = [
-    { name = "selenium" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "akshare", specifier = ">=1.16.0" },
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "jinja2", specifier = ">=3.1.4" },
-    { name = "markdown", specifier = ">=3.10.2" },
-    { name = "openai", specifier = ">=1.60.0" },
-    { name = "orjson", specifier = ">=3.10.0" },
-    { name = "playwright", specifier = ">=1.60.0" },
-    { name = "playwright", marker = "extra == 'all'" },
-    { name = "pydantic", specifier = ">=2.10.0" },
-    { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "pysnowball", specifier = ">=0.1.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "rich", specifier = ">=13.9.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
-    { name = "selenium", specifier = ">=4.45.0" },
-    { name = "selenium", marker = "extra == 'all'" },
-    { name = "selenium", marker = "extra == 'selenium'", specifier = ">=4.45.0" },
-    { name = "tenacity", specifier = ">=9.0.0" },
-]
-provides-extras = ["dev", "selenium", "all"]
 
 [[package]]
 name = "tabulate"

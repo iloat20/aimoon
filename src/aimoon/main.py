@@ -178,7 +178,7 @@ async def _run_real(symbol: str, name: str, output_dir: str | None = None) -> Pa
     for p_name, module_path, cls_name in collectors_to_try:
         try:
             import importlib
-            mod = importlib.import_module(module_path, "stock_ai_analyst")
+            mod = importlib.import_module(module_path, "aimoon")
             cls = getattr(mod, cls_name)
             collector = cls()
             result = await collector.collect(symbol, name)
