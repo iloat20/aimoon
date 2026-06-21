@@ -1,9 +1,49 @@
-﻿__pycache__/
-*.pyc
+# Sensitive config
+.env
+.env.local
+.env.*.local
+
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Build artifacts
 *.egg-info/
-/output/
-.pytest_cache/
-.aimoon_cache
-.aimoon_cache*/
 dist/
 build/
+*.egg
+
+# Generated reports
+output/
+
+# Cache
+cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Agent Reach
+~/.agent-reach/
+
+# MediaCrawler
+~/.mediacrawler/

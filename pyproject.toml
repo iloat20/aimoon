@@ -1,101 +1,69 @@
-[build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "aimoon"
-version = "0.2.2"
-description = "A股量化筛选与交易建议系统 — ML集成排名 + Alpha Zoo 452因子 + 统一回测评分 + 交易策略引擎"
-readme = "README.md"
-license = "MIT"
+version = "0.3.0"
+description = "AI-powered A-share stock analysis with multi-platform data collection"
 requires-python = ">=3.12"
-authors = [
-    { name = "iloat" },
-]
-dependencies = [
-    "akshare>=1.14",
-    "mootdx>=0.9",
-    "pandas>=2.0",
-    "numpy>=1.26",
-    "tabulate>=0.9",
-    "colorama>=0.4",
-    "rich>=13.0",
-    "pyyaml>=6.0",
-    "matplotlib>=3.8",
-    "scipy>=1.11",
-    "xgboost>=2.0",
-    "scikit-learn>=1.3",
-    "lightgbm>=4.0",
-    "tqdm>=4.65",
-    "loguru>=0.7",
-    "cachetools>=5.0",
-    "orjson>=3.9",
-    "httpx>=0.27",
-    "tenacity>=8.0",
-    "pendulum>=3.0",
-    "pandas-ta>=0.3",
-    "PyPortfolioOpt>=1.5",
-    "gplearn>=0.4",
-    "tushare>=1.4",
-    "ta-lib>=0.4",
-    "cvxpy>=1.9",
-    "riskfolio-lib>=6.0",
-    "backtrader>=1.9",
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "aimoon", email = "aimoon@users.noreply.github.com"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
 ]
 
-[project.scripts]
-aimoon = "aimoon.cli:main"
+dependencies = [
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "jinja2>=3.1.4",
+    "akshare>=1.16.0",
+    "pysnowball>=0.1.0",
+    "openai>=1.60.0",
+    "python-dotenv>=1.0.1",
+    "rich>=13.9.0",
+    "orjson>=3.10.0",
+    "tenacity>=9.0.0",
+    "selenium>=4.45.0",
+    "playwright>=1.60.0",
+    "markdown>=3.10.2",
+]
 
 [project.urls]
-Homepage = "https://github.com/iloat20/aimoon"
-Repository = "https://github.com/iloat20/aimoon"
+Homepage = "https://github.com/aimoon/aimoon"
+Repository = "https://github.com/aimoon/aimoon"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+selenium = ["selenium>=4.45.0"]  # 东方财富股吧增强采集
+all = ["selenium", "playwright"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
-line-length = 100
-target-version = ["py313"]
+[project.scripts]
+aimoon = "stock_ai_analyst.main:main"
 
 [tool.ruff]
+target-version = "py312"
 line-length = 100
-target-version = "py313"
-preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
-# E741: 'l' is standard for loss in ML code
-# N806/N803: 'X' for feature matrices is standard ML convention
-ignore = ["E741", "N806", "N803"]
-
-[tool.ruff.lint.per-file-ignores]
-# Factor files have long formula strings in docstrings
-"src/aimoon/factors/zoo/**/*.py" = ["E501"]
-# Utility files with long format strings for output
-"src/aimoon/advanced_optimizer.py" = ["E501"]
-"src/aimoon/backtest_validator.py" = ["E501"]
-"src/aimoon/evaluate_strategy.py" = ["E501"]
-"src/aimoon/output.py" = ["E501"]
-"src/aimoon/ml/walk_forward.py" = ["E501"]
-"src/aimoon/live_trading_validator.py" = ["E501"]
-"src/aimoon/data/mootdx_source.py" = ["E501"]
-"src/aimoon/data/spot.py" = ["E501"]
-"src/aimoon/paper_trading.py" = ["E501"]
-"src/aimoon/run_paper_trading.py" = ["E501"]
-"src/aimoon/self_learning.py" = ["E501"]
-"src/aimoon/start_paper_trading.py" = ["E501"]
-# warnings.filterwarnings must run before imports
-"src/aimoon/cli.py" = ["E402"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*", "should_*"]
-filterwarnings = [
-    "ignore::DeprecationWarning:pkg_resources",
-    "ignore::UserWarning:pkg_resources",
-]
-
-[tool.uv]
-python-preference = "only-managed"
