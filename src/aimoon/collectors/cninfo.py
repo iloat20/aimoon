@@ -59,7 +59,7 @@ class CninfoCollector(BaseCollector):
 
     async def _fetch_announcements(self, symbol: str) -> list[SocialPost]:
         """Fetch company announcements via CNINFO query API.
-        
+
         Note: the stock param alone doesn't filter correctly.
         Use searchkey to search by stock code.
         """
@@ -122,19 +122,25 @@ class CninfoCollector(BaseCollector):
                     pub_ts = item.get("announcementTime", 0)
                     if isinstance(pub_ts, (int, float)) and pub_ts > 1000000000000:
                         pub_ts /= 1000
-                    pub_date = datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d") if pub_ts else ""
+                    pub_date = (
+                        datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d")
+                        if pub_ts
+                        else ""
+                    )
 
-                    posts.append(SocialPost(
-                        platform="巨潮资讯",
-                        title=title[:100],
-                        content=title,
-                        url=url,
-                        author=item.get("secName", ""),
-                        published_at=pub_date,
-                        likes=0,
-                        comments=0,
-                        shares=0,
-                    ))
+                    posts.append(
+                        SocialPost(
+                            platform="巨潮资讯",
+                            title=title[:100],
+                            content=title,
+                            url=url,
+                            author=item.get("secName", ""),
+                            published_at=pub_date,
+                            likes=0,
+                            comments=0,
+                            shares=0,
+                        )
+                    )
                 except Exception:
                     continue
 

@@ -66,20 +66,29 @@ class EastMoneyGubaCollector(BaseCollector):
             latest = df.head(5)
             for _, row in latest.iterrows():
                 desire = float(row.get("参与意愿", 0))
-                sentiment = "positive" if desire > 50 else ("negative" if desire < 30 else "neutral")
-                posts.append(SocialPost(
-                    platform="东方财富股吧",
-                    title=f"[热度数据] 参与意愿: {desire:.1f}",
-                    content=f"东方财富股吧参与意愿指标: {desire:.1f} (5日均值: {row.get('5日平均参与意愿', 0)})",
-                    url=f"https://guba.eastmoney.com/list,{symbol}.html",
-                    author="东方财富数据",
-                    published_at=str(row.get("交易日期", "")),
-                    likes=int(desire * 10),
-                    comments=0,
-                    shares=0,
-                    views=int(desire * 100),
-                    sentiment=sentiment,
-                ))
+                sentiment = (
+                    "positive"
+                    if desire > 50
+                    else ("negative" if desire < 30 else "neutral")
+                )
+                posts.append(
+                    SocialPost(
+                        platform="东方财富股吧",
+                        title=f"[热度数据] 参与意愿: {desire:.1f}",
+                        content=(
+                            f"东方财富股吧参与意愿指标: {desire:.1f}"
+                            f" (5日均值: {row.get('5日平均参与意愿', 0)})"
+                        ),
+                        url=f"https://guba.eastmoney.com/list,{symbol}.html",
+                        author="东方财富数据",
+                        published_at=str(row.get("交易日期", "")),
+                        likes=int(desire * 10),
+                        comments=0,
+                        shares=0,
+                        views=int(desire * 100),
+                        sentiment=sentiment,
+                    )
+                )
             return posts
         except Exception:
             return []
@@ -99,27 +108,28 @@ class EastMoneyGubaCollector(BaseCollector):
             # Extract post titles and URLs from HTML
             # Pattern: article list items with title links
             title_pattern = re.compile(
-                r'<a\s+href="(/news[^"]*)"[^>]*title="([^"]*)"',
-                re.IGNORECASE
+                r'<a\s+href="(/news[^"]*)"[^>]*title="([^"]*)"', re.IGNORECASE
             )
             matches = title_pattern.findall(html)
 
-            for i, (href, title) in enumerate(matches[:10]):
+            for _, (href, title) in enumerate(matches[:10]):
                 title = title.strip()
                 if not title or len(title) < 5:
                     continue
 
-                posts.append(SocialPost(
-                    platform="东方财富股吧",
-                    title=title[:80],
-                    content=title,
-                    url=f"https://guba.eastmoney.com{href}",
-                    author="",
-                    published_at=datetime.now().isoformat(),
-                    likes=0,
-                    comments=0,
-                    shares=0,
-                    views=0,
-                ))
+                posts.append(
+                    SocialPost(
+                        platform="东方财富股吧",
+                        title=title[:80],
+                        content=title,
+                        url=f"https://guba.eastmoney.com{href}",
+                        author="",
+                        published_at=datetime.now().isoformat(),
+                        likes=0,
+                        comments=0,
+                        shares=0,
+                        views=0,
+                    )
+                )
 
             return posts

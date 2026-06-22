@@ -181,7 +181,7 @@ a { color: #60a5fa; text-decoration: none; }
 .risk-list { list-style: none; }
 .risk-list li { padding: 6px 0; font-size: 14px; }
 .risk-list li::before { content: "⚠️ "; }
-.advice-box {
+/* advice-box removed */
   background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.2);
   border-radius: 12px; padding: 16px; font-size: 14px; line-height: 1.8;
 }
@@ -248,88 +248,13 @@ a { color: #60a5fa; text-decoration: none; }
   </div>
 </header>
 
-<!-- OVERALL RATING + SHORT SUMMARY -->
-<div class="card full" style="margin-bottom:20px">
-  <div class="overall">
-    <div class="big-ring">
-      <svg width="100" height="100" viewBox="0 0 100 100">
-        <circle class="bg" cx="50" cy="50" r="42"/>
-        <circle class="fg" cx="50" cy="50" r="42"
-                stroke="{{ overall_color }}"
-                stroke-dasharray="{{ (overall_rating / 5.0 * 263.9)|round(1) }} 263.9"/>
-      </svg>
-      <div class="big-text">
-        <span class="num" style="color:{{ overall_color }}">{{ overall_rating }}/5</span>
-        <span class="label">{{ overall_label }}</span>
-      </div>
-    </div>
-    <div>
-      <div style="font-size:16px;font-weight:700;margin-bottom:6px">综合摘要</div>
-      <div class="text-sm" style="white-space:pre-wrap">{{ report_summary }}</div>
-    </div>
-  </div>
-</div>
-
 <!-- DIMENSION SCORES -->
 <div class="grid">
   <div class="card">
-    <div class="card-header"><span class="icon">📊</span><span class="title">综合评分</span></div>
-    <div class="score-bar-wrap">
-      {% for d in dimensions %}
-      <div class="score-bar-item">
-        <span class="dim-label">{{ d.name }}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:{{ d.score * 20 }}%;background:{{ score_color(d.score) }}"></div>
-        </div>
-        <span class="dim-score" style="color:{{ score_color(d.score) }}">{{ d.score }}</span>
-      </div>
-      {% endfor %}
+    <div class="card-header"><span class="icon">💰</span><span class="title">基本面</span>
+      {% set conf = analysis.data_confidence.get('基本面', '中') %}
+      {% if conf %}<span class="badge {% if conf == '高' %}badge-up{% elif conf == '低' %}badge-down{% else %}badge-warn{% endif %}">可信度{{ conf }}</span>{% endif %}
     </div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="icon">💬</span><span class="title">市场情绪</span></div>
-    <div class="senti-bar">
-      <div class="bull" style="width:{{ bul_ratio }}%"></div>
-      <div class="bear" style="width:{{ bear_ratio }}%"></div>
-    </div>
-    <div class="senti-legend">
-      <span><span class="dot" style="background:#ef4444"></span>看多 {{ bul_ratio }}%</span>
-      <span><span class="dot" style="background:#22c55e"></span>看空 {{ bear_ratio }}%</span>
-    </div>
-    <div class="text-sm" style="margin-top:12px">{{ analysis.sentiment_detail }}</div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="icon">📈</span><span class="title">技术分析</span></div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap">
-      <!-- Price gauge -->
-      <div style="flex:1;min-width:160px">
-        <div style="font-size:11px;color:#64748b;margin-bottom:4px">当前价格</div>
-        <div style="font-size:28px;font-weight:800;color:{{ change_class == 'up' and '#ef4444' or '#22c55e' }}">{{ quote.price }}</div>
-        <div style="font-size:13px;color:#94a3b8">{{ analysis.trend }}</div>
-      </div>
-      <!-- Support/Resistance chart -->
-      <div style="flex:2;min-width:200px">
-        <svg width="100%" height="80" viewBox="0 0 200 80">
-          <line x1="20" y1="60" x2="180" y2="60" stroke="#334155" stroke-width="1"/>
-          <!-- Resistance -->
-          <line x1="20" y1="25" x2="180" y2="25" stroke="#ef4444" stroke-width="2" stroke-dasharray="4,3"/>
-          <text x="10" y="29" font-size="10" fill="#ef4444">{{ analysis.resistance_price }}</text>
-          <!-- Support -->
-          <line x1="20" y1="75" x2="180" y2="75" stroke="#22c55e" stroke-width="2" stroke-dasharray="4,3"/>
-          <text x="10" y="79" font-size="10" fill="#22c55e">{{ analysis.support_price }}</text>
-          <!-- Current price dot -->
-          <circle cx="100" cy="50" r="6" fill="#ef4444" stroke="#fff" stroke-width="2"/>
-          <text x="105" y="46" font-size="10" fill="#e2e8f0">{{ quote.price }}</text>
-        </svg>
-      </div>
-    </div>
-    <div class="text-sm" style="margin-top:8px">{{ analysis.technical_detail }}</div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="icon">💰</span><span class="title">基本面</span></div>
     {% set f = financial %}
     <table class="fin-table">
       <tr><td>营收</td><td>{{ "%.2f"|format(f.revenue/1e8) }}亿</td></tr>
@@ -344,53 +269,44 @@ a { color: #60a5fa; text-decoration: none; }
   </div>
 
   <div class="card">
-    <div class="card-header"><span class="icon">💵</span><span class="title">资金面</span></div>
-    <div class="chart-h-bar">
-      <span class="h-label">主力动向</span>
-      <div class="h-track">
-        <div class="h-fill" style="width:60%;background:{% if analysis.main_force == '流入' %}#ef4444{% elif analysis.main_force == '流出' %}#22c55e{% else %}#f59e0b{% endif %}">{{ analysis.main_force }}</div>
-      </div>
+    <div class="card-header"><span class="icon">💵</span><span class="title">资金面</span>
+      {% set conf = analysis.data_confidence.get('资金面', '中') %}
+      {% if conf %}<span class="badge {% if conf == '高' %}badge-up{% elif conf == '低' %}badge-down{% else %}badge-warn{% endif %}">可信度{{ conf }}</span>{% endif %}
     </div>
-    {% if financial.operating_cf > 0 or financial.investing_cf != 0 or financial.financing_cf != 0 %}
-    <div style="margin-top:8px;font-size:12px;color:#94a3b8">现金流概况 (亿元):</div>
-    <div class="chart-h-bar">
-      <span class="h-label">经营</span>
-      <div class="h-track">
-        <div class="h-fill" style="width:{% set w = (financial.operating_cf / 1e8)|abs / 20 * 100 %}{{ clamp(w, 0, 100)|round }}%;background:{% if financial.operating_cf >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ "%.1f"|format(financial.operating_cf/1e8) }}</div>
-      </div>
-    </div>
-    <div class="chart-h-bar">
-      <span class="h-label">投资</span>
-      <div class="h-track">
-        <div class="h-fill" style="width:{% set w = (financial.investing_cf / 1e8)|abs / 10 * 100 %}{{ clamp(w, 0, 100)|round }}%;background:{% if financial.investing_cf >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ "%.1f"|format(financial.investing_cf/1e8) }}</div>
-      </div>
-    </div>
-    {% endif %}
-    <div class="text-sm" style="margin-top:8px">{{ analysis.capital_flow_detail }}</div>
-  </div>
+    {% set cf = capital_flow %}
+    {% if cf and cf.source != "all_failed" %}
+    {% macro yuan2yi(v) %}{{ "%.2f"|format(v/1e8) }}{% endmacro %}
+    {% set mf_net = cf.main_net_5d + cf.main_net_today %}
+    {% set mf_pct = 75 if mf_net > 1e8 else (25 if mf_net < -1e8 else 50) %}
+    {% set mf_color = '#ef4444' if mf_net > 0 else ('#22c55e' if mf_net < 0 else '#f59e0b') %}
+    {% set mf_label = '流入' if mf_net > 0 else ('流出' if mf_net < 0 else '持平') %}
 
-  <div class="card">
-    <div class="card-header"><span class="icon">📰</span><span class="title">新闻舆情</span></div>
-    <!-- Sentiment comparison bar -->
-    <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">情感倾向分布</div>
-    <div class="senti-stacked">
-      <div class="seg-pos" style="width:{{ senti_pos_pct }}%"></div>
-      <div class="seg-neu" style="width:{{ senti_neu_pct }}%"></div>
-      <div class="seg-neg" style="width:{{ senti_neg_pct }}%"></div>
+    <div class="chart-h-bar">
+      <span class="h-label">主力合计</span>
+      <div class="h-track">
+        <div class="h-fill" style="width:{{ mf_pct }}%;background:{{ mf_color }}">{{ mf_label }} {{ yuan2yi(mf_net) }}亿</div>
+      </div>
     </div>
-    <div class="senti-legend-row">
-      <span><span style="display:inline-block;width:10px;height:10px;background:#ef4444;border-radius:2px;vertical-align:middle;margin-right:3px"></span>正面 {{ senti_pos_pct }}%</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#64748b;border-radius:2px;vertical-align:middle;margin-right:3px"></span>中性 {{ senti_neu_pct }}%</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#22c55e;border-radius:2px;vertical-align:middle;margin-right:3px"></span>负面 {{ senti_neg_pct }}%</span>
-    </div>
-    <div style="margin-top:8px;font-size:15px">
-      综合: <strong>{{ analysis.news_sentiment }}</strong> {{ sentiment_emoji(analysis.news_sentiment) }}
-    </div>
-    <div class="text-sm" style="margin-top:8px">{{ analysis.news_detail }}</div>
-    {% if key_events %}
-    <div class="topic-tags" style="margin-top:10px">
-      {% for e in key_events %}<span class="topic-tag">{{ e }}</span>{% endfor %}
-    </div>
+    <table class="fin-table">
+      <tr><td>近5日主力净流入</td><td style="color:{% if cf.main_net_5d >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.main_net_5d) }}亿</td></tr>
+      <tr><td>今日主力净流入</td><td style="color:{% if cf.main_net_today >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.main_net_today) }}亿</td></tr>
+      {% if cf.super_large_net != 0 or cf.large_net != 0 %}
+      <tr><td>超大单净流入</td><td style="color:{% if cf.super_large_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.super_large_net) }}亿</td></tr>
+      <tr><td>大单净流入</td><td style="color:{% if cf.large_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.large_net) }}亿</td></tr>
+      <tr><td>中单净流入</td><td style="color:{% if cf.medium_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.medium_net) }}亿</td></tr>
+      <tr><td>小单净流入</td><td style="color:{% if cf.small_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.small_net) }}亿</td></tr>
+      {% endif %}
+      {% if cf.northbound_chg != 0 %}
+      <tr><td>北向资金变化</td><td style="color:{% if cf.northbound_chg >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.northbound_chg) }}亿</td></tr>
+      {% endif %}
+      {% if cf.lhb_date %}
+      <tr><td>龙虎榜 ({{ cf.lhb_date }})</td><td style="color:{% if cf.lhb_net_buy >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.lhb_net_buy) }}亿</td></tr>
+      {% endif %}
+    </table>
+    <div class="text-sm" style="margin-top:8px">{{ analysis.capital_flow_detail }}</div>
+    <div class="muted" style="margin-top:4px">来源: {{ cf.source }}</div>
+    {% else %}
+    <div class="text-sm" style="margin-top:8px">资金面数据暂不可用</div>
     {% endif %}
   </div>
 </div>
@@ -416,8 +332,11 @@ a { color: #60a5fa; text-decoration: none; }
       </div>
       {% if stat.top_posts %}
       <div style="margin-top:8px;font-size:12px;color:#94a3b8">
-        {% for post in stat.top_posts[:3] %}
-        <div style="margin-bottom:3px">· {{ post.title[:30] }}{% if post.title|length > 30 %}...{% endif %}</div>
+        {% for post in stat.top_posts[:5] %}
+        <div style="margin-bottom:3px;display:flex;justify-content:space-between;align-items:center">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· {% if post.url %}<a href="{{ post.url }}" target="_blank" rel="noopener noreferrer">{{ post.title[:25] }}{% if post.title|length > 25 %}...{% endif %}</a>{% else %}{{ post.title[:25] }}{% if post.title|length > 25 %}...{% endif %}{% endif %}</span>
+          {% if post.likes > 0 %}<span style="color:#ef4444;white-space:nowrap;margin-left:8px">♥ {{ cn_number(post.likes) }}</span>{% endif %}
+        </div>
         {% endfor %}
       </div>
       {% endif %}
@@ -426,30 +345,157 @@ a { color: #60a5fa; text-decoration: none; }
   </div>
 </div>
 
-<!-- HOT TOPICS -->
-{% if key_topics %}
+
+
+<!-- INSTITUTIONAL RESEARCH REPORTS -->
+{% if research.reports %}
 <div class="card full" style="margin-bottom:20px">
-  <div class="card-header"><span class="icon">🏷️</span><span class="title">热门话题</span></div>
-  <div class="topic-tags">
-    {% for t in key_topics %}<span class="topic-tag">{{ t }}</span>{% endfor %}
+  <div class="card-header">
+    <span class="icon">📄</span><span class="title">机构研报</span>
+    <span class="badge badge-warn">共 {{ research.total_count }} 份</span>
   </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <span class="topic-tag" style="background:rgba(239,68,68,0.15);color:#ef4444">买入 {{ research.buy_count }}</span>
+    <span class="topic-tag" style="background:rgba(245,158,11,0.15);color:#f59e0b">增持 {{ research.hold_count }}</span>
+    <span class="topic-tag" style="background:rgba(100,116,139,0.15);color:#94a3b8">中性 {{ research.neutral_count }}</span>
+    {% if research.avg_eps_this_yr %}
+    <span class="topic-tag">预测EPS {{ research.avg_eps_this_yr }}</span>
+    {% endif %}
+    {% if research.avg_pe_this_yr %}
+    <span class="topic-tag">预测PE {{ research.avg_pe_this_yr }}</span>
+    {% endif %}
+  </div>
+  <div style="max-height:400px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="color:#64748b;border-bottom:1px solid rgba(255,255,255,0.06)">
+          <th style="padding:6px 8px;text-align:left">日期</th>
+          <th style="padding:6px 8px;text-align:left">机构</th>
+          <th style="padding:6px 8px;text-align:left">评级</th>
+          <th style="padding:6px 8px;text-align:left">标题</th>
+          <th style="padding:6px 8px;text-align:right">当年EPS</th>
+          <th style="padding:6px 8px;text-align:right">次年EPS</th>
+          <th style="padding:6px 8px;text-align:right">PDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in research.reports[:5] %}
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+          <td style="padding:6px 8px;color:#64748b;white-space:nowrap">{{ r.date }}</td>
+          <td style="padding:6px 8px;color:#94a3b8;white-space:nowrap">{{ r.institution }}</td>
+          <td style="padding:6px 8px">
+            {% set rating_color = '#ef4444' if '买入' in r.rating else ('#f59e0b' if '增持' in r.rating or '推荐' in r.rating else '#94a3b8') %}
+            <span style="color:{{ rating_color }}">{{ r.rating }}</span>
+          </td>
+          <td style="padding:6px 8px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            {% if r.pdf_url %}
+            <a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:none" title="{{ r.title }}">{{ r.title }}</a>
+            {% else %}
+            <span style="color:#cbd5e1" title="{{ r.title }}">{{ r.title }}</span>
+            {% endif %}
+          </td>
+          <td style="padding:6px 8px;text-align:right;color:#cbd5e1">{{ r.eps_this_yr if r.eps_this_yr else '-' }}</td>
+          <td style="padding:6px 8px;text-align:right;color:#cbd5e1">{{ r.eps_next_yr if r.eps_next_yr else '-' }}</td>
+          <td style="padding:6px 8px;text-align:center">
+            {% if r.pdf_url %}
+            <a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa">📎</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="muted" style="margin-top:8px">来源: {{ research.source }}</div>
 </div>
 {% endif %}
 
-<!-- RISK WARNINGS -->
-{% if risk_warnings %}
-<div class="grid-2">
-  <div class="card">
-    <div class="card-header"><span class="icon">⚠️</span><span class="title">风险提示</span></div>
-    <ul class="risk-list">
-      {% for r in risk_warnings %}<li>{{ r }}</li>{% endfor %}
-    </ul>
+<!-- K-LINE CHART -->
+{% if kline.bars %}
+<div class="card full" style="margin-bottom:20px">
+  <div class="card-header">
+    <span class="icon">📈</span><span class="title">K线走势 (近{{ kline.bars|length }}日)</span>
+    <span class="badge badge-warn">{{ kline.source }}</span>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="icon">💡</span><span class="title">投资参考</span></div>
-    <div class="advice-box">{{ advice }}</div>
+  <div style="position:relative;height:320px">
+    <canvas id="klineChart"></canvas>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  var dates = {{ kline.bars | map(attribute='date') | list | tojson }};
+  var closes = {{ kline.bars | map(attribute='close') | list | tojson }};
+  var volumes = {{ kline.bars | map(attribute='volume') | list | tojson }};
+  var first = closes[0], last = closes[closes.length - 1];
+  var lineColor = last >= first ? '#ef4444' : '#22c55e';
+  var fillColor = last >= first ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)';
+  var ctx = document.getElementById('klineChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        label: '收盘价',
+        data: closes,
+        borderColor: lineColor,
+        backgroundColor: fillColor,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+        yAxisID: 'y'
+      },{
+        label: '成交量',
+        data: volumes,
+        type: 'bar',
+        backgroundColor: 'rgba(96,165,250,0.25)',
+        borderColor: 'rgba(96,165,250,0.4)',
+        borderWidth: 1,
+        yAxisID: 'y1'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
+        tooltip: {
+          backgroundColor: 'rgba(15,25,35,0.95)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.datasetIndex === 0) return '收盘: ' + ctx.parsed.y.toFixed(2);
+              return '成交量: ' + (ctx.parsed.y / 10000).toFixed(0) + '万手';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12, maxRotation: 0 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          position: 'left',
+          ticks: { color: '#94a3b8', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y1: {
+          position: 'right',
+          ticks: { color: '#64748b', font: { size: 10 }, callback: function(v){ return (v/10000).toFixed(0)+'万'; } },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endif %}
 
 <!-- AI FULL REPORT (rendered from markdown) -->
@@ -482,7 +528,7 @@ a { color: #60a5fa; text-decoration: none; }
     ⚠️ 免责声明：本报告由AI自动生成，所有分析内容仅供参考，不构成任何投资建议。
     投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
   </div>
-  <div class="muted" style="margin-top:8px">Stock AI Analyst v0.1.0 · {{ generated_at }}</div>
+  <div class="muted" style="margin-top:8px">aimoon v0.3.1 · {{ generated_at }}</div>
 </footer>
 
 </div>

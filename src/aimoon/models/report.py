@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +49,12 @@ class AnalysisReport(BaseModel):
     resistance_price: float = 0.0
     main_force: str = ""
     news_sentiment: str = ""
+
+    # Data quality
+    data_warnings: list[str] = Field(default_factory=list)
+    data_confidence: dict[str, str] = Field(
+        default_factory=dict
+    )  # dimension → 高/中/低
 
     # Issues
     key_topics: list[str] = Field(default_factory=list)

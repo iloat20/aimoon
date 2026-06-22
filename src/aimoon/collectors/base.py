@@ -20,8 +20,11 @@ class BaseCollector(ABC):
 
     def _ok(self, posts: list[SocialPost], elapsed: float) -> CollectResult:
         return CollectResult(
-            platform=self.name, status="success", posts=posts,
-            count=len(posts), elapsed_ms=elapsed
+            platform=self.name,
+            status="success",
+            posts=posts,
+            count=len(posts),
+            elapsed_ms=elapsed,
         )
 
     def _fail(self, error: str, elapsed: float) -> CollectResult:
@@ -31,8 +34,7 @@ class BaseCollector(ABC):
 
     def _timeout_msg(self, elapsed: float) -> CollectResult:
         return CollectResult(
-            platform=self.name, status="timeout",
-            error="采集超时", elapsed_ms=elapsed
+            platform=self.name, status="timeout", error="采集超时", elapsed_ms=elapsed
         )
 
 
@@ -61,15 +63,15 @@ class CollectorRegistry:
             task = asyncio.ensure_future(self._collect_one(c, symbol, stock_name))
             tasks.append(task)
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         processed: list[CollectResult] = []
-        for col, res in zip(self._collectors.values(), results):
+        for col, res in zip(self._collectors.values(), raw_results):
             if isinstance(res, Exception):
-                processed.append(CollectResult(
-                    platform=col.name, status="failed", error=str(res)
-                ))
-            else:
+                processed.append(
+                    CollectResult(platform=col.name, status="failed", error=str(res))
+                )
+            elif isinstance(res, CollectResult):
                 processed.append(res)
 
         return processed
@@ -80,7 +82,7 @@ class CollectorRegistry:
         t0 = time.monotonic()
         try:
             return await collector.collect(symbol, stock_name)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return collector._timeout_msg((time.monotonic() - t0) * 1000)
         except Exception as e:
             return collector._fail(str(e), (time.monotonic() - t0) * 1000)

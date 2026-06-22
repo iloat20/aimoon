@@ -50,14 +50,16 @@ class FreshnessChecker:
 
             if diff < timedelta(minutes=5):
                 return ("fresh", "实时数据")
-            elif diff < timedelta(hours=4):
-                return ("stale_today", f"今日数据（{int(diff.total_seconds()/60)}分钟前）")
-            elif diff < timedelta(hours=24):
+            if diff < timedelta(hours=4):
+                return (
+                    "stale_today",
+                    f"今日数据（{int(diff.total_seconds() / 60)}分钟前）",
+                )
+            if diff < timedelta(hours=24):
                 return ("stale_today", "今日收盘数据")
-            elif diff < timedelta(days=2):
+            if diff < timedelta(days=2):
                 return ("stale_yesterday", "昨日数据")
-            else:
-                return ("stale", f"{diff.days}天前数据")
+            return ("stale", f"{diff.days}天前数据")
 
         except (ValueError, TypeError):
             return ("unknown", "时间格式异常")
@@ -78,12 +80,11 @@ class FreshnessChecker:
 
             if diff < timedelta(hours=4):
                 return "hours"
-            elif diff < timedelta(hours=24):
+            if diff < timedelta(hours=24):
                 return "today"
-            elif diff < timedelta(days=7):
+            if diff < timedelta(days=7):
                 return "days"
-            else:
-                return "weeks"
+            return "weeks"
         except (ValueError, TypeError):
             return "unknown"
 

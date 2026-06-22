@@ -6,14 +6,12 @@ Priority: akshare → 新浪API → 腾讯API
 from __future__ import annotations
 
 import re
-import time
 from datetime import datetime
-from typing import Optional
 
 import httpx
 
 from ..models.stock import StockQuote
-
+from ..utils import to_sina_symbol
 
 # Sina API endpoints
 _SINA_URL = "http://hq.sinajs.cn/list={symbol}"
@@ -30,26 +28,15 @@ _SINA_HEADERS = {
 }
 
 
-def _sina_symbol(symbol: str) -> str:
-    """Convert 6-digit code to Sina format: sh600519 or sz000001."""
-    if symbol.startswith("6"):
-        return f"sh{symbol}"
-    elif symbol.startswith(("0", "3")):
-        return f"sz{symbol}"
-    elif symbol.startswith(("4", "8")):
-        return f"bj{symbol}"
-    return f"sz{symbol}"
-
-
 def _tencent_symbol(symbol: str) -> str:
     """Convert 6-digit code to Tencent format: sh600519 or sz000001."""
-    return _sina_symbol(symbol)
+    return to_sina_symbol(symbol)
 
 
 class QuoteCollector:
     """Fetch real-time stock quotes with multi-source fallback."""
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -94,11 +81,10 @@ class QuoteCollector:
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-    async def _fetch_akshare(self, symbol: str) -> Optional[StockQuote]:
+    async def _fetch_akshare(self, symbol: str) -> StockQuote | None:
         """Fetch via akshare (most reliable for A-shares)."""
         try:
             import akshare as ak
-            import pandas as pd
 
             df = ak.stock_zh_a_spot_em()
             row = df[df["代码"] == symbol]
@@ -124,18 +110,18 @@ class QuoteCollector:
                 updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
         except Exception as e:
-            raise RuntimeError(f"akshare fetch failed: {e}")
+            raise RuntimeError(f"akshare fetch failed: {e}") from e
 
-    async def _fetch_sina(self, symbol: str) -> Optional[StockQuote]:
+    async def _fetch_sina(self, symbol: str) -> StockQuote | None:
         """Fetch via Sina finance API (backup 1).
-        
+
         Sina format fields:
         0:name, 1:open, 2:prev_close, 3:price, 4:high, 5:low,
         6:bid, 7:ask, 8:volume(shares), 9:amount(yuan),
         10-19: buy5, 20-29: sell5, 30:date, 31:time
         """
         client = await self._get_client()
-        url = _SINA_URL.format(symbol=_sina_symbol(symbol))
+        url = _SINA_URL.format(symbol=to_sina_symbol(symbol))
         resp = await client.get(url, headers=_SINA_HEADERS)
         resp.raise_for_status()
 
@@ -173,9 +159,9 @@ class QuoteCollector:
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-    async def _fetch_tencent(self, symbol: str) -> Optional[StockQuote]:
+    async def _fetch_tencent(self, symbol: str) -> StockQuote | None:
         """Fetch via Tencent finance API (backup 2).
-        
+
         Tencent format fields (~ delimited):
         0:market, 1:name, 2:code, 3:price, 4:prev_close, 5:open,
         6:volume(手), 7:buy_vol, 8:sell_vol,

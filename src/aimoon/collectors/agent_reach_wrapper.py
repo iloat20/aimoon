@@ -1,4 +1,5 @@
-"""Agent Reach wrapper — delegates platform data collection to Agent Reach's upstream CLI tools.
+"""Agent Reach wrapper — delegates platform data collection to
+Agent Reach's upstream CLI tools.
 
 Agent Reach: https://github.com/Panniantong/Agent-Reach
 Installed tools: opencli, twitter, bili, gh, yt-dlp, etc.
@@ -11,9 +12,8 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import Optional
 
-from ..models.social import CollectResult, SocialPost
+from ..models.social import SocialPost
 
 
 def _run_tool(cmd: list[str], timeout: int = 30) -> tuple[str, str]:
@@ -35,8 +35,14 @@ class AgentReachWrapper:
     @staticmethod
     def is_installed() -> bool:
         """Check if Agent Reach tooling is available."""
-        stdout, _ = _run_tool(["which", "agent-reach"])
-        return bool(stdout)
+        try:
+            from agent_reach.channels.xueqiu import XueqiuChannel
+
+            ch = XueqiuChannel()
+            status, _ = ch.check()
+            return status == "ok"
+        except ImportError:
+            return False
 
     @staticmethod
     def doctor() -> dict:
@@ -51,36 +57,52 @@ class AgentReachWrapper:
 
     @classmethod
     def fetch_xueqiu_hot(cls, symbol: str, stock_name: str = "") -> list[SocialPost]:
-        """Fetch Xueqiu hot posts via Agent Reach / opencli."""
-        if not cls.is_installed():
-            return []
+        """Fetch Xueqiu hot posts via Agent Reach Python API.
 
-        # Agent Reach uses `opencli xueqiu search` for Xueqiu
-        stdout, stderr = _run_tool(
-            ["opencli", "xueqiu", "search", f"{symbol} {stock_name}" if stock_name else symbol, "-n", "10", "-f", "json"],
-            timeout=30,
-        )
-        if not stdout:
-            return []
-
-        posts: list[SocialPost] = []
+        Filters posts to only include those mentioning the stock.
+        """
         try:
-            items = json.loads(stdout)
-            if isinstance(items, list):
-                for item in items[:10]:
-                    posts.append(SocialPost(
+            from agent_reach.channels.xueqiu import XueqiuChannel
+
+            ch = XueqiuChannel()
+            status, _ = ch.check()
+            if status != "ok":
+                return []
+
+            hot_posts = ch.get_hot_posts(30)
+            posts: list[SocialPost] = []
+
+            # Filter by stock name/symbol
+            search_terms = [symbol]
+            if stock_name:
+                search_terms.append(stock_name)
+                if len(stock_name) >= 2:
+                    search_terms.append(stock_name[:2])
+
+            for item in hot_posts:
+                title = item.get("title", "")
+                text = item.get("text", "")
+                combined = f"{title} {text}"
+
+                # Check if post mentions the stock
+                if not any(term in combined for term in search_terms):
+                    continue
+
+                posts.append(
+                    SocialPost(
                         platform="雪球(AgentReach)",
-                        title=str(item.get("title", "")),
-                        content=str(item.get("content", item.get("description", ""))),
+                        title=title[:80] if title else text[:80] or "(无内容)",
+                        content=text,
                         url=str(item.get("url", "")),
                         author=str(item.get("author", "")),
-                        published_at=str(item.get("created_at", "")),
-                        likes=int(float(item.get("likes", 0) or 0)),
-                        comments=int(float(item.get("comments", 0) or 0)),
-                    ))
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-        return posts
+                        likes=int(item.get("likes", 0)),
+                    )
+                )
+            return posts[:10]
+        except ImportError:
+            return []
+        except Exception:
+            return []
 
     @classmethod
     def fetch_xiaohongshu(cls, keyword: str) -> list[SocialPost]:
@@ -88,7 +110,7 @@ class AgentReachWrapper:
         if not cls.is_installed():
             return []
 
-        stdout, stderr = _run_tool(
+        stdout, _ = _run_tool(
             ["opencli", "xiaohongshu", "search", keyword, "-n", "10", "-f", "json"],
             timeout=60,
         )
@@ -100,16 +122,24 @@ class AgentReachWrapper:
             items = json.loads(stdout)
             if isinstance(items, list):
                 for item in items[:10]:
-                    posts.append(SocialPost(
-                        platform="小红书(AgentReach)",
-                        title=str(item.get("title", item.get("display_title", ""))),
-                        content=str(item.get("desc", item.get("content", ""))),
-                        url=str(item.get("url", item.get("share_url", ""))),
-                        author=str(item.get("author", item.get("user", {}).get("nickname", ""))),
-                        published_at=str(item.get("time", item.get("create_time", ""))),
-                        likes=int(float(item.get("liked_count", 0) or 0)),
-                        comments=int(float(item.get("comment_count", 0) or 0)),
-                    ))
+                    posts.append(
+                        SocialPost(
+                            platform="小红书(AgentReach)",
+                            title=str(item.get("title", item.get("display_title", ""))),
+                            content=str(item.get("desc", item.get("content", ""))),
+                            url=str(item.get("url", item.get("share_url", ""))),
+                            author=str(
+                                item.get(
+                                    "author", item.get("user", {}).get("nickname", "")
+                                )
+                            ),
+                            published_at=str(
+                                item.get("time", item.get("create_time", ""))
+                            ),
+                            likes=int(float(item.get("liked_count", 0) or 0)),
+                            comments=int(float(item.get("comment_count", 0) or 0)),
+                        )
+                    )
         except Exception:
             pass
         return posts

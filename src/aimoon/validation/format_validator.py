@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ..models.stock import FinancialData, StockQuote
 from ..models.social import SocialPost
+from ..models.stock import FinancialData, StockQuote
 
 
 class FormatValidator:

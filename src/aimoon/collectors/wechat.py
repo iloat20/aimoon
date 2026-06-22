@@ -15,7 +15,9 @@ from .base import BaseCollector
 
 
 class WechatCollector(BaseCollector):
-    """Collects stock-related articles from WeChat Official Accounts via Sogou search."""
+    """Collects stock-related articles from WeChat
+    Official Accounts via Sogou search.
+    """
 
     name = "微信公众号"
 
@@ -43,7 +45,9 @@ class WechatCollector(BaseCollector):
         }
 
         posts: list[SocialPost] = []
-        async with httpx.AsyncClient(headers=headers, timeout=10.0) as client:
+        async with httpx.AsyncClient(
+            headers=headers, timeout=10.0, follow_redirects=True
+        ) as client:
             try:
                 url = "https://weixin.sogou.com/weixin"
                 params = {
@@ -56,28 +60,68 @@ class WechatCollector(BaseCollector):
                 if resp.status_code != 200 or "请输入验证码" in resp.text:
                     return []
 
-                # Parse search results from HTML
                 import re
-                # Extract article titles and URLs
-                items = re.findall(
-                    r'<h3[^>]*>.*?<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
-                    resp.text, re.DOTALL
+
+                # Extract article items with title, URL, and account name
+                # Pattern: <li> blocks containing <h3> with <a> link and account info
+                pattern = re.compile(
+                    r'<li[^>]*>.*?<h3[^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>.*?'
+                    r'<a[^>]*class="account"[^>]*>(.*?)</a>.*?</li>',
+                    re.DOTALL,
                 )
 
-                for i, (href, raw_title) in enumerate(items[:10]):
+                for match in pattern.finditer(resp.text):
+                    raw_url, raw_title, raw_author = match.groups()
                     title = re.sub(r"<[^>]+>", "", raw_title).strip()
+                    author = re.sub(r"<[^>]+>", "", raw_author).strip()
+
                     if not title:
                         continue
 
-                    posts.append(SocialPost(
-                        platform="微信公众号",
-                        title=title[:80],
-                        content=title,
-                        url=href if href.startswith("http") else f"https:{href}",
-                        author="",
-                        published_at=datetime.now().isoformat(),
-                    ))
+                    # Sogou returns relative URLs, prefix with domain
+                    article_url = raw_url
+                    if article_url.startswith("/"):
+                        article_url = "https://weixin.sogou.com" + article_url
+                    # Clean HTML entities
+                    article_url = article_url.replace("&amp;", "&")
+
+                    posts.append(
+                        SocialPost(
+                            platform="微信公众号",
+                            title=title[:80],
+                            content=title,
+                            url=article_url,
+                            author=author,
+                            published_at=datetime.now().isoformat(),
+                        )
+                    )
+
+                # Fallback: simpler regex if the above didn't match
+                if not posts:
+                    simple_pattern = re.compile(
+                        r'<h3[^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+                        re.DOTALL,
+                    )
+                    for match in simple_pattern.finditer(resp.text):
+                        raw_url, raw_title = match.groups()
+                        title = re.sub(r"<[^>]+>", "", raw_title).strip()
+                        if not title:
+                            continue
+                        article_url = raw_url
+                        if article_url.startswith("/"):
+                            article_url = "https://weixin.sogou.com" + article_url
+                        article_url = article_url.replace("&amp;", "&")
+                        posts.append(
+                            SocialPost(
+                                platform="微信公众号",
+                                title=title[:80],
+                                content=title,
+                                url=article_url,
+                                author="",
+                                published_at=datetime.now().isoformat(),
+                            )
+                        )
             except Exception:
                 pass
 
-        return posts
+        return posts[:10]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..models.stock import StockQuote
 
 
@@ -9,7 +11,7 @@ class CrossValidator:
     """Cross-validate data from multiple sources to detect anomalies."""
 
     @staticmethod
-    def validate_quote_sources(*quotes: StockQuote) -> dict:
+    def validate_quote_sources(*quotes: StockQuote) -> dict[str, Any]:
         """Compare quotes from multiple sources.
 
         Returns dict with:
@@ -20,7 +22,7 @@ class CrossValidator:
         - source_count: number of valid sources
         """
         valid = [q for q in quotes if q.price > 0]
-        result = {
+        result: dict[str, Any] = {
             "consensus": True,
             "price_range": (0.0, 0.0),
             "price_diff_pct": 0.0,

@@ -1,13 +1,10 @@
 """Data models for stock information."""
 
-import sys
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    from .social import SocialPost
+from .social import SocialPost
 
 
 class StockQuote(BaseModel):
@@ -60,6 +57,85 @@ class FinancialData(BaseModel):
     source: str = ""
 
 
+class KlineBar(BaseModel):
+    """A single K-line (OHLCV) bar."""
+
+    date: str
+    open: float = 0.0
+    high: float = 0.0
+    low: float = 0.0
+    close: float = 0.0
+    volume: float = 0.0
+    turnover: float = 0.0
+    pct_change: float = 0.0
+
+
+class KlineData(BaseModel):
+    """Historical K-line series for technical analysis."""
+
+    symbol: str = ""
+    bars: list[KlineBar] = Field(default_factory=list)
+    source: str = ""
+    period: str = "daily"
+
+
+class CapitalFlowData(BaseModel):
+    """Market capital flow (主力资金/北向/龙虎榜)."""
+
+    symbol: str = ""
+
+    # 主力资金（近5日累计 + 今日）
+    main_net_5d: float = 0.0  # 近5日主力净流入（元）
+    main_net_today: float = 0.0  # 今日主力净流入（元）
+
+    # 分单净流入（今日，元）
+    super_large_net: float = 0.0  # 超大单
+    large_net: float = 0.0  # 大单
+    medium_net: float = 0.0  # 中单
+    small_net: float = 0.0  # 小单
+
+    # 北向资金
+    northbound_chg: float = 0.0  # 北向持股变化（元）
+
+    # 龙虎榜（最近一次上榜，可空）
+    lhb_date: str = ""
+    lhb_reason: str = ""
+    lhb_net_buy: float = 0.0  # 净买入（元）
+
+    source: str = ""
+
+
+class ResearchReport(BaseModel):
+    """A single institutional research report."""
+
+    title: str = ""
+    institution: str = ""
+    rating: str = ""
+    industry: str = ""
+    date: str = ""
+    pdf_url: str = ""
+    eps_this_yr: float = 0.0
+    pe_this_yr: float = 0.0
+    eps_next_yr: float = 0.0
+    pe_next_yr: float = 0.0
+    eps_future_yr: float = 0.0
+    pe_future_yr: float = 0.0
+
+
+class ResearchReportData(BaseModel):
+    """Collection of institutional research reports."""
+
+    symbol: str = ""
+    reports: list[ResearchReport] = Field(default_factory=list)
+    source: str = ""
+    total_count: int = 0
+    buy_count: int = 0
+    hold_count: int = 0
+    neutral_count: int = 0
+    avg_eps_this_yr: float = 0.0
+    avg_pe_this_yr: float = 0.0
+
+
 class StockInfo(BaseModel):
     """Aggregated stock information (input to AI analyzer)."""
 
@@ -68,5 +144,8 @@ class StockInfo(BaseModel):
     market: str = ""  # SH / SZ / BJ
     quote: StockQuote = Field(default_factory=StockQuote)
     financial: FinancialData = Field(default_factory=FinancialData)
-    social_posts: list[Any] = Field(default_factory=list)
+    kline: KlineData = Field(default_factory=KlineData)
+    capital_flow: CapitalFlowData = Field(default_factory=CapitalFlowData)
+    social_posts: list[SocialPost] = Field(default_factory=list)
+    research: ResearchReportData = Field(default_factory=ResearchReportData)
     collected_at: str = Field(default_factory=lambda: datetime.now().isoformat())

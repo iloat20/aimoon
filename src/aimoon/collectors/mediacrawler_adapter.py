@@ -9,17 +9,12 @@ installed separately (cloned from GitHub) at the configured path.
 
 from __future__ import annotations
 
-import json
 import os
-import subprocess
 import time
 from pathlib import Path
-from typing import Optional
 
-from ..config.settings import get_settings
-from ..models.social import CollectResult, SocialPost
+from ..models.social import CollectResult
 from .base import BaseCollector
-
 
 _DEFAULT_MEDIACRAWLER_PATH = os.path.expanduser("~/.mediacrawler")
 
@@ -42,9 +37,10 @@ class MediaCrawlerAdapter(BaseCollector):
         self._path = crawler_path or _DEFAULT_MEDIACRAWLER_PATH
 
     def _exists(self) -> bool:
-        return Path(self._path).joinpath("main.py").exists() or Path(self._path).joinpath(
-            "run.py"
-        ).exists()
+        return (
+            Path(self._path).joinpath("main.py").exists()
+            or Path(self._path).joinpath("run.py").exists()
+        )
 
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
         t0 = time.monotonic()
@@ -54,11 +50,18 @@ class MediaCrawlerAdapter(BaseCollector):
                 platform=self.name,
                 status="skipped",
                 error=f"MediaCrawler 未安装。请克隆到 {self._path}:\n"
-                      f"  git clone https://github.com/NanmiCoder/MediaCrawler {self._path}\n"
-                      f"  cd {self._path} && pip install -r requirements.txt\n"
-                      f"  并按 https://github.com/NanmiCoder/MediaCrawler 配置Cookie",
+                f"  git clone https://github.com/NanmiCoder/MediaCrawler {self._path}\n"
+                f"  cd {self._path} && pip install -r requirements.txt\n"
+                f"  并按 https://github.com/NanmiCoder/MediaCrawler 配置Cookie",
                 elapsed_ms=elapsed,
             )
+        elapsed = (time.monotonic() - t0) * 1000
+        return CollectResult(
+            platform=self.name,
+            status="failed",
+            error="MediaCrawler 采集未实现，待扩展",
+            elapsed_ms=elapsed,
+        )
 
     @classmethod
     def install_guide(cls) -> str:
