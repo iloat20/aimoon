@@ -5,337 +5,470 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ name }}({{ symbol }}) AI分析报告</title>
 <style>
-/* ===== Reset & Base ===== */
+/* ===== Design Tokens ===== */
+:root {
+  --bg: #0c0f15;
+  --surface: #161b24;
+  --surface-2: #1e2531;
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(255,255,255,0.12);
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --red: #ef4444;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --font: "Inter", "SF Pro Display", "PingFang SC", system-ui, -apple-system, sans-serif;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
 body {
-  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", system-ui, sans-serif;
-  background: linear-gradient(135deg, #0f1923 0%, #1a2332 50%, #0f1923 100%);
-  color: #e2e8f0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
   line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
-a { color: #60a5fa; text-decoration: none; }
 
-/* ===== Layout ===== */
-.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container { max-width: 1500px; margin: 0 auto; padding: 24px 60px 60px; }
 
 /* ===== Header ===== */
 .header {
-  text-align: center; padding: 40px 20px 32px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: center; padding: 40px 20px 24px;
   margin-bottom: 28px;
 }
-.header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
-.header .symbol { font-size: 14px; color: #64748b; margin-bottom: 16px; }
+.header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+.header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
 .quote-bar {
-  display: flex; justify-content: center; align-items: baseline; gap: 16px;
-  flex-wrap: wrap;
+  display: flex; justify-content: center; align-items: baseline; gap: 12px;
+  flex-wrap: wrap; margin-top: 16px;
 }
-.quote-bar .price { font-size: 42px; font-weight: 800; }
-.quote-bar .price.up { color: #ef4444; }
-.quote-bar .price.down { color: #22c55e; }
+.quote-bar .price { font-size: 44px; font-weight: 800; letter-spacing: -1px; }
+.quote-bar .price.up { color: var(--red); }
+.quote-bar .price.down { color: var(--green); }
 .quote-bar .change {
-  font-size: 20px; font-weight: 600; padding: 4px 12px; border-radius: 8px;
+  font-size: 18px; font-weight: 600; padding: 4px 14px; border-radius: var(--radius);
 }
-.quote-bar .change.up { color: #ef4444; background: rgba(239,68,68,0.12); }
-.quote-bar .change.down { color: #22c55e; background: rgba(34,197,94,0.12); }
-.quote-meta { margin-top: 12px; font-size: 13px; color: #64748b; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+.quote-bar .change.up { color: var(--red); background: rgba(239,68,68,0.12); }
+.quote-bar .change.down { color: var(--green); background: rgba(34,197,94,0.12); }
+
+.quote-meta {
+  margin-top: 14px; font-size: 13px; color: var(--text-muted);
+  display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+}
 .quote-meta span { white-space: nowrap; }
+.quote-meta .label { color: var(--text-muted); }
 
 /* ===== Grid ===== */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px; }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
+.bento-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;
+}
+.bento-grid .full { grid-column: 1 / -1; }
+.bento-grid .wide { grid-column: span 2; }
+
+@media (max-width: 900px) {
+  .bento-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+  .bento-grid { grid-template-columns: 1fr; }
+  .bento-grid .wide { grid-column: span 1; }
+}
 
 /* ===== Card ===== */
 .card {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 16px; padding: 24px;
-  backdrop-filter: blur(10px);
-  transition: border-color 0.2s;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 24px;
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s ease;
 }
-.card:hover { border-color: rgba(255,255,255,0.12); }
-.card.full { grid-column: 1 / -1; }
+.card:hover { border-color: var(--border-hover); }
 .card-header {
   display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-  padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
-.card-header .icon { font-size: 22px; }
-.card-header .title { font-size: 16px; font-weight: 700; color: #e2e8f0; }
+.card-header .icon { flex-shrink: 0; width: 20px; height: 20px; opacity: 0.8; }
+.card-header .title { font-size: 15px; font-weight: 600; }
 .card-header .badge {
-  font-size: 11px; padding: 2px 8px; border-radius: 999px;
-  font-weight: 600; margin-left: auto;
+  font-size: 11px; padding: 2px 10px; border-radius: 999px;
+  font-weight: 500; margin-left: auto; white-space: nowrap;
 }
-.badge-up { background: rgba(239,68,68,0.15); color: #ef4444; }
-.badge-down { background: rgba(34,197,94,0.15); color: #22c55e; }
-.badge-warn { background: rgba(245,158,11,0.15); color: #f59e0b; }
-
-/* ===== Score Ring ===== */
-.score-ring-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-}
-.score-ring {
-  position: relative; width: 80px; height: 80px;
-}
-.score-ring svg { transform: rotate(-90deg); }
-.score-ring .bg-circle { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 6; }
-.score-ring .fg-circle { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.8s; }
-.score-ring .score-text {
-  position: absolute; inset: 0; display: flex;
-  align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 800;
-}
-
-/* ===== Score Bars ===== */
-.score-bar-wrap { width: 100%; }
-.score-bar-item { display: flex; align-items: center; margin-bottom: 10px; gap: 8px; }
-.score-bar-item .dim-label { width: 56px; font-size: 13px; color: #94a3b8; flex-shrink: 0; }
-.score-bar-item .bar-track {
-  flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 999px;
-  overflow: hidden;
-}
-.score-bar-item .bar-fill {
-  height: 100%; border-radius: 999px; transition: width 0.6s;
-}
-.score-bar-item .dim-score { width: 30px; text-align: right; font-size: 13px; font-weight: 700; }
-
-/* ===== Overall Rating ===== */
-.overall {
-  display: flex; align-items: center; gap: 20px; padding: 16px 0;
-}
-.overall .big-ring {
-  position: relative; width: 100px; height: 100px; flex-shrink: 0;
-}
-.overall .big-ring svg { transform: rotate(-90deg); }
-.overall .big-ring .bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 8; }
-.overall .big-ring .fg { fill: none; stroke-width: 8; stroke-linecap: round; }
-.overall .big-text {
-  position: absolute; inset: 0; display: flex;
-  flex-direction: column; align-items: center; justify-content: center;
-}
-.overall .big-text .num { font-size: 32px; font-weight: 800; line-height: 1; }
-.overall .big-text .label { font-size: 11px; color: #64748b; margin-top: 2px; }
-
-/* ===== Sentiment Bar ===== */
-.senti-bar { display: flex; height: 24px; border-radius: 12px; overflow: hidden; margin-bottom: 6px; }
-.senti-bar .bull { background: #ef4444; }
-.senti-bar .bear { background: #22c55e; }
-.senti-legend { display: flex; gap: 16px; font-size: 12px; color: #94a3b8; }
-.senti-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.badge-up { background: rgba(239,68,68,0.12); color: var(--red); }
+.badge-down { background: rgba(34,197,94,0.12); color: var(--green); }
+.badge-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
 
 /* ===== Financial Table ===== */
 .fin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.fin-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-.fin-table td:first-child { color: #94a3b8; width: 40%; }
-.fin-table td:last-child { text-align: right; font-weight: 600; }
+.fin-table tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+.fin-table td { padding: 10px 8px; }
+.fin-table td:first-child { color: var(--text-secondary); width: 44%; }
+.fin-table td:last-child { text-align: right; font-weight: 600; font-feature-settings: "tnum"; }
 
-/* ===== AI Markdown Report ===== */
+/* ===== Valuation Gauge ===== */
+.gauge-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 0;
+}
+.gauge-ring { position: relative; width: 120px; height: 120px; }
+.gauge-ring svg { transform: rotate(-90deg); }
+.gauge-ring .bg { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.gauge-ring .fg { fill: none; stroke-width: 8; stroke-linecap: round; }
+.gauge-ring .inner {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.gauge-ring .inner .pct { font-size: 24px; font-weight: 800; }
+.gauge-ring .inner .lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.val-range { width: 100%; font-size: 12px; color: var(--text-secondary); line-height: 2; }
+.val-range .row { display: flex; justify-content: space-between; }
+.val-range .row .val { color: var(--text); font-weight: 700; }
+
+/* ===== Financial Highlights ===== */
+.fin-hl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fin-hl-item {
+  background: var(--surface-2); border-radius: var(--radius); padding: 12px;
+}
+.fin-hl-item .hl-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.fin-hl-item .hl-value { font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; }
+.fin-hl-item .hl-sub { font-size: 11px; margin-top: 2px; }
+
+/* ===== Chart Container ===== */
+.chart-wrap {
+  position: relative; height: 320px;
+}
+
+/* ===== Social Posts ===== */
+.social-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px;
+}
+.social-card {
+  background: var(--surface-2); border-radius: var(--radius); padding: 14px;
+  font-size: 13px;
+}
+.social-card .sc-title {
+  font-weight: 500; margin-bottom: 6px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.social-card .sc-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 12px; margin-top: 6px; }
+.social-card a { color: var(--text); }
+.social-card a:hover { color: var(--blue); }
+
+/* ===== Research Table ===== */
+.research-scroll { max-height: 380px; overflow-y: auto; }
+.research-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.research-table th {
+  padding: 8px; text-align: left; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap;
+}
+.research-table th:last-child, .research-table td:last-child { text-align: center; }
+.research-table td {
+  padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.research-table td:nth-child(4) {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.research-table td:nth-child(5), .research-table td:nth-child(6) { text-align: right; color: var(--text); }
+
+/* ===== Report Tags ===== */
+.tag-group { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.tag {
+  padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 500;
+}
+
+/* ===== AI Report ===== */
 .ai-report {
-  font-size: 14px; line-height: 1.9;
-  color: #cbd5e1;
-  word-break: break-word;
+  font-size: 14px; line-height: 1.9; color: #cbd5e1; word-break: break-word;
 }
 .ai-report h1, .ai-report h2, .ai-report h3 {
-  color: #f1f5f9; margin: 20px 0 10px; font-weight: 700;
+  color: #f1f5f9; margin: 22px 0 10px; font-weight: 700;
 }
-.ai-report h2 { font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; }
+.ai-report h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 .ai-report h3 { font-size: 16px; }
 .ai-report strong { color: #f1f5f9; }
 .ai-report p { margin: 8px 0; }
 .ai-report ul, .ai-report ol { padding-left: 20px; margin: 6px 0; }
 .ai-report li { margin: 3px 0; }
-.ai-report hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 16px 0; }
+.ai-report hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .ai-report table { width: 100%; border-collapse: collapse; overflow-x: auto; display: block; }
-.ai-report table th, .ai-report table td { padding: 6px 10px; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
-.ai-report table th { background: rgba(255,255,255,0.04); color: #f1f5f9; }
-.ai-report code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
-
-/* ===== Inline Charts ===== */
-.chart-bar-group { display: flex; align-items: flex-end; gap: 12px; margin: 12px 0; height: 120px; }
-.chart-bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.chart-bar-track { width: 100%; height: 100px; position: relative; display: flex; align-items: flex-end; }
-.chart-bar-fill { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.5s; }
-.chart-bar-label { font-size: 11px; color: #94a3b8; text-align: center; }
-.chart-bar-value { font-size: 12px; font-weight: 700; }
-.chart-h-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-.chart-h-bar .h-label { width: 80px; font-size: 12px; color: #94a3b8; flex-shrink: 0; text-align: right; }
-.chart-h-bar .h-track { flex: 1; height: 20px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
-.chart-h-bar .h-fill { height: 100%; border-radius: 999px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; }
-/* Sentiment stacked bar */
-.senti-stacked { display: flex; height: 32px; border-radius: 999px; overflow: hidden; margin: 12px 0; }
-.senti-stacked .seg-pos { background: #ef4444; }
-.senti-stacked .seg-neu { background: #64748b; }
-.senti-stacked .seg-neg { background: #22c55e; }
-.senti-legend-row { display: flex; gap: 16px; font-size: 12px; color: #94a3b8; justify-content: center; margin-top: 6px; }
-
-/* ===== Social Posts ===== */
-.social-posts { max-height: 300px; overflow-y: auto; }
-.social-post {
-  padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
-  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.04);
-  font-size: 13px;
-}
-.social-post .sp-meta { font-size: 11px; color: #64748b; margin-top: 4px; display: flex; gap: 10px; }
-
-/* ===== Risk & Advice ===== */
-.risk-list { list-style: none; }
-.risk-list li { padding: 6px 0; font-size: 14px; }
-.risk-list li::before { content: "⚠️ "; }
-/* advice-box removed */
-  background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.2);
-  border-radius: 12px; padding: 16px; font-size: 14px; line-height: 1.8;
-}
-
-/* ===== Topics ===== */
-.topic-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-.topic-tag {
-  padding: 4px 12px; border-radius: 999px; font-size: 12px;
-  background: rgba(96,165,250,0.12); color: #93c5fd;
-}
+.ai-report table th, .ai-report table td { padding: 6px 10px; border: 1px solid var(--border); font-size: 13px; }
+.ai-report table th { background: var(--surface-2); color: #f1f5f9; }
+.ai-report code { background: var(--surface-2); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
 
 /* ===== Footer ===== */
 .footer {
-  text-align: center; padding: 30px 20px; margin-top: 20px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  font-size: 12px; color: #475569;
+  text-align: center; padding: 28px 0 0; border-top: 1px solid var(--border);
+  margin-top: 32px; font-size: 12px; color: var(--text-muted);
 }
 .footer .sources { margin-bottom: 8px; }
-.footer .disclaimer { color: #64748b; max-width: 600px; margin: 0 auto; }
-
-/* ===== Responsive ===== */
-@media (max-width: 900px) {
-  .grid { grid-template-columns: repeat(2, 1fr); }
-  .header h1 { font-size: 22px; }
-  .quote-bar .price { font-size: 32px; }
+.footer .disclaimer { max-width: 600px; margin: 0 auto; color: var(--text-muted); line-height: 1.7; }
+.footer .actions { margin-top: 16px; display: flex; gap: 12px; justify-content: center; }
+.footer .actions button {
+  padding: 8px 22px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-secondary); font-size: 13px;
+  cursor: pointer; font-weight: 600; transition: border-color 0.2s;
 }
-@media (max-width: 600px) {
-  .grid, .grid-2 { grid-template-columns: 1fr; }
-  .container { padding: 12px 12px 40px; }
-  .header { padding: 24px 12px 20px; }
-  .quote-bar .price { font-size: 26px; }
-  .quote-bar .change { font-size: 16px; }
-  .card { padding: 16px; }
-  .overall { flex-direction: column; align-items: flex-start; }
+.footer .actions button:hover { border-color: var(--border-hover); color: var(--text); }
+.footer .version { margin-top: 10px; }
+
+/* ===== Mobile Export Bar ===== */
+.export-bar { display: none; }
+@media (max-width: 768px) {
+  .export-bar {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: 12px 16px; justify-content: center; gap: 12px; z-index: 100;
+  }
+  .export-bar button {
+    padding: 8px 20px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-secondary); font-size: 13px; cursor: pointer; font-weight: 600;
+  }
 }
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ===== Text ===== */
-.text-sm { font-size: 13px; color: #94a3b8; line-height: 1.7; }
-.text-lg { font-size: 15px; color: #cbd5e1; line-height: 1.8; }
-.muted { color: #64748b; font-size: 12px; }
+/* ===== Text Utils ===== */
+.text-sm { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.muted { color: var(--text-muted); font-size: 12px; }
+.mono { font-feature-settings: "tnum"; }
+.text-up { color: var(--red); }
+.text-down { color: var(--green); }
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .header h1 { font-size: 22px; }
+  .quote-bar .price { font-size: 32px; }
+}
+@media (max-width: 768px) {
+  .container { padding: 16px 14px 80px; }
+  .header { padding: 28px 16px 20px; }
+  .header h1 { font-size: 20px; }
+  .quote-bar { gap: 8px; flex-direction: column; align-items: center; }
+  .quote-bar .price { font-size: 28px; }
+  .quote-bar .change { font-size: 15px; }
+  .quote-meta { gap: 10px; flex-direction: column; align-items: center; }
+  .card { padding: 18px; }
+  .fin-hl { grid-template-columns: 1fr; }
+  .social-grid { grid-template-columns: 1fr; }
+  .research-table td:nth-child(4) { max-width: 140px; }
+  .chart-wrap { height: 220px; }
+  .ai-report { font-size: 13px; }
+  .ai-report h2 { font-size: 16px; }
+  .ai-report h3 { font-size: 14px; }
+  .ai-report table { overflow-x: auto; display: block; }
+}
 </style>
 </head>
 <body>
 <div class="container">
 
-<!-- HEADER -->
+<!-- ===== HEADER ===== -->
 <header class="header">
   <h1>{{ name }}</h1>
-  <div class="symbol">{{ symbol }} · {{ market }} · 报告生成: {{ generated_at }}</div>
+  <div class="subtitle">{{ symbol }} · {{ market }} · 报告生成: {{ generated_at }}</div>
+
   <div class="quote-bar">
     <span class="price {{ change_class }}">{{ quote.price }}</span>
     <span class="change {{ change_class }}">{{ change_sign }}{{ quote.change }} ({{ change_sign }}{{ quote.change_pct }}%)</span>
   </div>
+
   <div class="quote-meta">
-    <span>开 {{ quote.open }}</span><span>高 {{ quote.high }}</span><span>低 {{ quote.low }}</span>
-    <span>量 {{ cn_number(quote.volume) }}手</span><span>换 {{ quote.turnover }}%</span>
-    <span>PE {{ quote.pe }}</span>
+    <span>开 <strong>{{ quote.open }}</strong></span>
+    <span>高 <strong>{{ quote.high }}</strong></span>
+    <span>低 <strong>{{ quote.low }}</strong></span>
+    <span>量 <strong>{{ cn_number(quote.volume) }}手</strong></span>
+    <span>换 <strong>{{ quote.turnover }}%</strong></span>
+    <span>PE <strong>{{ quote.pe }}</strong></span>
     <span class="muted">来源: {{ quote.source }}</span>
   </div>
 </header>
 
-<!-- DIMENSION SCORES -->
-<div class="grid">
+<!-- ===== BENTO GRID ===== -->
+<div class="bento-grid">
+
+  <!-- 基本面 -->
   <div class="card">
-    <div class="card-header"><span class="icon">💰</span><span class="title">基本面</span>
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M2 17h16v-2H2v2zM4 5h3v8H4V5zm4.5 0h3v8h-3V5zm4.5 0h3v8h-3V5z" opacity="0.8"/></svg>
+      <span class="title">基本面</span>
       {% set conf = analysis.data_confidence.get('基本面', '中') %}
       {% if conf %}<span class="badge {% if conf == '高' %}badge-up{% elif conf == '低' %}badge-down{% else %}badge-warn{% endif %}">可信度{{ conf }}</span>{% endif %}
     </div>
     {% set f = financial %}
-    <table class="fin-table">
-      <tr><td>营收</td><td>{{ "%.2f"|format(f.revenue/1e8) }}亿</td></tr>
-      <tr><td>营收同比</td><td style="color:{% if f.revenue_yoy >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ "%.2f"|format(f.revenue_yoy) }}%</td></tr>
-      <tr><td>净利润</td><td>{{ "%.2f"|format(f.net_profit/1e8) }}亿</td></tr>
-      <tr><td>净利润同比</td><td style="color:{% if f.net_profit_yoy >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ "%.2f"|format(f.net_profit_yoy) }}%</td></tr>
-      <tr><td>ROE</td><td>{{ "%.2f"|format(f.roe) }}%</td></tr>
-      <tr><td>EPS</td><td>{{ "%.2f"|format(f.eps) }}</td></tr>
-      <tr><td>经营现金流</td><td>{{ "%.2f"|format(f.operating_cf/1e8) }}亿</td></tr>
-    </table>
-    <div class="text-sm" style="margin-top:10px">{{ analysis.fundamental_detail }}</div>
+    {% if f.report_period %}
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:4px 8px;background:var(--surface-2);border-radius:4px;display:inline-block">数据来源: {{ f.report_period }}</div>
+    {% endif %}
+    <div class="fin-hl">
+      <div class="fin-hl-item">
+        <div class="hl-label">营收</div>
+        <div class="hl-value">{{ "%.2f"|format(f.revenue/1e8) }}<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:{% if f.revenue_yoy >= 0 %}var(--red){% else %}var(--green){% endif %}">同比 {{ "%.2f"|format(f.revenue_yoy) }}%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">净利润</div>
+        <div class="hl-value">{{ "%.2f"|format(f.net_profit/1e8) }}<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:{% if f.net_profit_yoy >= 0 %}var(--red){% else %}var(--green){% endif %}">同比 {{ "%.2f"|format(f.net_profit_yoy) }}%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">ROE</div>
+        <div class="hl-value">{{ "%.2f"|format(f.roe) }}%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">EPS</div>
+        <div class="hl-value">{{ "%.2f"|format(f.eps) }}</div>
+      </div>
+    </div>
+    {% if f.operating_cf %}
+    <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;margin-top:4px;border-top:1px solid var(--border)">
+      <span style="color:var(--text-secondary)">经营现金流</span>
+      <span style="font-weight:700">{{ "%.2f"|format(f.operating_cf/1e8) }}亿</span>
+    </div>
+    {% endif %}
+    {% if analysis.fundamental_detail %}
+    <div class="text-sm" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">{{ analysis.fundamental_detail }}</div>
+    {% endif %}
   </div>
 
+  <!-- 资金面 -->
   <div class="card">
-    <div class="card-header"><span class="icon">💵</span><span class="title">资金面</span>
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a2.5 2.5 0 00-2.5 2.5V6H5a1 1 0 000 2h2.5v2.5H6A1 1 0 006 13h1.5v2.5a1 1 0 002 0V13H10a1 1 0 000-2H9.5V8H15a1 1 0 000-2h-2.5V4.5A2.5 2.5 0 0010 2z" opacity="0.8"/></svg>
+      <span class="title">资金面</span>
       {% set conf = analysis.data_confidence.get('资金面', '中') %}
       {% if conf %}<span class="badge {% if conf == '高' %}badge-up{% elif conf == '低' %}badge-down{% else %}badge-warn{% endif %}">可信度{{ conf }}</span>{% endif %}
     </div>
     {% set cf = capital_flow %}
     {% if cf and cf.source != "all_failed" %}
     {% macro yuan2yi(v) %}{{ "%.2f"|format(v/1e8) }}{% endmacro %}
-    {% set mf_net = cf.main_net_5d + cf.main_net_today %}
-    {% set mf_pct = 75 if mf_net > 1e8 else (25 if mf_net < -1e8 else 50) %}
-    {% set mf_color = '#ef4444' if mf_net > 0 else ('#22c55e' if mf_net < 0 else '#f59e0b') %}
-    {% set mf_label = '流入' if mf_net > 0 else ('流出' if mf_net < 0 else '持平') %}
-
-    <div class="chart-h-bar">
-      <span class="h-label">主力合计</span>
-      <div class="h-track">
-        <div class="h-fill" style="width:{{ mf_pct }}%;background:{{ mf_color }}">{{ mf_label }} {{ yuan2yi(mf_net) }}亿</div>
-      </div>
-    </div>
+    {% set mf_color = 'var(--red)' if cf.main_net_5d > 0 else ('var(--green)' if cf.main_net_5d < 0 else 'var(--amber)') %}
     <table class="fin-table">
-      <tr><td>近5日主力净流入</td><td style="color:{% if cf.main_net_5d >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.main_net_5d) }}亿</td></tr>
-      <tr><td>今日主力净流入</td><td style="color:{% if cf.main_net_today >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.main_net_today) }}亿</td></tr>
-      {% if cf.super_large_net != 0 or cf.large_net != 0 %}
-      <tr><td>超大单净流入</td><td style="color:{% if cf.super_large_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.super_large_net) }}亿</td></tr>
-      <tr><td>大单净流入</td><td style="color:{% if cf.large_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.large_net) }}亿</td></tr>
-      <tr><td>中单净流入</td><td style="color:{% if cf.medium_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.medium_net) }}亿</td></tr>
-      <tr><td>小单净流入</td><td style="color:{% if cf.small_net >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.small_net) }}亿</td></tr>
-      {% endif %}
-      {% if cf.northbound_chg != 0 %}
-      <tr><td>北向资金变化</td><td style="color:{% if cf.northbound_chg >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.northbound_chg) }}亿</td></tr>
+      <tr><td>近5日主力净流入</td><td style="color:{{ mf_color }}">{{ yuan2yi(cf.main_net_5d) }}亿</td></tr>
+      <tr><td>3日净流入</td><td style="color:{% if cf.net_3d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.net_3d) }}亿</td></tr>
+      <tr><td>10日净流入</td><td style="color:{% if cf.net_10d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.net_10d) }}亿</td></tr>
+      <tr><td>20日净流入</td><td style="color:{% if cf.net_20d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.net_20d) }}亿</td></tr>
+      {% if cf.northbound_hold_value != 0 %}
+      <tr><td>北向持股市值</td><td style="color:var(--blue)">{{ yuan2yi(cf.northbound_hold_value) }}亿</td></tr>
       {% endif %}
       {% if cf.lhb_date %}
-      <tr><td>龙虎榜 ({{ cf.lhb_date }})</td><td style="color:{% if cf.lhb_net_buy >= 0 %}#ef4444{% else %}#22c55e{% endif %}">{{ yuan2yi(cf.lhb_net_buy) }}亿</td></tr>
+      <tr><td>龙虎榜 ({{ cf.lhb_date }})</td><td style="color:{% if cf.lhb_net_buy >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.lhb_net_buy) }}亿</td></tr>
       {% endif %}
     </table>
-    <div class="text-sm" style="margin-top:8px">{{ analysis.capital_flow_detail }}</div>
-    <div class="muted" style="margin-top:4px">来源: {{ cf.source }}</div>
+    <div class="muted" style="margin-top:8px">来源: {{ cf.source }}</div>
     {% else %}
     <div class="text-sm" style="margin-top:8px">资金面数据暂不可用</div>
     {% endif %}
   </div>
+
+  <!-- 估值百分位 -->
+  {% if kline.bars %}
+  {% set prices = kline.bars | map(attribute='close') | list %}
+  {% set hi = prices | max %}
+  {% set lo = prices | min %}
+  {% set cur = quote.price %}
+  {% set pct = ((cur - lo) / (hi - lo) * 100) | round(1) if hi != lo else 50 %}
+  {% set pct_int = pct | int %}
+  {% if pct < 20 %}
+    {% set gauge_color = 'var(--green)' %}
+    {% set gauge_label = '超跌' %}
+  {% elif pct < 40 %}
+    {% set gauge_color = '#34d399' %}
+    {% set gauge_label = '偏低' %}
+  {% elif pct < 60 %}
+    {% set gauge_color = 'var(--amber)' %}
+    {% set gauge_label = '中性' %}
+  {% elif pct < 80 %}
+    {% set gauge_color = '#fb923c' %}
+    {% set gauge_label = '偏高' %}
+  {% else %}
+    {% set gauge_color = 'var(--red)' %}
+    {% set gauge_label = '超涨' %}
+  {% endif %}
+  <div class="card">
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13zm-.75-8.25h1.5v1.5h-1.5v-1.5zm0-3h1.5v1.5h-1.5v-1.5z" opacity="0.8"/><circle cx="10" cy="10" r="3" fill="currentColor" opacity="0.3"/></svg>
+      <span class="title">估值百分位</span>
+      <span class="badge {% if pct < 30 %}badge-down{% elif pct > 70 %}badge-up{% else %}badge-warn{% endif %}">{{ gauge_label }} {{ pct }}%</span>
+    </div>
+    <div class="gauge-wrap">
+      <div class="gauge-ring">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle class="bg" cx="60" cy="60" r="52"/>
+          <circle class="fg" cx="60" cy="60" r="52" stroke="{{ gauge_color }}"
+            stroke-dasharray="0 327"
+            data-target="{{ (pct_int / 100 * 327) | round(0) }}"
+            style="transition: stroke-dasharray 1s ease-out"/>
+        </svg>
+        <div class="inner">
+          <span class="pct" style="color:{{ gauge_color }}">{{ pct }}%</span>
+          <span class="lbl">{{ gauge_label }}</span>
+        </div>
+      </div>
+      <div class="val-range">
+        <div class="row"><span>现价</span><span class="val">{{ cur }}</span></div>
+        <div class="row"><span>120日最高</span><span class="val" style="color:var(--red)">{{ hi }}</span></div>
+        <div class="row"><span>120日最低</span><span class="val" style="color:var(--green)">{{ lo }}</span></div>
+        <div class="row"><span>区间振幅</span><span class="val" style="color:var(--amber)">{{ "%.2f"|format((hi - lo) / lo * 100) }}%</span></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 
-<!-- SOCIAL HEATMAP -->
-<div class="card full" style="margin-bottom:20px">
+<!-- ===== K-LINE CHART ===== -->
+{% if kline.bars %}
+<div class="card" style="margin-bottom:16px">
   <div class="card-header">
-    <span class="icon">🔥</span><span class="title">全网热度</span>
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3v14h14" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5"/><rect x="6" y="8" width="2" height="6" rx="0.5" opacity="0.8"/><rect x="10" y="5" width="2" height="10" rx="0.5" opacity="0.8"/><rect x="14" y="7" width="2" height="6" rx="0.5" opacity="0.8"/></svg>
+    <span class="title">K线走势 (近{{ kline.bars|length }}日)</span>
+    <span class="badge badge-warn">{{ kline.source }}</span>
+  </div>
+  <div class="chart-wrap" id="klineWrap">
+    <canvas id="klineChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- ===== SOCIAL HEATMAP ===== -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6c0 3.5 3 7 6 10 3-3 6-6.5 6-10a6 6 0 00-12 0v.5" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.8"/><circle cx="10" cy="8" r="2" fill="currentColor" opacity="0.8"/></svg>
+    <span class="title">全网热度</span>
     <span class="badge badge-warn">共 {{ total_posts }} 条</span>
   </div>
-  <div class="grid">
+  <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+    全平台共 <strong style="color:var(--text)">{{ total_posts }}</strong> 条相关讨论
+    {% if total_failed > 0 %} · <span style="color:var(--amber)">{{ total_failed }} 个数据源暂不可用</span>{% endif %}
+  </div>
+  <div class="social-grid">
     {% for platform, stat in platform_stats.items() %}
-    <div class="card" style="padding:16px">
-      <div style="font-weight:700;margin-bottom:8px">{{ platform }}
-        <span style="font-size:12px;color:#64748b;float:right">{{ stat.count }}条</span>
-      </div>
-      <div class="senti-bar" style="height:16px;margin-bottom:4px">
-        <div class="bull" style="width:{% if stat.count > 0 %}{{ (stat.pos / stat.count * 100)|int }}{% else %}0{% endif %}%"></div>
-        <div class="bear" style="width:{% if stat.count > 0 %}{{ (stat.neg / stat.count * 100)|int }}{% else %}0{% endif %}%"></div>
-      </div>
-      <div class="senti-legend" style="font-size:11px">
-        <span>正面 {{ stat.pos }}</span><span>负面 {{ stat.neg }}</span>
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>{{ platform }}</span>
+        <span class="muted">{{ stat.count }}条</span>
       </div>
       {% if stat.top_posts %}
-      <div style="margin-top:8px;font-size:12px;color:#94a3b8">
-        {% for post in stat.top_posts[:5] %}
-        <div style="margin-bottom:3px;display:flex;justify-content:space-between;align-items:center">
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· {% if post.url %}<a href="{{ post.url }}" target="_blank" rel="noopener noreferrer">{{ post.title[:25] }}{% if post.title|length > 25 %}...{% endif %}</a>{% else %}{{ post.title[:25] }}{% if post.title|length > 25 %}...{% endif %}{% endif %}</span>
-          {% if post.likes > 0 %}<span style="color:#ef4444;white-space:nowrap;margin-left:8px">♥ {{ cn_number(post.likes) }}</span>{% endif %}
+      <div>
+        {% for post in stat.top_posts[:20] %}
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          {% if post.url %}<a href="{{ post.url }}" target="_blank" rel="noopener noreferrer">{{ post.title[:28] }}{% if post.title|length > 28 %}...{% endif %}</a>
+          {% else %}<span>{{ post.title[:28] }}{% if post.title|length > 28 %}...{% endif %}</span>{% endif %}
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            {% if post.likes > 0 %}<span style="color:var(--red)">♥ {{ cn_number(post.likes) }}</span>{% endif %}
+            {% if post.comments > 0 %}<span>💬 {{ cn_number(post.comments) }}</span>{% endif %}
+          </div>
         </div>
         {% endfor %}
       </div>
@@ -345,91 +478,152 @@ a { color: #60a5fa; text-decoration: none; }
   </div>
 </div>
 
-
-
-<!-- INSTITUTIONAL RESEARCH REPORTS -->
+<!-- ===== INSTITUTIONAL RESEARCH ===== -->
 {% if research.reports %}
-<div class="card full" style="margin-bottom:20px">
+<div class="card" style="margin-bottom:16px">
   <div class="card-header">
-    <span class="icon">📄</span><span class="title">机构研报</span>
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3h12v14H4V3zm2 2v2h8V5H6zm0 4v6h2V9H6zm4 0v6h4V9h-4z" opacity="0.8"/><path d="M5 2h10v1H5V2z" opacity="0.5"/></svg>
+    <span class="title">机构研报</span>
     <span class="badge badge-warn">共 {{ research.total_count }} 份</span>
   </div>
-  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-    <span class="topic-tag" style="background:rgba(239,68,68,0.15);color:#ef4444">买入 {{ research.buy_count }}</span>
-    <span class="topic-tag" style="background:rgba(245,158,11,0.15);color:#f59e0b">增持 {{ research.hold_count }}</span>
-    <span class="topic-tag" style="background:rgba(100,116,139,0.15);color:#94a3b8">中性 {{ research.neutral_count }}</span>
+  <div class="tag-group">
+    <span class="tag" style="background:rgba(239,68,68,0.12);color:var(--red)">买入 {{ research.buy_count }}</span>
+    <span class="tag" style="background:rgba(245,158,11,0.12);color:var(--amber)">增持 {{ research.hold_count }}</span>
+    <span class="tag" style="background:rgba(100,116,139,0.12);color:var(--text-muted)">中性 {{ research.neutral_count }}</span>
     {% if research.avg_eps_this_yr %}
-    <span class="topic-tag">预测EPS {{ research.avg_eps_this_yr }}</span>
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测EPS {{ research.avg_eps_this_yr }}</span>
     {% endif %}
     {% if research.avg_pe_this_yr %}
-    <span class="topic-tag">预测PE {{ research.avg_pe_this_yr }}</span>
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测PE {{ research.avg_pe_this_yr }}</span>
     {% endif %}
   </div>
-  <div style="max-height:400px;overflow-y:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
+  <div class="research-scroll">
+    <table class="research-table">
       <thead>
-        <tr style="color:#64748b;border-bottom:1px solid rgba(255,255,255,0.06)">
-          <th style="padding:6px 8px;text-align:left">日期</th>
-          <th style="padding:6px 8px;text-align:left">机构</th>
-          <th style="padding:6px 8px;text-align:left">评级</th>
-          <th style="padding:6px 8px;text-align:left">标题</th>
-          <th style="padding:6px 8px;text-align:right">当年EPS</th>
-          <th style="padding:6px 8px;text-align:right">次年EPS</th>
-          <th style="padding:6px 8px;text-align:right">PDF</th>
+        <tr>
+          <th>日期</th>
+          <th>机构</th>
+          <th>评级</th>
+          <th>标题</th>
+          <th>当年EPS</th>
+          <th>次年EPS</th>
+          <th>PDF</th>
         </tr>
       </thead>
       <tbody>
         {% for r in research.reports[:5] %}
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
-          <td style="padding:6px 8px;color:#64748b;white-space:nowrap">{{ r.date }}</td>
-          <td style="padding:6px 8px;color:#94a3b8;white-space:nowrap">{{ r.institution }}</td>
-          <td style="padding:6px 8px">
-            {% set rating_color = '#ef4444' if '买入' in r.rating else ('#f59e0b' if '增持' in r.rating or '推荐' in r.rating else '#94a3b8') %}
-            <span style="color:{{ rating_color }}">{{ r.rating }}</span>
+        <tr>
+          <td style="color:var(--text-muted)">{{ r.date }}</td>
+          <td style="color:var(--text-secondary)">{{ r.institution }}</td>
+          <td>
+            {% set rating_color = 'var(--red)' if '买入' in r.rating else ('var(--amber)' if '增持' in r.rating or '推荐' in r.rating else 'var(--text-muted)') %}
+            <span style="color:{{ rating_color }};font-weight:500">{{ r.rating }}</span>
           </td>
-          <td style="padding:6px 8px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <td>
             {% if r.pdf_url %}
-            <a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa;text-decoration:none" title="{{ r.title }}">{{ r.title }}</a>
+            <a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" title="{{ r.title }}">{{ r.title }}</a>
             {% else %}
-            <span style="color:#cbd5e1" title="{{ r.title }}">{{ r.title }}</span>
+            <span title="{{ r.title }}">{{ r.title }}</span>
             {% endif %}
           </td>
-          <td style="padding:6px 8px;text-align:right;color:#cbd5e1">{{ r.eps_this_yr if r.eps_this_yr else '-' }}</td>
-          <td style="padding:6px 8px;text-align:right;color:#cbd5e1">{{ r.eps_next_yr if r.eps_next_yr else '-' }}</td>
-          <td style="padding:6px 8px;text-align:center">
-            {% if r.pdf_url %}
-            <a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa">📎</a>
-            {% endif %}
-          </td>
+          <td>{{ r.eps_this_yr if r.eps_this_yr else '-' }}</td>
+          <td>{{ r.eps_next_yr if r.eps_next_yr else '-' }}</td>
+          <td>{% if r.pdf_url %}<a href="{{ r.pdf_url }}" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <div class="muted" style="margin-top:8px">来源: {{ research.source }}</div>
+  <div class="muted" style="margin-top:10px">来源: {{ research.source }}</div>
 </div>
 {% endif %}
 
-<!-- K-LINE CHART -->
-{% if kline.bars %}
-<div class="card full" style="margin-bottom:20px">
+<!-- ===== AI FULL REPORT ===== -->
+<div class="card" style="margin-bottom:16px">
   <div class="card-header">
-    <span class="icon">📈</span><span class="title">K线走势 (近{{ kline.bars|length }}日)</span>
-    <span class="badge badge-warn">{{ kline.source }}</span>
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a3 3 0 00-3 3v1H5a1 1 0 000 2h2v1a4 4 0 008 0V8h2a1 1 0 000-2h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1H9V5a1 1 0 011-1zM7 12.5a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm6 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm-3 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1z" opacity="0.8"/></svg>
+    <span class="title">AI 综合分析报告</span>
   </div>
-  <div style="position:relative;height:320px">
-    <canvas id="klineChart"></canvas>
-  </div>
+  <div class="ai-report">{{ report_text|md_to_html|safe }}</div>
 </div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="sources">
+    数据来源: {% for r in collect_results %}{% if r.status == 'success' %}{{ r.platform }} {% endif %}{% endfor %}
+  </div>
+  <div class="disclaimer">
+    免责声明：本报告由AI自动生成，所有分析内容仅供参考，不构成任何投资建议。
+    投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
+  </div>
+  <div class="actions">
+    <button id="exportImg" onclick="exportAsImage()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+      导出图片
+    </button>
+    <button id="exportPdf" onclick="exportAsPdf()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+      导出PDF
+    </button>
+  </div>
+  <div class="version">aimoon v0.3.2 · {{ generated_at }}</div>
+</footer>
+
+</div>
+
+<!-- ===== MOBILE STICKY EXPORT BAR ===== -->
+<div class="export-bar">
+  <button onclick="exportAsImage()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+    导出图片
+  </button>
+  <button onclick="exportAsPdf()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+    导出PDF
+  </button>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
 <script>
+// K-line chart
+{% if kline.bars %}
 (function(){
   var dates = {{ kline.bars | map(attribute='date') | list | tojson }};
   var closes = {{ kline.bars | map(attribute='close') | list | tojson }};
+  var highs = {{ kline.bars | map(attribute='high') | list | tojson }};
+  var lows = {{ kline.bars | map(attribute='low') | list | tojson }};
   var volumes = {{ kline.bars | map(attribute='volume') | list | tojson }};
   var first = closes[0], last = closes[closes.length - 1];
   var lineColor = last >= first ? '#ef4444' : '#22c55e';
   var fillColor = last >= first ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)';
+
+  var maxClose = -Infinity, minClose = Infinity;
+  var highIdx = 0, lowIdx = 0;
+  for (var i = 0; i < closes.length; i++) {
+    if (closes[i] > maxClose) { maxClose = closes[i]; highIdx = i; }
+    if (closes[i] < minClose) { minClose = closes[i]; lowIdx = i; }
+  }
+
+  var allVals = closes.concat(highs, lows);
+  var yMin = Math.min.apply(null, allVals) * 0.97;
+  var yMax = Math.max.apply(null, allVals) * 1.03;
+
+  var pointBg = [];
+  var pointRadius = [];
+  for (var i = 0; i < closes.length; i++) {
+    if (i === highIdx || i === lowIdx) {
+      pointBg.push(i === highIdx ? '#ef4444' : '#22c55e');
+      pointRadius.push(6);
+    } else {
+      pointBg.push('transparent');
+      pointRadius.push(0);
+    }
+  }
+
   var ctx = document.getElementById('klineChart').getContext('2d');
   new Chart(ctx, {
     type: 'line',
@@ -442,16 +636,18 @@ a { color: #60a5fa; text-decoration: none; }
         backgroundColor: fillColor,
         fill: true,
         tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        pointRadius: pointRadius,
+        pointBackgroundColor: pointBg,
+        pointBorderColor: pointBg,
+        pointHoverRadius: 6,
         borderWidth: 2,
         yAxisID: 'y'
       },{
         label: '成交量',
         data: volumes,
         type: 'bar',
-        backgroundColor: 'rgba(96,165,250,0.25)',
-        borderColor: 'rgba(96,165,250,0.4)',
+        backgroundColor: '#1e2531',
+        borderColor: '#2a3a4a',
         borderWidth: 1,
         yAxisID: 'y1'
       }]
@@ -463,13 +659,17 @@ a { color: #60a5fa; text-decoration: none; }
       plugins: {
         legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
         tooltip: {
-          backgroundColor: 'rgba(15,25,35,0.95)',
+          backgroundColor: 'rgba(12,15,21,0.95)',
           titleColor: '#e2e8f0',
           bodyColor: '#cbd5e1',
           borderColor: 'rgba(255,255,255,0.1)',
           borderWidth: 1,
           callbacks: {
             label: function(ctx) {
+              if (ctx.dataIndex === highIdx && ctx.datasetIndex === 0)
+                return '高点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[highIdx] + ')';
+              if (ctx.dataIndex === lowIdx && ctx.datasetIndex === 0)
+                return '低点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[lowIdx] + ')';
               if (ctx.datasetIndex === 0) return '收盘: ' + ctx.parsed.y.toFixed(2);
               return '成交量: ' + (ctx.parsed.y / 10000).toFixed(0) + '万手';
             }
@@ -483,6 +683,8 @@ a { color: #60a5fa; text-decoration: none; }
         },
         y: {
           position: 'left',
+          min: yMin,
+          max: yMax,
           ticks: { color: '#94a3b8', font: { size: 11 } },
           grid: { color: 'rgba(255,255,255,0.04)' }
         },
@@ -495,42 +697,47 @@ a { color: #60a5fa; text-decoration: none; }
     }
   });
 })();
-</script>
 {% endif %}
 
-<!-- AI FULL REPORT (rendered from markdown) -->
-<div class="card full" style="margin-bottom:20px">
-  <div class="card-header"><span class="icon">🤖</span><span class="title">AI 综合分析报告</span></div>
-  <div class="ai-report">{{ report_text|md_to_html|safe }}</div>
-</div>
+// Gauge animation
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-target]').forEach(function(el) {
+    var target = el.getAttribute('data-target');
+    setTimeout(function() {
+      el.setAttribute('stroke-dasharray', target + ' 327');
+    }, 100);
+  });
+});
 
-<!-- DATA SOURCES -->
-<div class="card full" style="margin-bottom:20px">
-  <div class="card-header"><span class="icon">📋</span><span class="title">采集状态</span></div>
-  <div class="grid">
-    {% for r in collect_results %}
-    <div style="padding:8px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center">
-      <span>{{ r.platform }}</span>
-      <span class="badge {% if r.status == 'success' %}badge-up{% elif r.status == 'failed' %}badge-down{% else %}badge-warn{% endif %}">
-        {% if r.status == 'success' %}✓ {{ r.count }}条{% elif r.status == 'failed' %}✗ 失败{% else %}{{ r.status }}{% endif %}
-      </span>
-    </div>
-    {% endfor %}
-  </div>
-</div>
+// Export functions
+function getTarget() { return document.querySelector('.container'); }
 
-<!-- FOOTER -->
-<footer class="footer">
-  <div class="sources">
-    数据来源: {% for r in collect_results %}{% if r.status == 'success' %}{{ r.platform }} {% endif %}{% endfor %}
-  </div>
-  <div class="disclaimer">
-    ⚠️ 免责声明：本报告由AI自动生成，所有分析内容仅供参考，不构成任何投资建议。
-    投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
-  </div>
-  <div class="muted" style="margin-top:8px">aimoon v0.3.1 · {{ generated_at }}</div>
-</footer>
+function exportAsImage() {
+  var btn = document.getElementById('exportImg');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: '#0c0f15' }).then(function(canvas) {
+    var a = document.createElement('a');
+    a.download = '{{ name }}_{{ symbol }}_report.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false; });
+}
 
-</div>
+function exportAsPdf() {
+  var btn = document.getElementById('exportPdf');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: '#0c0f15' }).then(function(canvas) {
+    var jsPDF = window.jspdf.jsPDF;
+    var imgW = canvas.width, imgH = canvas.height;
+    var pdfW = 210, pdfH = (imgH * pdfW) / imgW;
+    var pdf = new jsPDF('p', 'mm', [pdfW, pdfH]);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+    pdf.save('{{ name }}_{{ symbol }}_report.pdf');
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false; });
+}
+</script>
+
 </body>
 </html>

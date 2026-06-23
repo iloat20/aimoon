@@ -155,7 +155,7 @@ class ReportGenerator:
         # Sort top_posts by likes (descending) for each platform
         for s in platform_stats.values():
             s["top_posts"].sort(key=lambda x: x.likes or 0, reverse=True)
-            s["top_posts"] = s["top_posts"][:5]
+            s["top_posts"] = s["top_posts"][:20]
 
         return {
             "symbol": stock_info.symbol,

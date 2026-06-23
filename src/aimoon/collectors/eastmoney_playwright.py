@@ -48,7 +48,7 @@ class GubaCollector(BaseCollector):
             await page.wait_for_timeout(3000)
 
             rows = await page.query_selector_all("tr.listitem")
-            for row in rows[:10]:
+            for row in rows[:15]:
                 try:
                     # Title
                     title_el = await row.query_selector("a[title], a[data-cntitle]")

@@ -163,7 +163,7 @@ class XueqiuCollector(BaseCollector):
         return self._fail(
             "雪球社交数据被阿里云WAF封锁（滑块验证），headless浏览器无法绕过。"
             "行情/财务数据正常（stock.xueqiu.com子域名）。"
-            "建议：安装AgentReach作为备选，或依赖其他舆情源（股吧/头条/小红书）。",
+            "建议：安装AgentReach作为备选，或依赖其他舆情源（股吧/头条）。",
             elapsed,
         )
 

@@ -49,7 +49,7 @@ class CninfoCollector(BaseCollector):
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
         t0 = time.monotonic()
         try:
-            posts = await self._fetch_announcements(symbol)
+            posts = await self._fetch_announcements(symbol, stock_name)
             elapsed = (time.monotonic() - t0) * 1000
             if posts:
                 return self._ok(posts, elapsed)
@@ -57,13 +57,11 @@ class CninfoCollector(BaseCollector):
         except Exception as e:
             return self._fail(str(e), (time.monotonic() - t0) * 1000)
 
-    async def _fetch_announcements(self, symbol: str) -> list[SocialPost]:
-        """Fetch company announcements via CNINFO query API.
-
-        Note: the stock param alone doesn't filter correctly.
-        Use searchkey to search by stock code.
-        """
+    async def _fetch_announcements(self, symbol: str, stock_name: str = "") -> list[SocialPost]:
+        """Fetch company announcements via CNINFO query API."""
         async with httpx.AsyncClient(timeout=15.0) as client:
+            # Use stock name for better search results
+            search_key = stock_name if stock_name else symbol
             payload = {
                 "stock": "",
                 "pageNum": "1",
@@ -71,7 +69,7 @@ class CninfoCollector(BaseCollector):
                 "tabKey": "fulltext",
                 "category": "",
                 "seDate": "",
-                "searchkey": f"{symbol}",
+                "searchkey": search_key,
                 "isHLtitle": "true",
                 "sortName": "announcementTime",
                 "sortType": "desc",

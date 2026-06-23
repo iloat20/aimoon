@@ -7,77 +7,56 @@ Two modes:
 
 from __future__ import annotations
 
-import json
-
 import httpx
 
 from ..config.settings import get_settings
 from ..models.report import AnalysisReport, DimensionScore
 from ..models.stock import StockInfo
 
-PROMPT_TEMPLATE = """你是一位拥有20年实战经验的资深A股策略分析师，擅长基本面分析、技术面分析及市场情绪量化。
-
-【核心规则：禁止编造数据】
-- 每个数据来源均已标注：(采集时间: {timestamp})
-- 对于标记为"暂无数据"的板块，你必须写"因数据源暂不可用，该部分无法分析"，严禁自行编造或猜测
-- 所有引用数据必须来自上面【输入数据】中提供的内容，不得添加任何外部信息
-- 如果财务数据中某项指标缺失（值为0或null），标注"暂无"，不要估算
-- 引用舆情时必须注明具体平台来源
-
+PROMPT_TEMPLATE = """
 【当前分析标的】
 股票代码：{stock_code}
 股票名称：{stock_name}
 当前价格/估值：{quote_data}
 
-【输入数据】（采集时间: {timestamp}）
-1. 财务报告核心数据：
-{financial_data}
+请以资深A股证券分析师的身份，请站在逆向投资者/成长股猎手的角度对【{stock_code}】进行一次深入的基本面与技术面分析。
 
-2. 技术面数据（基于{tech_bars}根日K线计算）：
-{technical_data}
+**核心要求：**
+- 获取最新的、准确的2026年的数据，最可靠的方法是直接从官方和权威的财经数据平台查询www.cninfo.com.cn
+- 优先使用巨潮资讯网获取最权威的公告原文，再结合东方财富网或新浪财经等平台查看整理后的数据，这样可以确保信息的准确和及时。
+- 分析需结构清晰，使用小标题分段
+- 请确保所有分析都基于最新可得的数据，并注明关键数据的时间节点。
+- 关键结论或数据请用粗体标出
+- 避免泛泛而谈，所有观点都需有数据或逻辑支撑
+- 最后必须给出明确的投资逻辑总结和风险警示
+- 如果某个回答泛泛，可以立刻追问
+- 涉及未来预测的部分。需要独立核实关键数据
+- 在你得出结论后，请扮演反对者，用最有力的论据攻击你的结论，然后再回应。
+- 在回答前，请先执行以下思考流程，并把每一步的推理都写出来：1. 拆解问题：列出要分析这只股票需要解决的子问题。2. 逐一推理：对每个子问题，写出假设、分析步骤和中间结论。3. 自我反驳：对你的核心结论，主动提出一个反对论点并回应。4. 最终整合：完成以上步骤后，给出最终答案。
+**请按以下六个维度展开分析：**
 
-3. 资金面数据：
-{capital_flow_data}
+**一、商业模式与护城河（定性分析）**
+1. 用通俗的语言，解释这家公司是如何赚钱的。业务的核心环节是什么？它的收入来源和利润来源分别是什么？国外收入占比多少？未来增长的主要驱动力是什么？
+2. 它的核心竞争力是什么？请用巴菲特的要求简要评估其护城河深浅。
+3. 请列出看空这只股票最有力的三个理由。
 
-4. 全网舆情信息摘要：
-- 雪球网讨论摘要：{xueqiu_data}
-- 东方财富股吧热帖摘要：{eastmoney_data}
-- 抖音/快手短视频舆论摘要：{douyin_data}
-- 今日头条及新闻文章摘要：{toutiao_data}
-- 微信公众号文章摘要：{wechat_data}
+**二、财务健康度（定量分析）**
+1. 请获取并解读最新的年报核心财务数据，优先使用巨潮资讯网获取最权威的公告原文，再结合东方财富网或新浪财经等平台查看整理后的数据，重点关注：
+2. 营收与净利润的复合增长率，毛利率的变化趋势，变化原因，净利率的变化以及原因。
+3. 现金流状况：经营现金流、投资现金流、筹资现金流的变化趋势，是否存在大额非经常性损益。
+4. 资产负债表健康度：资产负债率、短期偿债能力、自由现金流是否充裕。
+5. 如果存在报表异常项（如增收不增利、应收账款激增等），请重点提示。
 
-【输出要求】
-请严格按照以下Markdown格式输出分析报告，不要输出任何多余的解释或开场白。每条结论必须与输入数据对应，不允许自行推算未提供的数据。
+**三、估值水位与市场预期**
+1. 当前市盈率、市净率所处历史分位，并与同行业可比公司进行横向对比。
+2. 做出折现率15%，永续1%的DCF估值测算，并给出合理的目标价区间。
 
-## 一、公司概况与业务分析
-
-## 二、财务健康度评估
-
-## 三、市场情绪与舆情分析
-- 雪球网：
-- 东方财富股吧：
-- 其他社交媒体（抖音、公众号等）：
-
-## 四、技术面分析
-（基于输入数据中的技术面K线指标进行分析，包括均线趋势、MACD、RSI、布林带位置、支撑阻力位等。如果技术面数据为"暂无数据"，请说明"技术面数据暂不可用"）
-
-## 五、资金面分析
-（基于输入数据中的资金流向数据进行分析，包括主力资金净流入/流出、超大单大单动向、北向资金变化等。如果资金面数据为"暂无数据"，请说明"资金面数据暂不可用"）
-
-## 六、综合投资建议与评级
-评级：【强力买入】/【买入】/【中性持有】/【减持】/【卖出】
-建仓参考区间：（综合技术面支撑位和基本面给出具体价格区间）
-止损参考位：（基于技术面支撑位下方给出具体价格）
-止盈参考位：（基于技术面阻力位上方给出具体价格）
-
-【逻辑一致性检查清单（输出前请逐条自查）】
-1. 如果财务数据显示营收/利润下滑，评级不得为【强力买入】
-2. 如果市场情绪分析为普遍悲观，评级不得为【买入】以上
-3. 如果技术面显示下降趋势且资金面持续流出，评级不得为【买入】以上
-4. 评级与正文中的分析结论必须一致
+**四、综合研判**
+1. 用一句话总结核心投资逻辑。
+2. 给出三种情景假设（乐观/中性/悲观），并分别给出对应的目标价区间及触发条件。
 
 【写作风格要求】
-语言简洁明了，通俗易懂，逻辑严密。避免使用过度复杂的金融模型术语，让普通投资者也能清晰理解。每个部分控制在150-200字左右，整体报告总字数控制在1500-2000字。
+语言简洁明了，通俗易懂，逻辑严密。避免使用过度复杂的金融模型术语，让普通投资者也能清晰理解。
 """  # noqa: E501
 
 
@@ -98,7 +77,7 @@ class DeepSeekAnalyzer:
         """调用DeepSeek进行综合分析，返回Markdown格式报告。"""
         prompt = self._build_prompt(stock_code, stock_name, collected_data)
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
                 self.api_url,
                 headers={
@@ -106,15 +85,94 @@ class DeepSeekAnalyzer:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "deepseek-chat",
-                    "messages": [{"role": "user", "content": prompt}],
+                    "model": "deepseek-v4-flash",
+                    "messages": [{"role": "user", "content": prompt}, {"role": "system", "content": "现在是 2026-06-23 ，请基于这个时间回答用户问题。"}],
                     "temperature": 0.3,
-                    "max_tokens": 4096,
+                    "max_tokens": 16384,
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": "high",
                 },
             )
             resp.raise_for_status()
             result = resp.json()
             return result["choices"][0]["message"]["content"]
+
+    @staticmethod
+    def _get_tools() -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "搜索互联网获取最新信息，如财报、新闻、公告、研报等。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "搜索关键词，如'格力电器2025年财报'、'神火股份最新公告'",
+                            }
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        ]
+
+    @staticmethod
+    async def _web_search(query: str) -> str:
+        """Search web via Baidu and return top results."""
+        import re as _re
+
+        results = []
+
+        # Strategy 1: Baidu search
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    "https://www.baidu.com/s",
+                    params={"wd": query, "rn": 5},
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept-Language": "zh-CN,zh;q=0.9",
+                    },
+                )
+                if resp.status_code == 200:
+                    html = resp.text
+                    # Extract titles and snippets from Baidu results
+                    titles = _re.findall(r'<h3[^>]*>.*?<a[^>]*>(.*?)</a>', html, _re.DOTALL)
+                    snippets = _re.findall(r'<span class="content-right_[^"]*">(.*?)</span>', html, _re.DOTALL)
+                    for i, t in enumerate(titles[:5]):
+                        title = _re.sub(r'<[^>]+>', '', t).strip()
+                        snippet = _re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
+                        if title:
+                            results.append(f"[{i+1}] {title}\n{snippet}" if snippet else f"[{i+1}] {title}")
+        except Exception:
+            pass
+
+        # Strategy 2: Fallback to Sogou
+        if not results:
+            try:
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                    resp = await client.get(
+                        "https://www.sogou.com/web",
+                        params={"query": query},
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        },
+                    )
+                    if resp.status_code == 200:
+                        titles = _re.findall(r'<h3[^>]*>.*?<a[^>]*>(.*?)</a>', resp.text, _re.DOTALL)
+                        for i, t in enumerate(titles[:5]):
+                            title = _re.sub(r'<[^>]+>', '', t).strip()
+                            if title:
+                                results.append(f"[{i+1}] {title}")
+            except Exception:
+                pass
+
+        if results:
+            return f"搜索「{query}」结果：\n" + "\n\n".join(results)
+        return f"搜索「{query}」未获取到结果"
 
     def _build_prompt(self, stock_code: str, stock_name: str, data: dict) -> str:
         quote = data.get("quote", {})
@@ -123,87 +181,72 @@ class DeepSeekAnalyzer:
             f"涨跌{quote.get('change_pct', 'N/A')}% "
             f"PE={quote.get('pe', 'N/A')}"
         )
-        financial = data.get("financial", {})
-        financial_data = json.dumps(financial, ensure_ascii=False, indent=2)
-
-        # Technical indicators (pre-computed from K-line)
-        tech_raw = data.get("technical", {})
-        tech_bars = tech_raw.get("bars", 0)
-        if tech_raw and tech_bars >= 10:
-            tech_lines = []
-            for k in (
-                "price",
-                "ma5",
-                "ma10",
-                "ma20",
-                "ma60",
-                "macd_dif",
-                "macd_dea",
-                "macd_hist",
-                "rsi6",
-                "rsi14",
-                "boll_upper",
-                "boll_mid",
-                "boll_lower",
-                "support",
-                "resistance",
-                "volume_ratio",
-            ):
-                if k in tech_raw:
-                    tech_lines.append(f"- {k}: {tech_raw[k]}")
-            for k in ("trend", "boll_position"):
-                if k in tech_raw:
-                    tech_lines.append(f"- {k}: {tech_raw[k]}")
-            for k in ("ret_5d", "ret_20d", "ret_60d"):
-                if k in tech_raw:
-                    tech_lines.append(f"- {k}%: {tech_raw[k]}")
-            technical_data = "\n".join(tech_lines) if tech_lines else "暂无数据"
-        else:
-            technical_data = "暂无数据（K线数据不足）"
-
-        # Capital flow data
-        cf = data.get("capital_flow", {})
-        if cf and cf.get("main_net_5d") != 0:
-            cf_lines = [
-                f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f}亿元",
-                f"- 今日主力净流入: {cf['main_net_today'] / 1e8:.2f}亿元",
-                f"- 超大单净流入: {cf.get('super_large_net', 0) / 1e8:.2f}亿元",
-                f"- 大单净流入: {cf.get('large_net', 0) / 1e8:.2f}亿元",
-                f"- 中单净流入: {cf.get('medium_net', 0) / 1e8:.2f}亿元",
-                f"- 小单净流入: {cf.get('small_net', 0) / 1e8:.2f}亿元",
-            ]
-            if cf.get("northbound_chg"):
-                cf_lines.append(
-                    f"- 北向资金变化: {cf['northbound_chg'] / 1e8:+.2f}亿元"
-                )
-            if cf.get("lhb_date"):
-                cf_lines.append(
-                    f"- 龙虎榜({cf['lhb_date']}): {cf.get('lhb_reason', '')}"
-                    f" 净买入{cf['lhb_net_buy'] / 1e8:.2f}亿元"
-                )
-            capital_flow_data = "\n".join(cf_lines)
-        else:
-            capital_flow_data = "暂无数据"
-
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        return PROMPT_TEMPLATE.format(
-            timestamp=timestamp,
+        base = PROMPT_TEMPLATE.format(
             stock_code=stock_code,
             stock_name=stock_name or stock_code,
             quote_data=quote_data,
-            financial_data=financial_data,
-            technical_data=technical_data,
-            tech_bars=tech_bars,
-            capital_flow_data=capital_flow_data,
-            xueqiu_data=data.get("xueqiu", "暂无数据")[:2000],
-            eastmoney_data=data.get("eastmoney", "暂无数据")[:2000],
-            douyin_data=data.get("douyin", "暂无数据")[:1000],
-            toutiao_data=data.get("toutiao", "暂无数据")[:1000],
-            wechat_data=data.get("wechat", "暂无数据")[:1000],
         )
+
+        sections = [base]
+
+        # Current time
+        current_time = data.get("current_time", "")
+        if current_time:
+            sections.append(f"\n\n【当前时间】{current_time}")
+            sections.append("请基于当前时间进行分析，注意数据的时效性。")
+
+        # Financial reports info (cached)
+        reports_section = []
+        for key, label in [("annual_report", "年报"), ("semi_annual_report", "半年报"), ("quarterly_report", "季报")]:
+            report = data.get(key)
+            if report and report.get("year"):
+                reports_section.append(f"- {label}: {report['year']}年 {report['title']}")
+                if report.get("pdf_url"):
+                    reports_section.append(f"  PDF: {report['pdf_url']}")
+
+        if reports_section:
+            sections.append("\n\n【已缓存财务报告】")
+            sections.extend(reports_section)
+
+        financial = data.get("financial", {})
+        if financial and financial.get("报告期"):
+            sections.append(f"\n\n【已采集财务数据（{financial.get('报告期', '')}）】")
+            for k, v in financial.items():
+                if v and v != 0:
+                    sections.append(f"- {k}: {v}")
+
+        tech_raw = data.get("technical", {})
+        if tech_raw and tech_raw.get("bars", 0) >= 10:
+            tech_lines = []
+            for k in ("price", "ma5", "ma10", "ma20", "ma60", "macd_dif", "macd_dea",
+                       "macd_hist", "rsi6", "rsi14", "boll_upper", "boll_mid", "boll_lower",
+                       "support", "resistance", "volume_ratio", "trend", "boll_position",
+                       "ret_5d", "ret_20d", "ret_60d"):
+                if k in tech_raw:
+                    tech_lines.append(f"- {k}: {tech_raw[k]}")
+            if tech_lines:
+                sections.append("\n\n【已采集技术面指标】")
+                sections.extend(tech_lines)
+
+        cf = data.get("capital_flow", {})
+        if cf and cf.get("main_net_5d") != 0:
+            sections.append("\n\n【已采集资金面数据】")
+            sections.append(f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f}亿元")
+            sections.append(f"- 3日净流入: {cf.get('net_3d', 0) / 1e8:.2f}亿元")
+            sections.append(f"- 10日净流入: {cf.get('net_10d', 0) / 1e8:.2f}亿元")
+            sections.append(f"- 20日净流入: {cf.get('net_20d', 0) / 1e8:.2f}亿元")
+            if cf.get("northbound_chg"):
+                sections.append(f"- 北向资金变化: {cf['northbound_chg'] / 1e8:+.2f}亿元")
+            if cf.get("lhb_date"):
+                sections.append(f"- 龙虎榜({cf['lhb_date']}): 净买入{cf['lhb_net_buy'] / 1e8:.2f}亿元")
+
+        for key, label in [("eastmoney", "东方财富股吧"), ("toutiao", "今日头条"), ("wechat", "微信公众号")]:
+            text = data.get(key, "")
+            if text and text != "暂无数据":
+                sections.append(f"\n\n【已采集{label}舆情摘要】")
+                sections.append(text[:1500])
+
+        return "".join(sections)
 
 
 class AIAnalyzer:
@@ -233,14 +276,20 @@ class AIAnalyzer:
         return self._build_report_from_markdown(stock_info, md)
 
     def _build_data_dict(self, info: StockInfo) -> dict:
+        from datetime import datetime
+
         q = info.quote
         f = info.financial
         cf = info.capital_flow
 
+        def _report_dict(r):
+            if r and r.year:
+                return {"year": r.year, "title": r.title, "pdf_url": r.pdf_url}
+            return None
+
         texts: dict[str, list[str]] = {
             "xueqiu": [],
             "eastmoney": [],
-            "douyin": [],
             "toutiao": [],
             "wechat": [],
         }
@@ -251,8 +300,6 @@ class AIAnalyzer:
                 texts["xueqiu"].append(line)
             elif "股吧" in plat:
                 texts["eastmoney"].append(line)
-            elif "抖音" in plat:
-                texts["douyin"].append(line)
             elif "头条" in plat:
                 texts["toutiao"].append(line)
             elif "微信" in plat or "公众号" in plat:
@@ -274,11 +321,9 @@ class AIAnalyzer:
         # Capital flow as flat dict for prompt formatting
         capital_flow = {
             "main_net_5d": cf.main_net_5d,
-            "main_net_today": cf.main_net_today,
-            "super_large_net": cf.super_large_net,
-            "large_net": cf.large_net,
-            "medium_net": cf.medium_net,
-            "small_net": cf.small_net,
+            "net_3d": cf.net_3d,
+            "net_10d": cf.net_10d,
+            "net_20d": cf.net_20d,
             "northbound_chg": cf.northbound_chg,
             "lhb_date": cf.lhb_date,
             "lhb_reason": cf.lhb_reason,
@@ -286,6 +331,7 @@ class AIAnalyzer:
         }
 
         return {
+            "current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "quote": {
                 "price": q.price,
                 "change_pct": q.change_pct,
@@ -314,9 +360,11 @@ class AIAnalyzer:
             },
             "technical": technical,
             "capital_flow": capital_flow,
+            "annual_report": _report_dict(info.annual_report),
+            "semi_annual_report": _report_dict(info.semi_annual_report),
+            "quarterly_report": _report_dict(info.quarterly_report),
             "xueqiu": _join("xueqiu"),
             "eastmoney": _join("eastmoney"),
-            "douyin": _join("douyin"),
             "toutiao": _join("toutiao"),
             "wechat": _join("wechat"),
         }

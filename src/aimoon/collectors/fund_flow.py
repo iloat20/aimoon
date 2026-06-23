@@ -33,23 +33,17 @@ class FundFlowCollector:
         self._sources_ok: list[str] = []
 
     async def fetch(self, symbol: str) -> CapitalFlowData:
-        """Run all sub-fetchers; return aggregated CapitalFlowData.
-
-        Primary: akshare stock_individual_fund_flow (East Money) with full
-        order-breakdown (超大单/大单/中单/小单). Falls through to 同花顺 ranking
-        (less detail) only if East Money fails.
-        """
+        """Run all sub-fetchers; return aggregated CapitalFlowData."""
         data = CapitalFlowData(symbol=symbol)
 
-        has_main = await self._fetch_individual_flow(symbol, data)
+        # Primary: pysnowball (3/5/10/20 day data)
+        await self._fetch_via_pysnowball(symbol, data)
         await self._fetch_northbound(symbol, data)
         await self._fetch_lhb(symbol, data)
 
-        if not has_main:
-            await self._fetch_ths_ranking(symbol, data)
-
-        if not self._sources_ok:
-            await self._fetch_via_pysnowball(symbol, data)
+        # Fallback: akshare (daily order breakdown)
+        if not data.main_net_5d and not data.net_3d:
+            await self._fetch_individual_flow(symbol, data)
 
         data.source = "+".join(self._sources_ok) if self._sources_ok else "all_failed"
         return data
@@ -164,21 +158,12 @@ class FundFlowCollector:
         return int(parts[1]) if len(parts) >= 2 else None
 
     async def _fetch_ths_ranking(self, symbol: str, data: CapitalFlowData) -> None:
-        """Fallback: search 同花顺 ranking for target stock (early-termination).
-
-        Only runs if East Money primary source failed. Skips on any error.
-        """
+        """Fallback: search 同花顺 ranking for target stock."""
         try:
-            row_today = await asyncio.to_thread(self._ths_search_stock, symbol, "即时")
-            if row_today:
-                data.main_net_today = self._parse_net(str(row_today.get("净额", "0")))
-
             row_5d = await asyncio.to_thread(self._ths_search_stock, symbol, "5日排行")
             if row_5d:
                 net_col = "资金流入净额" if "资金流入净额" in row_5d else "净额"
                 data.main_net_5d = self._parse_net(str(row_5d.get(net_col, "0")))
-
-            if row_today or row_5d:
                 self._sources_ok.append("ths(ranking)")
         except Exception:
             pass
@@ -186,10 +171,7 @@ class FundFlowCollector:
     # ---------- akshare sources ----------
 
     async def _fetch_individual_flow(self, symbol: str, data: CapitalFlowData) -> bool:
-        """主力资金净流入 + 大中小单（近5日 + 今日）. Uses stock_individual_fund_flow.
-
-        Retries once on failure (push2 is flaky). Returns True if data was fetched.
-        """
+        """Fallback: fetch net flow from akshare. Returns True if data was fetched."""
         for attempt in range(2):
             try:
                 df = await asyncio.to_thread(self._ak_individual_flow, symbol)
@@ -201,25 +183,18 @@ class FundFlowCollector:
                     continue
                 return False
         else:
-            # Fallback: direct East Money HTTP API
             return await self._fetch_eastmoney_flow_http(symbol, data)
 
         try:
-            df = df.tail(6)
-
             if "主力净流入-净额" in df.columns:
-                data.main_net_5d = float(df["主力净流入-净额"].iloc[:-1].sum())
-                data.main_net_today = float(df["主力净流入-净额"].iloc[-1])
-
-            latest = df.iloc[-1]
-            if "超大单净流入-净额" in df.columns:
-                data.super_large_net = float(latest.get("超大单净流入-净额", 0) or 0)
-            if "大单净流入-净额" in df.columns:
-                data.large_net = float(latest.get("大单净流入-净额", 0) or 0)
-            if "中单净流入-净额" in df.columns:
-                data.medium_net = float(latest.get("中单净流入-净额", 0) or 0)
-            if "小单净流入-净额" in df.columns:
-                data.small_net = float(latest.get("小单净流入-净额", 0) or 0)
+                vals = df["主力净流入-净额"].values
+                data.main_net_5d = float(sum(vals[-6:-1])) if len(vals) >= 6 else float(sum(vals[:-1]))  # noqa: E501
+                if len(vals) >= 3:
+                    data.net_3d = float(sum(vals[-3:]))
+                if len(vals) >= 10:
+                    data.net_10d = float(sum(vals[-10:]))
+                if len(vals) >= 20:
+                    data.net_20d = float(sum(vals[-20:]))
 
             self._sources_ok.append("akshare(个股资金流)")
             return True
@@ -271,22 +246,16 @@ class FundFlowCollector:
                 return False
 
             # Format: "日期,主力净流入,小单净流入,中单净流入,大单净流入,超大单净流入"
-            today_line = klines[-1].split(",")
-            if len(today_line) >= 6:
-                data.main_net_today = float(today_line[1] or 0)
-                data.small_net = float(today_line[2] or 0)
-                data.medium_net = float(today_line[3] or 0)
-                data.large_net = float(today_line[4] or 0)
-                data.super_large_net = float(today_line[5] or 0)
-
-            # 5-day sum (excluding today)
-            if len(klines) >= 2:
-                sum_5d = 0.0
-                for line in klines[-6:-1]:
-                    parts = line.split(",")
-                    if len(parts) >= 2:
-                        sum_5d += float(parts[1] or 0)
-                data.main_net_5d = sum_5d
+            # Calculate multi-period sums from klines
+            all_main = [float(k.split(",")[1] or 0) for k in klines if len(k.split(",")) >= 2]  # noqa: E501
+            if len(all_main) >= 2:
+                data.main_net_5d = sum(all_main[-6:-1]) if len(all_main) >= 6 else sum(all_main[:-1])  # noqa: E501
+            if len(all_main) >= 3:
+                data.net_3d = sum(all_main[-3:])
+            if len(all_main) >= 10:
+                data.net_10d = sum(all_main[-10:])
+            if len(all_main) >= 20:
+                data.net_20d = sum(all_main[-20:])
 
             self._sources_ok.append("eastmoney(资金流HTTP)")
             return True
@@ -294,36 +263,81 @@ class FundFlowCollector:
             return False
 
     async def _fetch_northbound(self, symbol: str, data: CapitalFlowData) -> None:
-        """北向资金持股变化. Uses stock_hsgt_individual_em (北向持股)."""
+        """北向资金持股变化 + 北向整体净流入."""
+        # 1. 个股北向持股变化（东方财富 API，季度数据）
         try:
-            df = await asyncio.to_thread(self._ak_northbound, symbol)
-            if df is None or df.empty:
-                return
-
-            hold_col = None
-            for c in df.columns:
-                if "持股" in c and "数量" in c:
-                    hold_col = c
-                    break
-            if hold_col is None or len(df) < 2:
-                return
-
-            diff = float(df[hold_col].iloc[-1]) - float(df[hold_col].iloc[-2])
-            close_col = None
-            for c in df.columns:
-                if "收盘" in c:
-                    close_col = c
-                    break
-            price = float(df[close_col].iloc[-1]) if close_col else 0
-            data.northbound_chg = diff * price if price else diff
-            self._sources_ok.append("akshare(北向)")
+            cf_result = await asyncio.to_thread(self._em_northbound, symbol)
+            if cf_result:
+                data.northbound_chg = cf_result.get("change_value", 0.0)
+                data.northbound_hold_shares = cf_result.get("hold_shares", 0.0)
+                data.northbound_hold_value = cf_result.get("hold_value", 0.0)
+                data.northbound_hold_ratio = cf_result.get("hold_ratio", 0.0)
+                data.northbound_date = cf_result.get("date", "")
+                self._sources_ok.append("eastmoney(北向持股)")
         except Exception:
             pass
 
-    def _ak_northbound(self, symbol: str):
-        import akshare as ak
+        # 2. 北向整体净流入（沪深股通）
+        try:
+            df_flow = await asyncio.to_thread(self._ak_northbound_flow)
+            if df_flow is not None and not df_flow.empty:
+                north = df_flow[df_flow["资金方向"] == "北向"]
+                if not north.empty:
+                    total_net = north["成交净买额"].sum()
+                    data.northbound_net_flow = float(total_net) * 1e8
+                    if "eastmoney(北向持股)" not in self._sources_ok:
+                        self._sources_ok.append("akshare(北向)")
+        except Exception:
+            pass
 
-        return ak.stock_hsgt_individual_em(stock=symbol)
+    def _em_northbound(self, symbol: str) -> dict:
+        """东方财富 API 获取个股北向持股（季度数据）."""
+        import httpx
+
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params = {
+            "reportName": "RPT_MUTUAL_HOLDSTOCKNORTH_STA",
+            "columns": "ALL",
+            "filter": f'(SECURITY_CODE="{symbol}")',
+            "pageSize": "1",
+            "sortColumns": "TRADE_DATE",
+            "sortTypes": "-1",
+            "source": "WEB",
+            "client": "WEB",
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://data.eastmoney.com/",
+        }
+
+        resp = httpx.get(url, params=params, headers=headers, timeout=10)
+        data = resp.json()
+        result = data.get("result") or {}
+        items = result.get("data") or []
+        if not items:
+            return {}
+
+        item = items[0]
+        hold_shares = float(item.get("HOLD_SHARES") or 0)
+        hold_value = float(item.get("HOLD_MARKET_CAP") or 0)
+        hold_ratio = float(item.get("A_SHARES_RATIO") or 0)
+        change_rate = float(item.get("CHANGE_RATE") or 0)
+        date = str(item.get("TRADE_DATE", ""))[:10]
+
+        # Calculate change value from change rate and market cap
+        change_value = hold_value * change_rate / 100 if hold_value else 0
+
+        return {
+            "hold_shares": hold_shares,
+            "hold_value": hold_value,
+            "hold_ratio": hold_ratio,
+            "change_value": change_value,
+            "date": date,
+        }
+
+    def _ak_northbound_flow(self):
+        import akshare as ak
+        return ak.stock_hsgt_fund_flow_summary_em()
 
     async def _fetch_lhb(self, symbol: str, data: CapitalFlowData) -> None:
         """龙虎榜（最近上榜记录）. Uses stock_lhb_detail_em for the last ~30 days."""
@@ -364,7 +378,7 @@ class FundFlowCollector:
     # ---------- pysnowball fallback ----------
 
     async def _fetch_via_pysnowball(self, symbol: str, data: CapitalFlowData) -> None:
-        """Fallback via pysnowball capital_flow / capital_history."""
+        """Fetch 3/5/10/20 day net flow via pysnowball."""
         try:
             from ..financial.pysnowball_adapter import PysnowballAdapter
 
@@ -372,12 +386,10 @@ class FundFlowCollector:
             cf = await adapter.fetch_capital_flow(symbol)
             if not cf:
                 return
-            data.main_net_today = cf.get("main_net_today", 0.0)
             data.main_net_5d = cf.get("main_net_5d", 0.0)
-            data.super_large_net = cf.get("super_large_net", 0.0)
-            data.large_net = cf.get("large_net", 0.0)
-            data.medium_net = cf.get("medium_net", 0.0)
-            data.small_net = cf.get("small_net", 0.0)
+            data.net_3d = cf.get("net_3d", 0.0)
+            data.net_10d = cf.get("net_10d", 0.0)
+            data.net_20d = cf.get("net_20d", 0.0)
             self._sources_ok.append("pysnowball(资金流)")
         except Exception:
             pass
@@ -390,7 +402,6 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
     Label is one of "流入"/"流出"/"持平".
     """
     main_5d = cf.main_net_5d
-    main_today = cf.main_net_today
 
     if main_5d > 0:
         main_force = "流入"
@@ -410,26 +421,23 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
     else:
         s1 = 1
 
-    if main_today > 2e8:
-        s2 = 5
-    elif main_today > 0:
-        s2 = 4
-    elif main_today > -2e8:
-        s2 = 3
-    elif main_today > -5e8:
-        s2 = 2
-    else:
-        s2 = 1
+    # Trend: 3d vs 10d direction consistency
+    trend_score = 0
+    if cf.net_3d > 0 and cf.net_10d > 0:
+        trend_score = 2
+    elif cf.net_3d < 0 and cf.net_10d < 0:
+        trend_score = -1
 
-    big_net = cf.super_large_net + cf.large_net
-    if big_net > 2e8:
-        s3 = 5
-    elif big_net > 0:
-        s3 = 4
-    elif big_net > -2e8:
-        s3 = 3
-    else:
-        s3 = 2
+    # 20d long-term trend
+    long_score = 0
+    if cf.net_20d > 5e8:
+        long_score = 2
+    elif cf.net_20d > 0:
+        long_score = 1
+    elif cf.net_20d < -5e8:
+        long_score = -2
+    elif cf.net_20d < 0:
+        long_score = -1
 
     if cf.northbound_chg != 0:
         s4 = (
@@ -449,17 +457,16 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
     else:
         s5 = 3
 
-    total = s1 * 0.35 + s2 * 0.25 + s3 * 0.20 + s4 * 0.15 + s5 * 0.05
+    total = s1 * 0.35 + trend_score + long_score + s4 * 0.15 + s5 * 0.05
+    total = max(1, min(5, 3 + total))
     score = max(1, min(5, round(total)))
 
     parts = [
         f"近5日主力净流入{main_5d / 1e8:.2f}亿",
-        f"今日主力净流入{main_today / 1e8:.2f}亿",
+        f"3日{cf.net_3d / 1e8:+.2f}亿",
+        f"10日{cf.net_10d / 1e8:+.2f}亿",
+        f"20日{cf.net_20d / 1e8:+.2f}亿",
     ]
-    if cf.super_large_net or cf.large_net:
-        parts.append(
-            f"超大单{(cf.super_large_net / 1e8):.2f}亿/大单{(cf.large_net / 1e8):.2f}亿"
-        )
     if cf.northbound_chg:
         nb = cf.northbound_chg / 1e8
         parts.append(f"北向变化{nb:+.2f}亿")

@@ -59,7 +59,7 @@ class AgentReachWrapper:
     def fetch_xueqiu_hot(cls, symbol: str, stock_name: str = "") -> list[SocialPost]:
         """Fetch Xueqiu hot posts via Agent Reach Python API.
 
-        Filters posts to only include those mentioning the stock.
+        Returns all hot posts without filtering.
         """
         try:
             from agent_reach.channels.xueqiu import XueqiuChannel
@@ -69,25 +69,12 @@ class AgentReachWrapper:
             if status != "ok":
                 return []
 
-            hot_posts = ch.get_hot_posts(30)
+            hot_posts = ch.get_hot_posts(20)
             posts: list[SocialPost] = []
-
-            # Filter by stock name/symbol
-            search_terms = [symbol]
-            if stock_name:
-                search_terms.append(stock_name)
-                if len(stock_name) >= 2:
-                    search_terms.append(stock_name[:2])
 
             for item in hot_posts:
                 title = item.get("title", "")
                 text = item.get("text", "")
-                combined = f"{title} {text}"
-
-                # Check if post mentions the stock
-                if not any(term in combined for term in search_terms):
-                    continue
-
                 posts.append(
                     SocialPost(
                         platform="雪球(AgentReach)",
@@ -98,51 +85,12 @@ class AgentReachWrapper:
                         likes=int(item.get("likes", 0)),
                     )
                 )
-            return posts[:10]
+
+            return posts[:20]
         except ImportError:
             return []
         except Exception:
             return []
-
-    @classmethod
-    def fetch_xiaohongshu(cls, keyword: str) -> list[SocialPost]:
-        """Fetch Xiaohongshu notes via Agent Reach / opencli."""
-        if not cls.is_installed():
-            return []
-
-        stdout, _ = _run_tool(
-            ["opencli", "xiaohongshu", "search", keyword, "-n", "10", "-f", "json"],
-            timeout=60,
-        )
-        if not stdout:
-            return []
-
-        posts: list[SocialPost] = []
-        try:
-            items = json.loads(stdout)
-            if isinstance(items, list):
-                for item in items[:10]:
-                    posts.append(
-                        SocialPost(
-                            platform="小红书(AgentReach)",
-                            title=str(item.get("title", item.get("display_title", ""))),
-                            content=str(item.get("desc", item.get("content", ""))),
-                            url=str(item.get("url", item.get("share_url", ""))),
-                            author=str(
-                                item.get(
-                                    "author", item.get("user", {}).get("nickname", "")
-                                )
-                            ),
-                            published_at=str(
-                                item.get("time", item.get("create_time", ""))
-                            ),
-                            likes=int(float(item.get("liked_count", 0) or 0)),
-                            comments=int(float(item.get("comment_count", 0) or 0)),
-                        )
-                    )
-        except Exception:
-            pass
-        return posts
 
     @classmethod
     def fetch_toutiao(cls, keyword: str) -> list[SocialPost]:

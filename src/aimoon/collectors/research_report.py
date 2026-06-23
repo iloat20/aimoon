@@ -36,14 +36,23 @@ class ResearchReportCollector:
         eps_count = 0
 
         current_year = datetime.now().year
+        one_year_ago = datetime.now().replace(year=current_year - 1)
 
         for _, row in df.iterrows():
+            date_str = str(row.get("日期", ""))[:10]
+            try:
+                report_date = datetime.strptime(date_str, "%Y-%m-%d")
+                if report_date < one_year_ago:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
             report = ResearchReport(
                 title=str(row.get("报告名称", "")),
                 institution=str(row.get("机构", "")),
                 rating=str(row.get("东财评级", "")),
                 industry=str(row.get("行业", "")),
-                date=str(row.get("日期", ""))[:10],
+                date=date_str,
                 pdf_url=str(row.get("报告PDF链接", "")),
             )
 

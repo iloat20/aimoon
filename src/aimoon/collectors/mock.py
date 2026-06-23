@@ -80,6 +80,19 @@ def mock_social_posts(
         f"{name}在行业内的竞争力很强，是个好标的",
         f"短线来看{symbol}有回调压力，长线问题不大",
         f"今天{name}的走势很关键，突破前高就是机会",
+        f"{name}发布新公告，市场反应积极",
+        f"机构看好{symbol}，目标价上调",
+        f"{name}的ROE持续提升，基本面改善",
+        f"北向资金增持{symbol}，外资看好",
+        f"{name}的估值处于历史低位，安全边际高",
+        f"行业政策利好，{name}有望受益",
+        f"{symbol}的股息率超过5%，适合长期配置",
+        f"{name}的研发投入持续增加，创新能力强",
+        f"市场情绪回暖，{symbol}放量上涨",
+        f"{name}的管理层变动，关注后续战略调整",
+        f"供应链改善，{name}的成本控制成效显著",
+        f"{symbol}的技术面出现金叉信号",
+        f"{name}的分红方案超预期，股东回报提升",
     ]
 
     posts = []
@@ -200,7 +213,6 @@ def mock_stock_info(symbol: str) -> StockInfo:
             *mock_social_posts("雪球", symbol, name, 5),
             *mock_social_posts("东方财富股吧", symbol, name, 5),
             *mock_social_posts("今日头条", symbol, name, 3),
-            *mock_social_posts("抖音", symbol, name, 2),
             *mock_social_posts("微信公众号", symbol, name, 3),
         ],
         research=ResearchReportData(

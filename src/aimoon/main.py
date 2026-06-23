@@ -58,7 +58,7 @@ async def _run_mock(
             count=len([x for x in stock_info.social_posts if x.platform == p]),
             elapsed_ms=50,
         )
-        for p in ["雪球", "东方财富股吧", "今日头条", "抖音", "微信公众号"]
+        for p in ["雪球", "东方财富股吧", "今日头条", "微信公众号"]
     ]
 
     gen = ReportGenerator()
@@ -158,35 +158,6 @@ async def _run_real(
     # === Social media ===
     print(" 采集社交媒体舆情...")
 
-    # 雪球 (reuse xq instance from quote fetch)
-    xq_result = await xq.collect(symbol, name)
-    if xq_result.status == "success":
-        all_posts.extend(xq_result.posts)
-        print(f"   雪球: {xq_result.count}条 [真实数据]")
-        collect_results.append(xq_result)
-    else:
-        # Try Agent Reach as fallback
-        from .collectors.agent_reach_wrapper import AgentReachWrapper
-
-        if AgentReachWrapper.is_installed():
-            ar_posts = AgentReachWrapper.fetch_xueqiu_hot(symbol, name)
-            if ar_posts:
-                all_posts.extend(ar_posts)
-                collect_results.append(
-                    CollectResult(
-                        platform="雪球(AgentReach)",
-                        status="success",
-                        count=len(ar_posts),
-                        elapsed_ms=0,
-                    )
-                )
-                print(f"   雪球: {len(ar_posts)}条 [AgentReach]")
-            else:
-                print("   雪球: 获取失败 (WAF拦截)")
-        else:
-            print("   雪球: 获取失败 (WAF拦截，未安装AgentReach)")
-            print("         → 安装AgentReach可作为备选: pip install agent-reach")
-
     # 东方财富股吧 (Playwright → akshare → mock)
     from .collectors.eastmoney_playwright import GubaCollector
 
@@ -231,6 +202,12 @@ async def _run_real(
         print(f"   巨潮资讯: {cninfo_result.count}条 [真实数据]")
     else:
         print(f"   巨潮资讯: 0条 ({cninfo_result.error})")
+
+    # === 最新财务报告 (年报/半年报/季报, 缓存30天) ===
+    print(" 获取最新财务报告...")
+    from .financial.annual_report import fetch_reports
+
+    reports = await fetch_reports(symbol)
     collect_results.append(cninfo_result)
 
     # Other platforms (real with mock fallback)
@@ -284,6 +261,8 @@ async def _run_real(
             )
             print(f"   {p_name}: {len(mock)}条 (mock)")
 
+    from .models.stock import FinancialReportData
+
     stock_info = StockInfo(
         symbol=symbol,
         name=name,
@@ -294,6 +273,9 @@ async def _run_real(
         capital_flow=capital_flow,
         social_posts=all_posts,
         research=research,
+        annual_report=FinancialReportData(**(reports.get("annual") or {})),
+        semi_annual_report=FinancialReportData(**(reports.get("semi_annual") or {})),
+        quarterly_report=FinancialReportData(**(reports.get("quarterly") or {})),
     )
 
     # === Data integrity validation ===
@@ -349,7 +331,7 @@ def main() -> None:
         "--test", action="store_true", help="测试模式：采集真实数据但跳过AI分析"
     )
     parser.add_argument("-o", "--output", help="HTML报告输出目录")
-    parser.add_argument("--version", action="version", version="aimoon 0.3.1")
+    parser.add_argument("--version", action="version", version="aimoon 0.3.2")
 
     args = parser.parse_args()
     raw_args: list[str] = args.symbol or []
@@ -385,7 +367,7 @@ def main() -> None:
         else "测试(无AI)" if args.test else "真实数据"
     )
     print(f"\n{'=' * 60}")
-    print("  aimoon v0.3.1")
+    print("  aimoon v0.3.2")
     print(f"  股票: {name} ({parsed_symbol}.{market})")
     print(f"  时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  模式: {mode_label}")

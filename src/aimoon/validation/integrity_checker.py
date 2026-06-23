@@ -126,7 +126,7 @@ def _check_capital_flow(
     score = 3
     if cf.main_net_5d != 0:
         score += 1
-    if cf.main_net_today != 0:
+    if cf.net_3d != 0:
         score += 1
     if cf.northbound_chg != 0:
         score += 1
@@ -196,16 +196,16 @@ def _check_divergence(info: StockInfo, warnings: list[str]) -> None:
     if q.price <= 0:
         return
 
-    big_net = cf.super_large_net + cf.large_net
+    big_net = cf.net_3d
     change = q.change_pct
 
     if big_net > 1e8 and change < -1:
         warnings.append(
-            f"超大单+大单净流入{big_net / 1e8:.2f}亿，但股价下跌{change}%，出现量价背离"
+            f"近3日净流入{big_net / 1e8:.2f}亿，但股价下跌{change}%，出现量价背离"
         )
     elif big_net < -1e8 and change > 1:
         warnings.append(
-            f"超大单+大单净流出{abs(big_net) / 1e8:.2f}亿，"
+            f"近3日净流出{abs(big_net) / 1e8:.2f}亿，"
             f"但股价上涨{change}%，出现量价背离"
         )
 

@@ -64,7 +64,7 @@ class ToutiaoCollector(BaseCollector):
             )
 
             if containers:
-                for container in containers[:15]:
+                for container in containers[:20]:
                     try:
                         link_el = await container.query_selector("a[href*='/jump']")
                         if not link_el:
@@ -76,7 +76,23 @@ class ToutiaoCollector(BaseCollector):
 
                         href = await link_el.get_attribute("href") or ""
                         actual_url = ""
-                        if "jtoken" in href and "url=" in href:
+
+                        # Extract group ID from URL (triple-encoded in href)
+                        import re as _re
+                        m = _re.search(r"group%252F(\d{15,})", href)
+                        if m:
+                            actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+                        else:
+                            m = _re.search(r"group%2[5Ff](\d{15,})", href)
+                            if m:
+                                actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+                            else:
+                                m = _re.search(r"group(?:%2F|=|/)(\d{15,})", href)
+                                if m:
+                                    actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+
+                        # Fallback: extract url parameter
+                        if not actual_url:
                             import re
                             m = re.search(r"url=([^&]+)", href)
                             if m:
@@ -147,7 +163,7 @@ class ToutiaoCollector(BaseCollector):
             else:
                 # Fallback: direct link parsing
                 title_elements = await page.query_selector_all("a[href*='/jump']")
-                for el in title_elements[:15]:
+                for el in title_elements[:20]:
                     try:
                         title = (await el.inner_text()).strip()
                         if not title or len(title) < 5:
@@ -155,7 +171,23 @@ class ToutiaoCollector(BaseCollector):
 
                         href = await el.get_attribute("href") or ""
                         actual_url = ""
-                        if "jtoken" in href and "url=" in href:
+
+                        # Extract group ID from URL (triple-encoded in href)
+                        import re as _re
+                        m = _re.search(r"group%252F(\d{15,})", href)
+                        if m:
+                            actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+                        else:
+                            m = _re.search(r"group%2[5Ff](\d{15,})", href)
+                            if m:
+                                actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+                            else:
+                                m = _re.search(r"group(?:%2F|=|/)(\d{15,})", href)
+                                if m:
+                                    actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
+
+                        # Fallback: extract url parameter
+                        if not actual_url:
                             import re
                             m = re.search(r"url=([^&]+)", href)
                             if m:
@@ -184,7 +216,7 @@ class ToutiaoCollector(BaseCollector):
 
             await browser.close()
             posts.sort(key=lambda x: x.likes or 0, reverse=True)
-            return posts[:15]
+            return posts[:20]
 
     @staticmethod
     def _parse_count(txt: str) -> int:

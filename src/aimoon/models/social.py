@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class SocialPost(BaseModel):
     """A single social media post / article / video."""
 
-    platform: str  # 雪球/小红书/抖音/头条/微信/股吧
+    platform: str  # 雪球/头条/微信/股吧
     title: str = ""
     content: str = ""
     url: str = ""

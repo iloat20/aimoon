@@ -1,7 +1,7 @@
 """MediaCrawler adapter — delegates social media scraping to MediaCrawler.
 
 MediaCrawler: https://github.com/NanmiCoder/MediaCrawler
-Supports: 小红书, 抖音, 快手, B站, 微博, 知乎, etc.
+Supports: 快手, B站, 微博, 知乎, etc.
 
 This adapter calls MediaCrawler as a subprocess. MediaCrawler must be
 installed separately (cloned from GitHub) at the configured path.
@@ -25,8 +25,8 @@ class MediaCrawlerAdapter(BaseCollector):
     MediaCrawler requires:
     1. Clone from GitHub: git clone https://github.com/NanmiCoder/MediaCrawler
     2. Install deps: pip install -r requirements.txt
-    3. Configure cookies (e.g., xiaohongshu.yaml, douyin.yaml)
-    4. Run: python main.py --platform xhs --keyword 600519
+    3. Configure cookies (e.g., douyin.yaml)
+    4. Run: python main.py --platform douyin --keyword 600519
 
     This adapter runs MediaCrawler with keyword=stock_code and parses output.
     """
@@ -68,7 +68,7 @@ class MediaCrawlerAdapter(BaseCollector):
         """Return installation guide for MediaCrawler."""
         return (
             "# MediaCrawler 安装指南\n\n"
-            "本工具需要安装 MediaCrawler 来采集小红书和抖音数据。\n\n"
+            "本工具需要安装 MediaCrawler 来采集社交媒体数据。\n\n"
             "## 安装步骤\n\n"
             "```bash\n"
             "# 1. 克隆项目\n"
@@ -80,13 +80,11 @@ class MediaCrawlerAdapter(BaseCollector):
             "# 进入 config/ 目录，编辑对应平台的 YAML 配置文件\n"
             "# 参考: https://github.com/NanmiCoder/MediaCrawler/wiki\n\n"
             "# 4. 测试\n"
-            "python main.py --platform xhs --keyword 贵州茅台 --lt 5\n"
+            "python main.py --platform douyin --keyword 贵州茅台 --lt 5\n"
             "```\n\n"
             "## 支持的平台\n"
             "| 平台 | --platform 参数 | 说明 |\n"
             "|------|----------------|------|\n"
-            "| 小红书 | xhs | 笔记 + 评论 |\n"
-            "| 抖音 | douyin | 视频 + 评论 |\n"
             "| 微博 | weibo | 帖子 + 评论 |\n"
             "| B站 | bilibili | 视频 + 评论 |\n"
             "| 快手 | kuaishou | 视频 + 评论 |\n"

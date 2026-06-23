@@ -84,18 +84,21 @@ class CapitalFlowData(BaseModel):
 
     symbol: str = ""
 
-    # 主力资金（近5日累计 + 今日）
+    # 主力资金（近5日累计）
     main_net_5d: float = 0.0  # 近5日主力净流入（元）
-    main_net_today: float = 0.0  # 今日主力净流入（元）
 
-    # 分单净流入（今日，元）
-    super_large_net: float = 0.0  # 超大单
-    large_net: float = 0.0  # 大单
-    medium_net: float = 0.0  # 中单
-    small_net: float = 0.0  # 小单
+    # 多周期净流入（元）
+    net_3d: float = 0.0   # 3日净流入
+    net_10d: float = 0.0  # 10日净流入
+    net_20d: float = 0.0  # 20日净流入
 
     # 北向资金
-    northbound_chg: float = 0.0  # 北向持股变化（元）
+    northbound_chg: float = 0.0        # 北向持股变化（元）
+    northbound_net_flow: float = 0.0   # 北向整体净流入（元）
+    northbound_hold_shares: float = 0.0  # 北向持股数（股）
+    northbound_hold_value: float = 0.0   # 北向持股市值（元）
+    northbound_hold_ratio: float = 0.0   # 北向持股占比（%）
+    northbound_date: str = ""            # 数据日期
 
     # 龙虎榜（最近一次上榜，可空）
     lhb_date: str = ""
@@ -136,6 +139,14 @@ class ResearchReportData(BaseModel):
     avg_pe_this_yr: float = 0.0
 
 
+class FinancialReportData(BaseModel):
+    """Financial report metadata (annual/semi-annual/quarterly)."""
+
+    year: str = ""
+    title: str = ""
+    pdf_url: str = ""
+
+
 class StockInfo(BaseModel):
     """Aggregated stock information (input to AI analyzer)."""
 
@@ -148,4 +159,7 @@ class StockInfo(BaseModel):
     capital_flow: CapitalFlowData = Field(default_factory=CapitalFlowData)
     social_posts: list[SocialPost] = Field(default_factory=list)
     research: ResearchReportData = Field(default_factory=ResearchReportData)
+    annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
+    semi_annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
+    quarterly_report: FinancialReportData = Field(default_factory=FinancialReportData)
     collected_at: str = Field(default_factory=lambda: datetime.now().isoformat())

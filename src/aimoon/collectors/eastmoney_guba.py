@@ -112,7 +112,7 @@ class EastMoneyGubaCollector(BaseCollector):
             )
             matches = title_pattern.findall(html)
 
-            for _, (href, title) in enumerate(matches[:10]):
+            for _, (href, title) in enumerate(matches[:20]):
                 title = title.strip()
                 if not title or len(title) < 5:
                     continue
