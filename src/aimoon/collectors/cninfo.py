@@ -57,7 +57,9 @@ class CninfoCollector(BaseCollector):
         except Exception as e:
             return self._fail(str(e), (time.monotonic() - t0) * 1000)
 
-    async def _fetch_announcements(self, symbol: str, stock_name: str = "") -> list[SocialPost]:
+    async def _fetch_announcements(
+        self, symbol: str, stock_name: str = ""
+    ) -> list[SocialPost]:
         """Fetch company announcements via CNINFO query API."""
         async with httpx.AsyncClient(timeout=15.0) as client:
             # Use stock name for better search results

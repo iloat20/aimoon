@@ -25,6 +25,30 @@
   --font: "Inter", "SF Pro Display", "PingFang SC", system-ui, -apple-system, sans-serif;
 }
 
+/* ===== Light Mode ===== */
+body.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: rgba(0,0,0,0.07);
+  --border-hover: rgba(0,0,0,0.14);
+  --text: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --red: #dc2626;
+  --green: #16a34a;
+  --amber: #d97706;
+  --blue: #2563eb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+body.light .card:hover { border-color: var(--border-hover); }
+body.light .ai-report { color: #334155; }
+body.light .ai-report h1, body.light .ai-report h2, body.light .ai-report h3,
+body.light .ai-report strong { color: #1e293b; }
+body.light .ai-report table th { background: #e2e8f0; color: #1e293b; }
+body.light .ai-report code { background: #e2e8f0; }
+body.light .research-table td { border-bottom-color: rgba(0,0,0,0.04); }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -203,6 +227,20 @@ a:hover { text-decoration: underline; }
 .ai-report table th { background: var(--surface-2); color: #f1f5f9; }
 .ai-report code { background: var(--surface-2); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
 
+/* ===== Theme Toggle ===== */
+.theme-toggle {
+  position: fixed; top: 16px; right: 20px; z-index: 1000;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); transition: all 0.3s ease;
+}
+.theme-toggle:hover { border-color: var(--border-hover); transform: scale(1.08); }
+@media (max-width: 768px) {
+  .theme-toggle { top: 10px; right: 10px; width: 36px; height: 36px; font-size: 16px; }
+}
+
 /* ===== Footer ===== */
 .footer {
   text-align: center; padding: 28px 0 0; border-top: 1px solid var(--border);
@@ -272,6 +310,8 @@ a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
+<button class="theme-toggle" id="themeToggle" title="切换亮色/暗色模式">☀️</button>
+
 <div class="container">
 
 <!-- ===== HEADER ===== -->
@@ -566,7 +606,7 @@ a:hover { text-decoration: underline; }
       导出PDF
     </button>
   </div>
-  <div class="version">aimoon v0.3.2 · {{ generated_at }}</div>
+  <div class="version">aimoon v0.3.3 · {{ generated_at }}</div>
 </footer>
 
 </div>
@@ -583,12 +623,68 @@ a:hover { text-decoration: underline; }
   </button>
 </div>
 
+<!-- ===== Theme Toggle (early — no external deps) ===== -->
+<script>
+(function() {
+  var STORAGE_KEY = 'aimoon-theme';
+  var btn = document.getElementById('themeToggle');
+  var body = document.body;
+
+  function applyTheme(mode) {
+    if (mode === 'light') {
+      body.classList.add('light');
+      btn.innerHTML = '🌙';
+    } else {
+      body.classList.remove('light');
+      btn.innerHTML = '☀️';
+    }
+    if (window._klineChart) window._updateChartTheme();
+  }
+
+  window._updateChartTheme = function() {
+    var c = window._klineChart;
+    if (!c) return;
+    var isLight = body.classList.contains('light');
+    var tickColor = '#64748b';
+    var gridColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)';
+    var labelColor = isLight ? '#475569' : '#94a3b8';
+    var volBg = isLight ? '#e2e8f0' : '#1e2531';
+    var volBorder = isLight ? '#cbd5e1' : '#2a3a4a';
+
+    c.options.scales.x.ticks.color = tickColor;
+    c.options.scales.x.grid.color = gridColor;
+    c.options.scales.y.ticks.color = labelColor;
+    c.options.scales.y.grid.color = gridColor;
+    c.options.scales.y1.ticks.color = tickColor;
+    c.options.plugins.legend.labels.color = labelColor;
+    c.options.plugins.tooltip.backgroundColor = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(12,15,21,0.95)';
+    c.options.plugins.tooltip.titleColor = isLight ? '#1e293b' : '#e2e8f0';
+    c.options.plugins.tooltip.bodyColor = isLight ? '#334155' : '#cbd5e1';
+    c.options.plugins.tooltip.borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+    c.data.datasets[1].backgroundColor = volBg;
+    c.data.datasets[1].borderColor = volBorder;
+    c.update();
+  };
+
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) saved = 'dark';
+  applyTheme(saved);
+
+  btn.addEventListener('click', function() {
+    var next = body.classList.contains('light') ? 'dark' : 'light';
+    localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
+  });
+})();
+</script>
+
 <!-- ===== SCRIPTS ===== -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
 <script>
+
 // K-line chart
 {% if kline.bars %}
 (function(){
@@ -625,7 +721,7 @@ a:hover { text-decoration: underline; }
   }
 
   var ctx = document.getElementById('klineChart').getContext('2d');
-  new Chart(ctx, {
+  window._klineChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels: dates,
@@ -696,6 +792,7 @@ a:hover { text-decoration: underline; }
       }
     }
   });
+  if (window._updateChartTheme) window._updateChartTheme();
 })();
 {% endif %}
 
@@ -715,7 +812,8 @@ function getTarget() { return document.querySelector('.container'); }
 function exportAsImage() {
   var btn = document.getElementById('exportImg');
   btn.textContent = '⏳ 生成中...'; btn.disabled = true;
-  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: '#0c0f15' }).then(function(canvas) {
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
     var a = document.createElement('a');
     a.download = '{{ name }}_{{ symbol }}_report.png';
     a.href = canvas.toDataURL('image/png');
@@ -727,7 +825,8 @@ function exportAsImage() {
 function exportAsPdf() {
   var btn = document.getElementById('exportPdf');
   btn.textContent = '⏳ 生成中...'; btn.disabled = true;
-  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: '#0c0f15' }).then(function(canvas) {
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
     var jsPDF = window.jspdf.jsPDF;
     var imgW = canvas.width, imgH = canvas.height;
     var pdfW = 210, pdfH = (imgH * pdfW) / imgW;

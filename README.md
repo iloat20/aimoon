@@ -56,18 +56,21 @@ cd aimoon
 # 2. 安装依赖
 uv sync
 
-# 3. 首次安装 CLI 工具（全局可用）
-uv tool install --editable .
+# 3. 安装 CLI 工具（全局可用）
+pip install -e .
 
 # 4. Playwright 浏览器
 uv run playwright install chromium
 ```
 
+> **提示**: 也可用 `uv tool install --editable .` 替代 `pip install -e .`，两者等效。
+
 ### 升级
 
 ```bash
 git pull
-uv tool install --editable .  # 重新安装 CLI
+uv sync
+pip install -e .             # 重新安装 CLI
 ```
 
 ### 卸载
@@ -145,7 +148,7 @@ CACHE_DIR=./cache                             # 数据缓存目录
 └───────────────────────┬───────────────────────────────────┘
                         ▼
 ┌─ ④ HTML 报告 (Jinja2 + Chart.js) ────────────────────────┐
-│   深蓝暗色 · 响应式Grid · 红涨绿跌                          │
+│   亮色/暗色主题切换 · 响应式Grid · 红涨绿跌                    │
 │   K线折线图 · 三列并排卡片 · 20条帖子展示                   │
 │   纯静态HTML，可离线查看                                    │
 └─────────────────────────────────────────────────────────────┘
@@ -162,6 +165,7 @@ src/aimoon/
 │   ├── social.py        # SocialPost, CollectResult
 │   └── report.py        # AnalysisReport, DimensionScore
 ├── collectors/          # 数据采集器
+│   ├── base.py          # 采集器基类 + 注册表
 │   ├── quote.py         # 行情（雪球→新浪→腾讯）
 │   ├── kline.py         # K线历史（akshare）
 │   ├── fund_flow.py     # 资金流向
@@ -169,19 +173,28 @@ src/aimoon/
 │   ├── eastmoney_playwright.py # 东方财富股吧 (Playwright, 15条)
 │   ├── cninfo.py        # 巨潮资讯·公司公告 (20条)
 │   ├── wechat.py        # 微信公众号（搜狗搜索 Playwright, 20条）
-│   └── toutiao.py       # 今日头条（Playwright, 18-20条）
+│   ├── toutiao.py       # 今日头条（Playwright, 18-20条）
+│   └── mock.py          # Mock 数据生成器
 ├── financial/           # 财务数据
 │   ├── pysnowball_adapter.py # pysnowball 适配器
 │   └── annual_report.py      # 年报/半年报/季报获取与缓存(30天)
 ├── indicators/          # 技术指标
-│   └── technical.py     # MA/MACD/KDJ/RSI/Bollinger
+│   ├── technical.py     # MA/MACD/KDJ/RSI/Bollinger
+│   └── capital_flow.py  # 资金流向指标计算
 ├── ai/                  # DeepSeek 分析引擎
 │   └── analyzer.py      # DeepSeek v4-flash 深度思考模式
 ├── validation/          # 数据质量
-│   └── integrity_checker.py
-└── report/              # 报告生成
-    ├── generator.py     # Jinja2 模板渲染
-    └── templates/index.html
+│   ├── integrity_checker.py
+│   ├── cross_validator.py
+│   ├── format_validator.py
+│   └── freshness_checker.py
+├── scoring/             # 多维评分
+│   └── scorer.py        # 11因子评分模型
+├── pipeline.py          # 流程编排
+├── report/              # 报告生成
+│   ├── generator.py     # Jinja2 模板渲染
+│   └── templates/index.html
+└── utils.py             # 工具函数
 ```
 
 ## 输出示例
@@ -195,6 +208,7 @@ src/aimoon/
 - **机构研报**：评级分布、EPS预测、PDF下载链接（最近一年）
 - **AI 综合分析报告**：DeepSeek v4-flash 深度思考模式生成
 - **数据质量校验**：置信度评分
+- **亮色/暗色主题切换**：右上角按钮一键切换，状态自动保存
 - **数据来源清单**：每个平台采集状态
 
 报告为纯静态 HTML，可直接通过浏览器打开或分享。

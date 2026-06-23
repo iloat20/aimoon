@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from typing import Any, Generic, TypeVar
 
 from ..models.social import CollectResult, SocialPost
 
+T = TypeVar("T")
+
 
 class BaseCollector(ABC):
-    """Abstract base for all platform collectors."""
+    """Abstract base for social media platform collectors."""
 
     name: str = "base"
 
@@ -36,6 +39,19 @@ class BaseCollector(ABC):
         return CollectResult(
             platform=self.name, status="timeout", error="采集超时", elapsed_ms=elapsed
         )
+
+
+class BaseDataCollector(ABC, Generic[T]):
+    """Abstract base for non-social data collectors (quote, K-line, fund flow, etc.).
+
+    Returns typed data models directly rather than CollectResult.
+    """
+
+    name: str = "base"
+
+    @abstractmethod
+    async def fetch(self, symbol: str, **kwargs: Any) -> T:
+        """Fetch data for a stock symbol; return typed model."""
 
 
 class CollectorRegistry:

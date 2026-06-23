@@ -1,33 +1,28 @@
 """Capital flow (资金面) collector with multi-source fallback.
 
-Primary: akshare stock_individual_fund_flow (East Money, push2, may be blocked)
-Fallback 1: akshare stock_fund_flow_individual (同花顺 ranking, per-page search)
-Fallback 2: pysnowball
+Primary: pysnowball (3/5/10/20 day data)
+Fallback: akshare stock_individual_fund_flow (East Money)
+HTTP fallback: East Money push2his API
 
-Each sub-fetcher independently; failures don't abort the pipeline.
+Each sub-fetcher runs independently; failures don't abort the pipeline.
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
-from io import StringIO
 
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
 
 from ..models.stock import CapitalFlowData
 from ..utils import resolve_market
-
-try:
-    from akshare.datasets import get_ths_js
-except ImportError:
-    get_ths_js = None
+from .base import BaseDataCollector
 
 
-class FundFlowCollector:
+class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
     """Collects market capital flow data for a single A-share."""
+
+    name = "fund_flow"
 
     def __init__(self) -> None:
         self._sources_ok: list[str] = []
@@ -47,126 +42,6 @@ class FundFlowCollector:
 
         data.source = "+".join(self._sources_ok) if self._sources_ok else "all_failed"
         return data
-
-    def _parse_net(self, s: str) -> float:
-        """Parse 同花顺 net flow string like '5.12亿', '-1234万' to float(yuan)."""
-        s = s.strip().replace(",", "").replace(" ", "")
-        if not s:
-            return 0.0
-        if "亿" in s:
-            return float(s.replace("亿", "")) * 1e8
-        if "万" in s:
-            return float(s.replace("万", "")) * 1e4
-        try:
-            return float(s)
-        except ValueError:
-            return 0.0
-
-    # ---------- 同花顺 fallback (early-termination pagination) ----------
-
-    def _ths_fetch_page(self, url_template: str, page: int) -> pd.DataFrame:
-        """Fetch a single 同花顺 ranking page; return parsed DataFrame or empty."""
-        if get_ths_js is None:
-            return pd.DataFrame()
-
-        import py_mini_racer  # noqa: PLC0415
-
-        js_code = py_mini_racer.MiniRacer()
-        js_code.eval(get_ths_js("ths.js"))
-        v_code = js_code.call("v")
-        headers = {
-            "Accept": "text/html, */*; q=0.01",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "hexin-v": v_code,
-            "Host": "data.10jqka.com.cn",
-            "Pragma": "no-cache",
-            "Referer": "http://data.10jqka.com.cn/funds/hyzjl/",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.85 Safari/537.36",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        r = requests.get(url_template.format(page), headers=headers, timeout=10)
-        return pd.read_html(StringIO(r.text))[0]
-
-    def _ths_search_stock(
-        self, symbol: str, indicator: str, max_pages: int = 50
-    ) -> dict | None:
-        """Scan 同花顺 ranking pages for *symbol*; return first-match row dict or None.
-
-        Early-termination: stops scanning once stock is found (much faster than
-        fetching all ~104 pages for well-known stocks like 茅台).
-        """
-        indicator_urls = {
-            "即时": (
-                "http://data.10jqka.com.cn/funds/ggzjl/field/zdf/order/desc"
-                "/page/{}/ajax/1/free/1/"
-            ),
-            "5日排行": (
-                "http://data.10jqka.com.cn/funds/ggzjl/board/5/field/zdf/order/desc"
-                "/page/{}/ajax/1/free/1/"
-            ),
-        }
-        url_template = indicator_urls.get(indicator)
-        if not url_template:
-            return None
-
-        page_num = self._ths_total_pages(url_template)
-        if page_num is None:
-            return None
-
-        for page in range(1, min(page_num, max_pages) + 1):
-            try:
-                df = self._ths_fetch_page(url_template, page)
-                if df is None or df.empty:
-                    continue
-                row = df[df.iloc[:, 1].astype(str) == symbol]
-                if not row.empty:
-                    return row.iloc[0].to_dict()
-            except Exception:
-                continue
-        return None
-
-    def _ths_total_pages(self, url_template: str) -> int | None:
-        """Determine total page count from 同花顺 pagination info."""
-        try:
-            import py_mini_racer  # noqa: PLC0415
-        except ImportError:
-            return None
-
-        js_code = py_mini_racer.MiniRacer()
-        js_code.eval(get_ths_js("ths.js"))
-        v_code = js_code.call("v")
-
-        url = (
-            "http://data.10jqka.com.cn/funds/ggzjl/field/code/order/desc/ajax/1/free/1/"
-        )
-        headers = {
-            "hexin-v": v_code,
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" " AppleWebKit/537.36"
-            ),
-        }
-        r = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, features="lxml")
-        el = soup.find(name="span", attrs={"class": "page_info"})
-        if el is None:
-            return None
-        parts = el.text.strip().split("/")
-        return int(parts[1]) if len(parts) >= 2 else None
-
-    async def _fetch_ths_ranking(self, symbol: str, data: CapitalFlowData) -> None:
-        """Fallback: search 同花顺 ranking for target stock."""
-        try:
-            row_5d = await asyncio.to_thread(self._ths_search_stock, symbol, "5日排行")
-            if row_5d:
-                net_col = "资金流入净额" if "资金流入净额" in row_5d else "净额"
-                data.main_net_5d = self._parse_net(str(row_5d.get(net_col, "0")))
-                self._sources_ok.append("ths(ranking)")
-        except Exception:
-            pass
 
     # ---------- akshare sources ----------
 
@@ -188,7 +63,7 @@ class FundFlowCollector:
         try:
             if "主力净流入-净额" in df.columns:
                 vals = df["主力净流入-净额"].values
-                data.main_net_5d = float(sum(vals[-6:-1])) if len(vals) >= 6 else float(sum(vals[:-1]))  # noqa: E501
+                data.main_net_5d = float(sum(vals[-5:])) if len(vals) >= 5 else float(sum(vals))  # noqa: E501
                 if len(vals) >= 3:
                     data.net_3d = float(sum(vals[-3:]))
                 if len(vals) >= 10:
@@ -249,7 +124,7 @@ class FundFlowCollector:
             # Calculate multi-period sums from klines
             all_main = [float(k.split(",")[1] or 0) for k in klines if len(k.split(",")) >= 2]  # noqa: E501
             if len(all_main) >= 2:
-                data.main_net_5d = sum(all_main[-6:-1]) if len(all_main) >= 6 else sum(all_main[:-1])  # noqa: E501
+                data.main_net_5d = sum(all_main[-5:]) if len(all_main) >= 5 else sum(all_main)  # noqa: E501
             if len(all_main) >= 3:
                 data.net_3d = sum(all_main[-3:])
             if len(all_main) >= 10:
@@ -393,85 +268,3 @@ class FundFlowCollector:
             self._sources_ok.append("pysnowball(资金流)")
         except Exception:
             pass
-
-
-def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
-    """Rule-based 1-5 capital-flow score.
-
-    Returns (score 1-5, detail_text, main_force_label).
-    Label is one of "流入"/"流出"/"持平".
-    """
-    main_5d = cf.main_net_5d
-
-    if main_5d > 0:
-        main_force = "流入"
-    elif main_5d < 0:
-        main_force = "流出"
-    else:
-        main_force = "持平"
-
-    if main_5d > 5e8:
-        s1 = 5
-    elif main_5d > 1e8:
-        s1 = 4
-    elif main_5d > -1e8:
-        s1 = 3
-    elif main_5d > -5e8:
-        s1 = 2
-    else:
-        s1 = 1
-
-    # Trend: 3d vs 10d direction consistency
-    trend_score = 0
-    if cf.net_3d > 0 and cf.net_10d > 0:
-        trend_score = 2
-    elif cf.net_3d < 0 and cf.net_10d < 0:
-        trend_score = -1
-
-    # 20d long-term trend
-    long_score = 0
-    if cf.net_20d > 5e8:
-        long_score = 2
-    elif cf.net_20d > 0:
-        long_score = 1
-    elif cf.net_20d < -5e8:
-        long_score = -2
-    elif cf.net_20d < 0:
-        long_score = -1
-
-    if cf.northbound_chg != 0:
-        s4 = (
-            5
-            if cf.northbound_chg > 1e8
-            else (
-                4 if cf.northbound_chg > 0 else (2 if cf.northbound_chg > -1e8 else 1)
-            )
-        )  # noqa: E501
-    else:
-        s4 = 3
-
-    if cf.lhb_date and cf.lhb_net_buy > 0:
-        s5 = 5
-    elif cf.lhb_date and cf.lhb_net_buy < 0:
-        s5 = 2
-    else:
-        s5 = 3
-
-    total = s1 * 0.35 + trend_score + long_score + s4 * 0.15 + s5 * 0.05
-    total = max(1, min(5, 3 + total))
-    score = max(1, min(5, round(total)))
-
-    parts = [
-        f"近5日主力净流入{main_5d / 1e8:.2f}亿",
-        f"3日{cf.net_3d / 1e8:+.2f}亿",
-        f"10日{cf.net_10d / 1e8:+.2f}亿",
-        f"20日{cf.net_20d / 1e8:+.2f}亿",
-    ]
-    if cf.northbound_chg:
-        nb = cf.northbound_chg / 1e8
-        parts.append(f"北向变化{nb:+.2f}亿")
-    if cf.lhb_date:
-        parts.append(f"龙虎榜({cf.lhb_date})净买{cf.lhb_net_buy / 1e8:.2f}亿")
-
-    detail = "；".join(parts) + "。"
-    return score, detail, main_force

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # DeepSeek
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_max_tokens: int = 16384
+    deepseek_temperature: float = 0.3
 
     # Xueqiu
     xueqiu_cookie: str = ""
@@ -25,9 +28,16 @@ class Settings(BaseSettings):
 
     # Cache
     cache_dir: str = "./cache"
+    financial_report_cache_days: int = 30
 
     # Output
     output_dir: str = "./output"
+
+    # HTTP
+    default_user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
 
     @property
     def project_root(self) -> Path:

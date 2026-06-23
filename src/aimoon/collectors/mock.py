@@ -69,9 +69,6 @@ def mock_social_posts(
     platform: str, symbol: str, name: str, count: int = 10
 ) -> list[SocialPost]:
     """Generate mock social media posts."""
-    sentiments = ["positive", "neutral", "negative"]
-    weights = [0.45, 0.35, 0.2]
-
     templates = [
         f"【{name}】这只股票最近走势不错，可以关注",
         f"大家对{symbol}怎么看？最近成交量明显放大",
@@ -111,7 +108,6 @@ def mock_social_posts(
                 comments=random.randint(0, 200),
                 shares=random.randint(0, 100),
                 views=random.randint(100, 10000),
-                sentiment=random.choices(sentiments, weights=weights, k=1)[0],
             )
         )
     return posts

@@ -15,19 +15,6 @@ from ..models.stock import StockInfo
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
-def _score_color(score: int) -> str:
-    if score >= 4:
-        return "#ef4444"  # red = strong
-    if score >= 3:
-        return "#f59e0b"  # amber = neutral
-    return "#22c55e"  # green = weak
-
-
-def _score_label(score: int) -> str:
-    labels = {5: "强烈看好", 4: "看好", 3: "中性", 2: "偏弱", 1: "弱势", 0: "无评级"}
-    return labels.get(score, "N/A")
-
-
 def _md_to_html(md_text: str) -> str:
     """Convert markdown text to safe HTML."""
     import re
@@ -38,10 +25,6 @@ def _md_to_html(md_text: str) -> str:
     # Clean excessive line breaks
     html = re.sub(r"<br\s*/?>\s*<br\s*/?>", "<br>", html)
     return html
-
-
-def _sentiment_emoji(sentiment: str) -> str:
-    return {"positive": "😊", "negative": "😟", "neutral": "😐"}.get(sentiment, "")
 
 
 def _cn_number(n: int) -> str:
@@ -100,39 +83,6 @@ class ReportGenerator:
         q = stock_info.quote
         change_class = "up" if q.change_pct >= 0 else "down"
 
-        dimensions = [
-            {
-                "name": analysis.sentiment.name,
-                "score": analysis.sentiment.score,
-                "weight": analysis.sentiment.weight,
-                "detail": analysis.sentiment_detail,
-            },
-            {
-                "name": analysis.technical.name,
-                "score": analysis.technical.score,
-                "weight": analysis.technical.weight,
-                "detail": analysis.technical_detail,
-            },
-            {
-                "name": analysis.fundamental.name,
-                "score": analysis.fundamental.score,
-                "weight": analysis.fundamental.weight,
-                "detail": analysis.fundamental_detail,
-            },
-            {
-                "name": analysis.capital_flow.name,
-                "score": analysis.capital_flow.score,
-                "weight": analysis.capital_flow.weight,
-                "detail": analysis.capital_flow_detail,
-            },
-            {
-                "name": analysis.news.name,
-                "score": analysis.news.score,
-                "weight": analysis.news.weight,
-                "detail": analysis.news_detail,
-            },
-        ]
-
         # Social stats
         all_posts = stock_info.social_posts
         platform_stats: dict[str, dict] = {}
@@ -140,16 +90,10 @@ class ReportGenerator:
             if p.platform not in platform_stats:
                 platform_stats[p.platform] = {
                     "count": 0,
-                    "pos": 0,
-                    "neg": 0,
-                    "neu": 0,
                     "top_posts": [],
                 }
             s = platform_stats[p.platform]
             s["count"] += 1
-            s["pos"] += 1 if p.sentiment == "positive" else 0
-            s["neg"] += 1 if p.sentiment == "negative" else 0
-            s["neu"] += 1 if p.sentiment == "neutral" else 0
             s["top_posts"].append(p)
 
         # Sort top_posts by likes (descending) for each platform
@@ -167,18 +111,6 @@ class ReportGenerator:
             "change_class": change_class,
             "change_sign": "+" if q.change_pct >= 0 else "",
             "analysis": analysis,
-            "dimensions": dimensions,
-            "overall_rating": analysis.overall_rating,
-            "overall_color": _score_color(analysis.overall_rating),
-            "overall_label": _score_label(analysis.overall_rating),
-            "bul_ratio": int(analysis.bullish_ratio * 100),
-            "bear_ratio": int((1 - analysis.bullish_ratio) * 100),
-            # Sentiment distribution (estimated from news sentiment + bullish ratio)
-            "senti_pos_pct": max(10, min(80, int(analysis.bullish_ratio * 100))),
-            "senti_neu_pct": 30,
-            "senti_neg_pct": max(
-                10, min(80, int((1 - analysis.bullish_ratio) * 100 - 10))
-            ),
             "platform_stats": platform_stats,
             "collect_results": collect_results,
             "total_posts": len(all_posts),
@@ -186,13 +118,9 @@ class ReportGenerator:
             "research": stock_info.research,
             "capital_flow": stock_info.capital_flow,
             "kline": stock_info.kline,
-            "score_color": _score_color,
-            "score_label": _score_label,
-            "sentiment_emoji": _sentiment_emoji,
             "cn_number": _cn_number,
             "advice": analysis.investment_advice,
             "key_events": analysis.key_events,
-            # AI report full text (rendered as HTML)
             "report_text": analysis.report_text,
             "report_summary": analysis.summary,
         }

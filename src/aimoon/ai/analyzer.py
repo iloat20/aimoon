@@ -66,16 +66,20 @@ class DeepSeekAnalyzer:
     """
 
     def __init__(self, api_key: str = "", api_url: str = ""):
-        settings = get_settings()
-        self.api_key = api_key or settings.deepseek_api_key
-        base = settings.deepseek_base_url.rstrip("/")
+        self._settings = get_settings()
+        self.api_key = api_key or self._settings.deepseek_api_key
+        base = self._settings.deepseek_base_url.rstrip("/")
         self.api_url = api_url or f"{base}/v1/chat/completions"
 
     async def analyze_stock(
         self, stock_code: str, stock_name: str, collected_data: dict
     ) -> str:
         """调用DeepSeek进行综合分析，返回Markdown格式报告。"""
+        from datetime import datetime as _dt
+
         prompt = self._build_prompt(stock_code, stock_name, collected_data)
+        now_str = _dt.now().strftime("%Y-%m-%d")
+        sys_msg = f"现在是 {now_str}，请基于这个时间回答用户问题。"
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
@@ -85,10 +89,13 @@ class DeepSeekAnalyzer:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "deepseek-v4-flash",
-                    "messages": [{"role": "user", "content": prompt}, {"role": "system", "content": "现在是 2026-06-23 ，请基于这个时间回答用户问题。"}],
-                    "temperature": 0.3,
-                    "max_tokens": 16384,
+                    "model": self._settings.deepseek_model,
+                    "messages": [
+                        {"role": "user", "content": prompt},
+                        {"role": "system", "content": sys_msg},
+                    ],
+                    "temperature": self._settings.deepseek_temperature,
+                    "max_tokens": self._settings.deepseek_max_tokens,
                     "thinking": {"type": "enabled"},
                     "reasoning_effort": "high",
                 },
@@ -96,83 +103,6 @@ class DeepSeekAnalyzer:
             resp.raise_for_status()
             result = resp.json()
             return result["choices"][0]["message"]["content"]
-
-    @staticmethod
-    def _get_tools() -> list[dict]:
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "web_search",
-                    "description": "搜索互联网获取最新信息，如财报、新闻、公告、研报等。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "搜索关键词，如'格力电器2025年财报'、'神火股份最新公告'",
-                            }
-                        },
-                        "required": ["query"],
-                    },
-                },
-            }
-        ]
-
-    @staticmethod
-    async def _web_search(query: str) -> str:
-        """Search web via Baidu and return top results."""
-        import re as _re
-
-        results = []
-
-        # Strategy 1: Baidu search
-        try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                resp = await client.get(
-                    "https://www.baidu.com/s",
-                    params={"wd": query, "rn": 5},
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        "Accept-Language": "zh-CN,zh;q=0.9",
-                    },
-                )
-                if resp.status_code == 200:
-                    html = resp.text
-                    # Extract titles and snippets from Baidu results
-                    titles = _re.findall(r'<h3[^>]*>.*?<a[^>]*>(.*?)</a>', html, _re.DOTALL)
-                    snippets = _re.findall(r'<span class="content-right_[^"]*">(.*?)</span>', html, _re.DOTALL)
-                    for i, t in enumerate(titles[:5]):
-                        title = _re.sub(r'<[^>]+>', '', t).strip()
-                        snippet = _re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
-                        if title:
-                            results.append(f"[{i+1}] {title}\n{snippet}" if snippet else f"[{i+1}] {title}")
-        except Exception:
-            pass
-
-        # Strategy 2: Fallback to Sogou
-        if not results:
-            try:
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    resp = await client.get(
-                        "https://www.sogou.com/web",
-                        params={"query": query},
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        },
-                    )
-                    if resp.status_code == 200:
-                        titles = _re.findall(r'<h3[^>]*>.*?<a[^>]*>(.*?)</a>', resp.text, _re.DOTALL)
-                        for i, t in enumerate(titles[:5]):
-                            title = _re.sub(r'<[^>]+>', '', t).strip()
-                            if title:
-                                results.append(f"[{i+1}] {title}")
-            except Exception:
-                pass
-
-        if results:
-            return f"搜索「{query}」结果：\n" + "\n\n".join(results)
-        return f"搜索「{query}」未获取到结果"
 
     def _build_prompt(self, stock_code: str, stock_name: str, data: dict) -> str:
         quote = data.get("quote", {})
@@ -197,12 +127,22 @@ class DeepSeekAnalyzer:
 
         # Financial reports info (cached)
         reports_section = []
-        for key, label in [("annual_report", "年报"), ("semi_annual_report", "半年报"), ("quarterly_report", "季报")]:
+        report_keys = [
+            ("annual_report", "年报"),
+            ("semi_annual_report", "半年报"),
+            ("quarterly_report", "季报"),
+        ]
+        for key, label in report_keys:
             report = data.get(key)
             if report and report.get("year"):
-                reports_section.append(f"- {label}: {report['year']}年 {report['title']}")
+                title = report["title"]
+                reports_section.append(
+                    f"- {label}: {report['year']}年 {title}"
+                )
                 if report.get("pdf_url"):
-                    reports_section.append(f"  PDF: {report['pdf_url']}")
+                    reports_section.append(
+                        f"  PDF: {report['pdf_url']}"
+                    )
 
         if reports_section:
             sections.append("\n\n【已缓存财务报告】")
@@ -218,10 +158,16 @@ class DeepSeekAnalyzer:
         tech_raw = data.get("technical", {})
         if tech_raw and tech_raw.get("bars", 0) >= 10:
             tech_lines = []
-            for k in ("price", "ma5", "ma10", "ma20", "ma60", "macd_dif", "macd_dea",
-                       "macd_hist", "rsi6", "rsi14", "boll_upper", "boll_mid", "boll_lower",
-                       "support", "resistance", "volume_ratio", "trend", "boll_position",
-                       "ret_5d", "ret_20d", "ret_60d"):
+            tech_keys = (
+                "price", "ma5", "ma10", "ma20", "ma60",
+                "macd_dif", "macd_dea", "macd_hist",
+                "rsi6", "rsi14",
+                "boll_upper", "boll_mid", "boll_lower",
+                "support", "resistance", "volume_ratio",
+                "trend", "boll_position",
+                "ret_5d", "ret_20d", "ret_60d",
+            )
+            for k in tech_keys:
                 if k in tech_raw:
                     tech_lines.append(f"- {k}: {tech_raw[k]}")
             if tech_lines:
@@ -231,16 +177,33 @@ class DeepSeekAnalyzer:
         cf = data.get("capital_flow", {})
         if cf and cf.get("main_net_5d") != 0:
             sections.append("\n\n【已采集资金面数据】")
-            sections.append(f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f}亿元")
-            sections.append(f"- 3日净流入: {cf.get('net_3d', 0) / 1e8:.2f}亿元")
-            sections.append(f"- 10日净流入: {cf.get('net_10d', 0) / 1e8:.2f}亿元")
-            sections.append(f"- 20日净流入: {cf.get('net_20d', 0) / 1e8:.2f}亿元")
+            sections.append(
+                f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f}亿元"
+            )
+            sections.append(
+                f"- 3日净流入: {cf.get('net_3d', 0) / 1e8:.2f}亿元"
+            )
+            sections.append(
+                f"- 10日净流入: {cf.get('net_10d', 0) / 1e8:.2f}亿元"
+            )
+            sections.append(
+                f"- 20日净流入: {cf.get('net_20d', 0) / 1e8:.2f}亿元"
+            )
             if cf.get("northbound_chg"):
-                sections.append(f"- 北向资金变化: {cf['northbound_chg'] / 1e8:+.2f}亿元")
+                val = cf["northbound_chg"] / 1e8
+                sections.append(f"- 北向资金变化: {val:+.2f}亿元")
             if cf.get("lhb_date"):
-                sections.append(f"- 龙虎榜({cf['lhb_date']}): 净买入{cf['lhb_net_buy'] / 1e8:.2f}亿元")
+                net = cf["lhb_net_buy"] / 1e8
+                sections.append(
+                    f"- 龙虎榜({cf['lhb_date']}): 净买入{net:.2f}亿元"
+                )
 
-        for key, label in [("eastmoney", "东方财富股吧"), ("toutiao", "今日头条"), ("wechat", "微信公众号")]:
+        social_labels = [
+            ("eastmoney", "东方财富股吧"),
+            ("toutiao", "今日头条"),
+            ("wechat", "微信公众号"),
+        ]
+        for key, label in social_labels:
             text = data.get(key, "")
             if text and text != "暂无数据":
                 sections.append(f"\n\n【已采集{label}舆情摘要】")
@@ -372,6 +335,23 @@ class AIAnalyzer:
     def _build_report_from_markdown(self, info: StockInfo, md: str) -> AnalysisReport:
         import re as _re
 
+        from ..scoring.constants import (
+            DEFAULT_SCORE,
+            FUND_PROFIT_BAD,
+            FUND_PROFIT_GOOD,
+            FUND_REVENUE_BAD,
+            FUND_REVENUE_GOOD,
+            FUND_ROE_EXCELLENT,
+            FUND_ROE_POOR,
+            NEWS_BUY_RATIO_BEARISH,
+            NEWS_BUY_RATIO_BULLISH,
+            WEIGHT_CAPITAL_FLOW,
+            WEIGHT_FUNDAMENTAL,
+            WEIGHT_NEWS,
+            WEIGHT_SENTIMENT,
+            WEIGHT_TECHNICAL,
+        )
+
         short = md[:200]
         short = _re.sub(r"\*\*(.*?)\*\*", r"\1", short)
         short = _re.sub(r"##?\s*", "", short)
@@ -411,7 +391,7 @@ class AIAnalyzer:
         main_force = "持平"
         if info.capital_flow and info.capital_flow.source != "all_failed":
             try:
-                from ..collectors.fund_flow import capital_flow_score as _cfs
+                from ..indicators.capital_flow import capital_flow_score as _cfs
 
                 cap_score, cap_detail, main_force = _cfs(info.capital_flow)
             except Exception:
@@ -423,63 +403,39 @@ class AIAnalyzer:
             cap_detail = "今日交投清淡，主力资金无明显动向，呈观望态势"
             main_force = "持平"
 
-        # Compute sentiment score from social posts
-        sent_score = 3
-        sent_detail = "详见报告正文（情绪分析）。"
-        if info.social_posts:
-            pos = sum(
-                1 for p in info.social_posts
-                if getattr(p, "sentiment", "") == "positive"
-            )
-            neg = sum(
-                1 for p in info.social_posts
-                if getattr(p, "sentiment", "") == "negative"
-            )
-            total = len(info.social_posts)
-            if total > 0:
-                bull_ratio = pos / total
-                if bull_ratio >= 0.6:
-                    sent_score = 4
-                elif bull_ratio >= 0.5:
-                    sent_score = 3
-                elif bull_ratio >= 0.4:
-                    sent_score = 3
-                else:
-                    sent_score = 2
-                sent_detail = (
-                    f"舆情样本{total}条，看多{pos}条"
-                    f"({bull_ratio:.0%})，看空{neg}条。"
-                )
+        # Sentiment score (default, no per-post sentiment data)
+        sent_score = DEFAULT_SCORE
+        sent_detail = "详见报告正文。"
 
         # Compute fundamental score from financial data
-        fund_score = 3
+        fund_score = DEFAULT_SCORE
         fund_detail = "详见报告正文（基本面分析）。"
         f = info.financial
         if f and f.report_period:
             fund_parts = []
-            if f.roe > 15:
+            if f.roe > FUND_ROE_EXCELLENT:
                 fund_score += 1
                 fund_parts.append(f"ROE {f.roe}%优秀")
-            elif f.roe > 8:
+            elif f.roe > FUND_ROE_POOR:
                 fund_parts.append(f"ROE {f.roe}%良好")
             elif f.roe > 0:
                 fund_score -= 1
                 fund_parts.append(f"ROE {f.roe}%偏低")
-            if f.revenue_yoy > 10:
+            if f.revenue_yoy > FUND_REVENUE_GOOD:
                 fund_score += 1
                 fund_parts.append(f"营收同比+{f.revenue_yoy:.1f}%")
-            elif f.revenue_yoy < -5:
+            elif f.revenue_yoy < FUND_REVENUE_BAD:
                 fund_score -= 1
                 fund_parts.append(f"营收同比{f.revenue_yoy:.1f}%")
-            if f.net_profit_yoy > 10:
+            if f.net_profit_yoy > FUND_PROFIT_GOOD:
                 fund_score += 1
-            elif f.net_profit_yoy < -10:
+            elif f.net_profit_yoy < FUND_PROFIT_BAD:
                 fund_score -= 1
             fund_score = max(1, min(5, fund_score))
             fund_detail = "；".join(fund_parts) if fund_parts else "详见报告正文。"
 
         # Compute news score from research reports + social
-        news_score = 3
+        news_score = DEFAULT_SCORE
         news_detail = "详见报告正文（新闻分析）。"
         if info.research and info.research.total_count > 0:
             buy_ratio = (
@@ -487,22 +443,22 @@ class AIAnalyzer:
                 if info.research.total_count > 0
                 else 0
             )
-            if buy_ratio >= 0.6:
+            if buy_ratio >= NEWS_BUY_RATIO_BULLISH:
                 news_score = 4
-            elif buy_ratio <= 0.2:
+            elif buy_ratio <= NEWS_BUY_RATIO_BEARISH:
                 news_score = 2
             news_detail = (
                 f"机构研报{info.research.total_count}份，"
                 f"买入{info.research.buy_count}份，增持{info.research.hold_count}份。"
             )
 
-        # Weighted overall rating from the 5 dimensions
+        # Weighted overall rating from the 5 dimensions (must sum to 1.0)
         overall = round(
-            sent_score * 0.25
-            + tech_score * 0.15
-            + fund_score * 0.20
-            + cap_score * 0.15
-            + news_score * 0.15
+            sent_score * WEIGHT_SENTIMENT
+            + tech_score * WEIGHT_TECHNICAL
+            + fund_score * WEIGHT_FUNDAMENTAL
+            + cap_score * WEIGHT_CAPITAL_FLOW
+            + news_score * WEIGHT_NEWS
         )
 
         return AnalysisReport(
@@ -511,12 +467,24 @@ class AIAnalyzer:
             summary=short,
             report_text=md,
             overall_rating=overall,
-            investment_advice="本报告由DeepSeek AI自动生成，仅供参考，不构成投资建议。",
-            sentiment=DimensionScore(name="市场情绪", score=sent_score, weight=0.25),
-            technical=DimensionScore(name="技术面", score=tech_score, weight=0.15),
-            fundamental=DimensionScore(name="基本面", score=fund_score, weight=0.20),
-            capital_flow=DimensionScore(name="资金面", score=cap_score, weight=0.15),
-            news=DimensionScore(name="新闻舆情", score=news_score, weight=0.15),
+            investment_advice=(
+                "本报告由DeepSeek AI自动生成，仅供参考，不构成投资建议。"
+            ),
+            sentiment=DimensionScore(
+                name="市场情绪", score=sent_score, weight=WEIGHT_SENTIMENT
+            ),
+            technical=DimensionScore(
+                name="技术面", score=tech_score, weight=WEIGHT_TECHNICAL
+            ),
+            fundamental=DimensionScore(
+                name="基本面", score=fund_score, weight=WEIGHT_FUNDAMENTAL
+            ),
+            capital_flow=DimensionScore(
+                name="资金面", score=cap_score, weight=WEIGHT_CAPITAL_FLOW
+            ),
+            news=DimensionScore(
+                name="新闻舆情", score=news_score, weight=WEIGHT_NEWS
+            ),
             technical_detail=tech_detail,
             capital_flow_detail=cap_detail,
             sentiment_detail=sent_detail,

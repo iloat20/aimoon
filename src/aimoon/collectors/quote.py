@@ -12,6 +12,7 @@ import httpx
 
 from ..models.stock import StockQuote
 from ..utils import to_sina_symbol
+from .base import BaseDataCollector
 
 # Sina API endpoints
 _SINA_URL = "http://hq.sinajs.cn/list={symbol}"
@@ -28,13 +29,10 @@ _SINA_HEADERS = {
 }
 
 
-def _tencent_symbol(symbol: str) -> str:
-    """Convert 6-digit code to Tencent format: sh600519 or sz000001."""
-    return to_sina_symbol(symbol)
-
-
-class QuoteCollector:
+class QuoteCollector(BaseDataCollector[StockQuote]):
     """Fetch real-time stock quotes with multi-source fallback."""
+
+    name = "quote"
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
@@ -171,7 +169,7 @@ class QuoteCollector:
         37:volume, 38:amount(万), 39:turnover%, 40:PE
         """
         client = await self._get_client()
-        url = _TENCENT_URL.format(symbol=_tencent_symbol(symbol))
+        url = _TENCENT_URL.format(symbol=to_sina_symbol(symbol))
         resp = await client.get(url)
         resp.raise_for_status()
 

@@ -30,9 +30,14 @@ class WechatCollector(BaseCollector):
 
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
+                ua = (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
                 context = await browser.new_context(
                     locale="zh-CN",
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    user_agent=ua,
                 )
                 page = await context.new_page()
 

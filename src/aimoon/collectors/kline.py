@@ -14,16 +14,15 @@ import httpx
 
 from ..models.stock import KlineBar, KlineData
 from ..utils import to_sina_symbol
+from .base import BaseDataCollector
 
 _TENCENT_URL = "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
 
 
-def _tencent_symbol(symbol: str) -> str:
-    return to_sina_symbol(symbol)
-
-
-class KlineCollector:
+class KlineCollector(BaseDataCollector[KlineData]):
     """Fetch daily K-line history for a single A-share."""
+
+    name = "kline"
 
     def __init__(self, days: int = 120) -> None:
         self._days = days
@@ -145,7 +144,7 @@ class KlineCollector:
         """Fallback: Tencent fqkline API (前复权).
         Works when push2.eastmoney.com is blocked.
         """
-        tsymbol = _tencent_symbol(symbol)
+        tsymbol = to_sina_symbol(symbol)
         params = {"param": f"{tsymbol},day,,,{self._days * 2},qfq"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(_TENCENT_URL, params=params)

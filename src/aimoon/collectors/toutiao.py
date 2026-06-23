@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 
 from ..models.social import CollectResult, SocialPost
+from ..utils import extract_toutiao_url, parse_chinese_count
 from .base import BaseCollector
 
 
@@ -75,30 +76,7 @@ class ToutiaoCollector(BaseCollector):
                             continue
 
                         href = await link_el.get_attribute("href") or ""
-                        actual_url = ""
-
-                        # Extract group ID from URL (triple-encoded in href)
-                        import re as _re
-                        m = _re.search(r"group%252F(\d{15,})", href)
-                        if m:
-                            actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-                        else:
-                            m = _re.search(r"group%2[5Ff](\d{15,})", href)
-                            if m:
-                                actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-                            else:
-                                m = _re.search(r"group(?:%2F|=|/)(\d{15,})", href)
-                                if m:
-                                    actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-
-                        # Fallback: extract url parameter
-                        if not actual_url:
-                            import re
-                            m = re.search(r"url=([^&]+)", href)
-                            if m:
-                                from urllib.parse import unquote
-                                actual_url = unquote(m.group(1))
-
+                        actual_url = extract_toutiao_url(href)
                         final_url = actual_url or href
                         if final_url in seen_urls:
                             continue
@@ -118,7 +96,7 @@ class ToutiaoCollector(BaseCollector):
                             like_el = await container.query_selector(sel)
                             if like_el:
                                 txt = (await like_el.inner_text()).strip()
-                                likes = self._parse_count(txt)
+                                likes = parse_chinese_count(txt)
                                 if likes > 0:
                                     break
 
@@ -130,7 +108,7 @@ class ToutiaoCollector(BaseCollector):
                             comment_el = await container.query_selector(sel)
                             if comment_el:
                                 txt = (await comment_el.inner_text()).strip()
-                                comments = self._parse_count(txt)
+                                comments = parse_chinese_count(txt)
                                 if comments > 0:
                                     break
 
@@ -170,30 +148,7 @@ class ToutiaoCollector(BaseCollector):
                             continue
 
                         href = await el.get_attribute("href") or ""
-                        actual_url = ""
-
-                        # Extract group ID from URL (triple-encoded in href)
-                        import re as _re
-                        m = _re.search(r"group%252F(\d{15,})", href)
-                        if m:
-                            actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-                        else:
-                            m = _re.search(r"group%2[5Ff](\d{15,})", href)
-                            if m:
-                                actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-                            else:
-                                m = _re.search(r"group(?:%2F|=|/)(\d{15,})", href)
-                                if m:
-                                    actual_url = f"https://www.toutiao.com/article/{m.group(1)}/"
-
-                        # Fallback: extract url parameter
-                        if not actual_url:
-                            import re
-                            m = re.search(r"url=([^&]+)", href)
-                            if m:
-                                from urllib.parse import unquote
-                                actual_url = unquote(m.group(1))
-
+                        actual_url = extract_toutiao_url(href)
                         final_url = actual_url or href
                         if final_url in seen_urls:
                             continue
@@ -217,20 +172,3 @@ class ToutiaoCollector(BaseCollector):
             await browser.close()
             posts.sort(key=lambda x: x.likes or 0, reverse=True)
             return posts[:20]
-
-    @staticmethod
-    def _parse_count(txt: str) -> int:
-        """Parse count strings like '1.2万' to int."""
-        if not txt:
-            return 0
-        txt = txt.strip().lower()
-        try:
-            if "万" in txt or "w" in txt:
-                num = txt.replace("万", "").replace("w", "").strip()
-                return int(float(num) * 10000)
-            if "亿" in txt or "b" in txt:
-                num = txt.replace("亿", "").replace("b", "").strip()
-                return int(float(num) * 100000000)
-            return int(txt.replace(",", ""))
-        except (ValueError, TypeError):
-            return 0

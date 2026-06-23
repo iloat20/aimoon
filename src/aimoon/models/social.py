@@ -24,8 +24,7 @@ class SocialPost(BaseModel):
     shares: int = 0
     views: int = 0
 
-    # Sentiment (optional, can be filled by AI)
-    sentiment: str = ""  # positive / negative / neutral
+
 
 
 class CollectResult(BaseModel):

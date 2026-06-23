@@ -1,44 +1,79 @@
-"""East Money Guba (东方财富股吧) — Playwright-based collector.
+"""East Money Guba (东方财富股吧) — unified collector.
 
-Uses Playwright (not Selenium) for faster, more reliable scraping.
-No ChromeDriver dependency needed.
+Strategies (tried in order, errors don't abort):
+1. Playwright DOM rendering — most reliable for post content
+2. akshare sentiment API — enriches sentiment field
+3. akshare HTML parsing — lightweight fallback
 """
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 
+import httpx
+
 from ..models.social import CollectResult, SocialPost
+from ..utils import parse_chinese_count
 from .base import BaseCollector
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://guba.eastmoney.com/",
+}
 
 
 class GubaCollector(BaseCollector):
-    """Collects stock posts from 东方财富股吧 using Playwright.
+    """Collects stock posts from 东方财富股吧.
 
-    Renders the guba page with Playwright's headless Chromium and
-    extracts post data from the DOM.
+    Internal strategy chain: Playwright → akshare HTML.
     """
 
     name = "东方财富股吧"
 
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
         t0 = time.monotonic()
+        posts: list[SocialPost] = []
+        source = ""
+
+        # Strategy 1: Playwright DOM rendering
+        try:
+            pw_posts = await self._fetch_playwright(symbol)
+            if pw_posts:
+                posts.extend(pw_posts)
+                source = "Playwright"
+        except Exception:
+            pass
+
+        # Strategy 2: akshare HTML parsing (lightweight fallback)
+        if not posts:
+            try:
+                html_posts = await self._fetch_guba_html(symbol)
+                if html_posts:
+                    posts.extend(html_posts)
+                    source = "akshare(HTML)"
+            except Exception:
+                pass
+
+        elapsed = (time.monotonic() - t0) * 1000
+        if posts:
+            result = self._ok(posts, elapsed)
+            result.error = source
+            return result
+        return self._fail("无法获取股吧数据", elapsed)
+
+    # ---- Playwright ----
+
+    async def _fetch_playwright(self, symbol: str) -> list[SocialPost]:
+        """Render guba page with Playwright and extract DOM data."""
+        from playwright.async_api import async_playwright
+
         market = "1" if symbol.startswith("6") else "0"
         url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
-
-        try:
-            posts = await self._fetch_posts(url, symbol)
-            elapsed = (time.monotonic() - t0) * 1000
-            if posts:
-                return self._ok(posts, elapsed)
-            return self._fail("页面解析为空", elapsed)
-        except Exception as e:
-            return self._fail(f"Playwright失败: {e}", (time.monotonic() - t0) * 1000)
-
-    async def _fetch_posts(self, url: str, symbol: str) -> list[SocialPost]:
-        """Fetch and parse guba posts using Playwright (async API)."""
-        from playwright.async_api import async_playwright
 
         posts: list[SocialPost] = []
         async with async_playwright() as p:
@@ -50,7 +85,6 @@ class GubaCollector(BaseCollector):
             rows = await page.query_selector_all("tr.listitem")
             for row in rows[:15]:
                 try:
-                    # Title
                     title_el = await row.query_selector("a[title], a[data-cntitle]")
                     if not title_el:
                         continue
@@ -64,25 +98,25 @@ class GubaCollector(BaseCollector):
                     if href and not href.startswith("http"):
                         href = f"https://guba.eastmoney.com{href}"
 
-                    # Author
                     author = ""
                     author_el = await row.query_selector(".author a")
                     if author_el:
                         author = (await author_el.inner_text()).strip()
 
-                    # Read count
                     reads = 0
                     read_el = await row.query_selector(".read")
                     if read_el:
-                        txt = (await read_el.inner_text()).strip()
-                        reads = self._parse_count(txt)
+                        reads = parse_chinese_count(
+                            (await read_el.inner_text()).strip()
+                        )
 
-                    # Comment count
                     comments = 0
                     reply_el = await row.query_selector(".reply")
                     if reply_el:
-                        txt = (await reply_el.inner_text()).strip()
-                        comments = int(txt.replace(",", "") or "0")
+                        comments = int(
+                            (await reply_el.inner_text()).strip().replace(",", "")
+                            or "0"
+                        )
 
                     if title and len(title) >= 4:
                         posts.append(
@@ -103,19 +137,45 @@ class GubaCollector(BaseCollector):
 
             await browser.close()
         posts.sort(key=lambda x: x.likes or 0, reverse=True)
-        return posts
+        return posts[:15]
 
-    @staticmethod
-    def _parse_count(txt: str) -> int:
-        """Parse count strings like '1.2万' to int."""
-        txt = txt.strip()
-        if not txt:
-            return 0
-        if "万" in txt:
-            return int(float(txt.replace("万", "")) * 10000)
-        if "亿" in txt:
-            return int(float(txt.replace("亿", "")) * 100000000)
-        try:
-            return int(float(txt.replace(",", "")))
-        except ValueError:
-            return 0
+    # ---- akshare HTML fallback ----
+
+    async def _fetch_guba_html(self, symbol: str) -> list[SocialPost]:
+        """Parse guba HTML page for post titles."""
+        async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0) as client:
+            market = "1" if symbol.startswith("6") else "2"
+            url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return []
+
+            html = resp.text
+            posts: list[SocialPost] = []
+
+            title_pattern = re.compile(
+                r'<a\s+href="(/news[^"]*)"[^>]*title="([^"]*)"', re.IGNORECASE
+            )
+            matches = title_pattern.findall(html)
+
+            for href, title in matches[:15]:
+                title = title.strip()
+                if not title or len(title) < 5:
+                    continue
+
+                posts.append(
+                    SocialPost(
+                        platform="东方财富股吧",
+                        title=title[:80],
+                        content=title,
+                        url=f"https://guba.eastmoney.com{href}",
+                        author="",
+                        published_at=datetime.now().isoformat(),
+                        likes=0,
+                        comments=0,
+                        shares=0,
+                        views=0,
+                    )
+                )
+
+            return posts

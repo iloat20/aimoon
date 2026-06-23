@@ -51,7 +51,8 @@ def _load_cache(symbol: str) -> dict | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         cached_at = datetime.fromisoformat(data.get("cached_at", "2000-01-01"))
-        if (datetime.now() - cached_at).days > 30:
+        cache_days = get_settings().financial_report_cache_days
+        if (datetime.now() - cached_at).days > cache_days:
             return None
         return data
     except Exception:
@@ -64,7 +65,9 @@ def _save_cache(symbol: str, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-async def _search_report(client: httpx.AsyncClient, symbol: str, keyword: str) -> dict | None:
+async def _search_report(
+    client: httpx.AsyncClient, symbol: str, keyword: str
+) -> dict | None:
     """Search cninfo for a specific report type."""
     payload = {
         "stock": "",
@@ -96,7 +99,12 @@ async def _search_report(client: httpx.AsyncClient, symbol: str, keyword: str) -
                 continue
             if keyword in title:
                 adjunct_url = item.get("adjunctUrl", "")
-                pdf_url = f"https://static.cninfo.com.cn/{adjunct_url}" if adjunct_url else ""
+                if adjunct_url:
+                    pdf_url = (
+                        f"https://static.cninfo.com.cn/{adjunct_url}"
+                    )
+                else:
+                    pdf_url = ""
                 year_match = re.search(r"(\d{4})\s*年", title)
                 year = year_match.group(1) if year_match else ""
                 return {
