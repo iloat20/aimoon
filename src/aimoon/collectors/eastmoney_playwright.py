@@ -144,7 +144,7 @@ class GubaCollector(BaseCollector):
     async def _fetch_guba_html(self, symbol: str) -> list[SocialPost]:
         """Parse guba HTML page for post titles."""
         async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0) as client:
-            market = "1" if symbol.startswith("6") else "2"
+            market = "1" if symbol.startswith("6") else "0"
             url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
             resp = await client.get(url)
             if resp.status_code != 200:

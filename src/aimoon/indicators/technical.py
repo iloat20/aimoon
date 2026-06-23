@@ -436,7 +436,7 @@ def technical_score(ind: dict[str, Any]) -> tuple[int, str, float, float, str]:
         reversal_signals.append("缩量")
     if ind.get("boll_position") == "middle" and ind.get("macd_hist", 0) is not None:
         boll_width_val = ind.get("boll_upper", 0) - ind.get("boll_lower", 0)
-        if boll_width_val and boll_width_val / price < 0.05:
+        if boll_width_val and price and boll_width_val / price < 0.05:
             reversal_signals.append("布林收口")
     if "kdj_dull" in ind and ind["kdj_dull"]:
         reversal_signals.append("KDJ钝化")

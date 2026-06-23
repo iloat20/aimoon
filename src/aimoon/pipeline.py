@@ -243,6 +243,7 @@ class PipelineOrchestrator:
                     self._all_posts.extend(result.posts)
                     print(f"   {p_name}: {result.count}条 [真实数据]")
                 elif result.status == "skipped":
+                    skip_reason = result.error or "skipped"
                     mock = mock_social_posts(p_name, symbol, name)
                     self._all_posts.extend(mock)
                     result = CollectResult(
@@ -251,7 +252,7 @@ class PipelineOrchestrator:
                         count=len(mock),
                         elapsed_ms=100,
                     )
-                    print(f"   {p_name}: {len(mock)}条 (mock) [{result.error}]")
+                    print(f"   {p_name}: {len(mock)}条 (mock) [{skip_reason}]")
                 else:
                     mock = mock_social_posts(p_name, symbol, name)
                     self._all_posts.extend(mock)
