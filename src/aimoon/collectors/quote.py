@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Any
 
 import httpx
 
@@ -42,7 +43,7 @@ class QuoteCollector(BaseDataCollector[StockQuote]):
             self._client = httpx.AsyncClient(timeout=10.0)
         return self._client
 
-    async def fetch(self, symbol: str, name: str = "") -> StockQuote:
+    async def fetch(self, symbol: str, name: str = "", **kwargs: Any) -> StockQuote:
         """Fetch quote with three-level fallback."""
         # Level 1: akshare
         try:

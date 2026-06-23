@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -27,7 +28,7 @@ class KlineCollector(BaseDataCollector[KlineData]):
     def __init__(self, days: int = 120) -> None:
         self._days = days
 
-    async def fetch(self, symbol: str) -> KlineData:
+    async def fetch(self, symbol: str, **kwargs: Any) -> KlineData:
         """Fetch K-line with three-level fallback.
         Returns empty bars on total failure.
         """

@@ -18,7 +18,7 @@ class ResearchReportCollector(BaseDataCollector[ResearchReportData]):
     def __init__(self) -> None:
         self._year_cols: dict[str, tuple[str, str]] = {}
 
-    async def fetch(self, symbol: str) -> ResearchReportData:
+    async def fetch(self, symbol: str, **kwargs: Any) -> ResearchReportData:
         try:
             df = await asyncio.to_thread(self._fetch_df, symbol)
             if df is None or df.empty:

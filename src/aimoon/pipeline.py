@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from .ai.analyzer import AIAnalyzer
-from .collectors.base import CollectorRegistry
 from .collectors.eastmoney_playwright import GubaCollector
 from .collectors.mock import mock_analysis_report, mock_social_posts, mock_stock_info
 from .config.settings import get_settings

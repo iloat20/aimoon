@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
-
-import pandas as pd
+from typing import Any
 
 from ..models.stock import CapitalFlowData
 from ..utils import resolve_market
@@ -27,7 +26,7 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
     def __init__(self) -> None:
         self._sources_ok: list[str] = []
 
-    async def fetch(self, symbol: str) -> CapitalFlowData:
+    async def fetch(self, symbol: str, **kwargs: Any) -> CapitalFlowData:
         """Run all sub-fetchers; return aggregated CapitalFlowData."""
         data = CapitalFlowData(symbol=symbol)
 

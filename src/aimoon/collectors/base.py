@@ -5,11 +5,9 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from ..models.social import CollectResult, SocialPost
-
-T = TypeVar("T")
 
 
 class BaseCollector(ABC):
@@ -41,7 +39,7 @@ class BaseCollector(ABC):
         )
 
 
-class BaseDataCollector(ABC, Generic[T]):
+class BaseDataCollector[T](ABC):
     """Abstract base for non-social data collectors (quote, K-line, fund flow, etc.).
 
     Returns typed data models directly rather than CollectResult.
