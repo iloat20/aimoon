@@ -28,27 +28,17 @@ class AnalysisReport(BaseModel):
     summary: str = ""
 
     # Dimension scores (1-5)
-    sentiment: DimensionScore = Field(default_factory=DimensionScore)
-    technical: DimensionScore = Field(default_factory=DimensionScore)
     fundamental: DimensionScore = Field(default_factory=DimensionScore)
     capital_flow: DimensionScore = Field(default_factory=DimensionScore)
     news: DimensionScore = Field(default_factory=DimensionScore)
-    overall_rating: int = 0  # 1-5
 
     # Detailed analysis
-    sentiment_detail: str = ""
-    technical_detail: str = ""
     fundamental_detail: str = ""
     capital_flow_detail: str = ""
     news_detail: str = ""
 
     # Key metrics
-    bullish_ratio: float = 0.0
-    trend: str = ""
-    support_price: float = 0.0
-    resistance_price: float = 0.0
     main_force: str = ""
-    news_sentiment: str = ""
 
     # Data quality
     data_warnings: list[str] = Field(default_factory=list)
@@ -56,14 +46,7 @@ class AnalysisReport(BaseModel):
         default_factory=dict
     )  # dimension → 高/中/低
 
-    # Issues
-    key_topics: list[str] = Field(default_factory=list)
-    key_events: list[str] = Field(default_factory=list)
-    risk_warnings: list[str] = Field(default_factory=list)
     investment_advice: str = ""
-
-    # Source traceability
-    data_sources: list[str] = Field(default_factory=list)
 
     # Full AI markdown report (for rendered display)
     report_text: str = ""

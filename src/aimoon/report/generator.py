@@ -16,12 +16,40 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 def _md_to_html(md_text: str) -> str:
-    """Convert markdown text to safe HTML."""
+    """Convert markdown text to safe HTML with XSS sanitization."""
     import re
 
     import markdown as md_lib
 
     html = md_lib.markdown(md_text, extensions=["extra", "nl2br"])
+    # Sanitize: strip script/iframe/on* attributes from AI-generated HTML
+    try:
+        import bleach
+        html = bleach.clean(
+            html,
+            tags=[
+                "p", "br", "h1", "h2", "h3", "h4", "h5", "h6",
+                "strong", "em", "ul", "ol", "li", "code", "pre",
+                "table", "thead", "tbody", "tr", "th", "td",
+                "blockquote", "hr", "del", "sub", "sup", "span",
+            ],
+            attributes={},
+            strip=True,
+        )
+    except ImportError:
+        # Fallback: strip dangerous tags and event handler attributes
+        html = re.sub(
+            r"<(script|iframe|object|embed|svg)\b[^>]*>.*?</\1>",
+            "", html, flags=re.IGNORECASE | re.DOTALL,
+        )
+        html = re.sub(
+            r"<(script|iframe|object|embed|svg)\b[^>]*/?>",
+            "", html, flags=re.IGNORECASE,
+        )
+        html = re.sub(
+            r'\s(?:on\w+)="[^"]*"',
+            "", html, flags=re.IGNORECASE,
+        )
     # Clean excessive line breaks
     html = re.sub(r"<br\s*/?>\s*<br\s*/?>", "<br>", html)
     return html
@@ -33,18 +61,12 @@ def _cn_number(n: int) -> str:
     return str(n)
 
 
-def _clamp(val: float, lo: float, hi: float) -> float:
-    """Clamp value between lo and hi."""
-    return max(lo, min(hi, val))
-
-
 class ReportGenerator:
     """Generates HTML stock analysis reports."""
 
     def __init__(self) -> None:
         env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
         env.filters["md_to_html"] = _md_to_html
-        env.globals["clamp"] = _clamp
         self._env = env
 
     def generate(
@@ -119,8 +141,5 @@ class ReportGenerator:
             "capital_flow": stock_info.capital_flow,
             "kline": stock_info.kline,
             "cn_number": _cn_number,
-            "advice": analysis.investment_advice,
-            "key_events": analysis.key_events,
             "report_text": analysis.report_text,
-            "report_summary": analysis.summary,
         }

@@ -14,13 +14,13 @@ from typing import Any
 import httpx
 
 from ..models.stock import KlineBar, KlineData
-from ..utils import to_sina_symbol
-from .base import BaseDataCollector
+from ..utils import retry_on_connection, silent_failure, to_sina_symbol
+from .base import DataCollector
 
 _TENCENT_URL = "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
 
 
-class KlineCollector(BaseDataCollector[KlineData]):
+class KlineCollector(DataCollector[KlineData]):
     """Fetch daily K-line history for a single A-share."""
 
     name = "kline"
@@ -33,28 +33,22 @@ class KlineCollector(BaseDataCollector[KlineData]):
         Returns empty bars on total failure.
         """
         # Level 1: stock_zh_a_hist (前复权)
-        try:
+        with silent_failure("kline_akshare_hist"):
             result = await self._fetch_hist(symbol)
             if result and result.bars:
                 return result
-        except Exception:
-            pass
 
         # Level 2: stock_zh_a_daily
-        try:
+        with silent_failure("kline_akshare_daily"):
             result = await self._fetch_daily(symbol)
             if result and result.bars:
                 return result
-        except Exception:
-            pass
 
         # Level 3: Tencent fqkline
-        try:
+        with silent_failure("kline_tencent_fqkline"):
             result = await self._fetch_tencent(symbol)
             if result and result.bars:
                 return result
-        except Exception:
-            pass
 
         return KlineData(symbol=symbol, source="all_failed")
 
@@ -92,7 +86,8 @@ class KlineCollector(BaseDataCollector[KlineData]):
 
         start = (datetime.now() - timedelta(days=self._days * 2)).strftime("%Y%m%d")
         end = datetime.now().strftime("%Y%m%d")
-        return ak.stock_zh_a_hist(
+        return retry_on_connection(
+            ak.stock_zh_a_hist,
             symbol=symbol,
             period="daily",
             adjust="qfq",
@@ -139,7 +134,9 @@ class KlineCollector(BaseDataCollector[KlineData]):
             if symbol.startswith("6")
             else ("sz" if symbol.startswith(("0", "3")) else "bj")
         )
-        return ak.stock_zh_a_daily(symbol=f"{prefix}{symbol}", adjust="qfq")
+        return retry_on_connection(
+            ak.stock_zh_a_daily, symbol=f"{prefix}{symbol}", adjust="qfq"
+        )
 
     async def _fetch_tencent(self, symbol: str) -> KlineData | None:
         """Fallback: Tencent fqkline API (前复权).

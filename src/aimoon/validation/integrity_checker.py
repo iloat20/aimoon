@@ -66,8 +66,8 @@ def _check_kline(
 ) -> None:
     k = info.kline
     if not k or not k.bars:
-        confidence["技术面"] = "低"
-        warnings.append("K线数据为空，技术面分析不可用")
+        confidence["K线数据"] = "低"
+        warnings.append("K线数据为空")
         return
 
     score = 3
@@ -78,40 +78,17 @@ def _check_kline(
     elif n >= 20:
         pass
     else:
-        warnings.append(f"K线样本仅{n}根，技术指标计算精度有限")
+        warnings.append(f"K线样本仅{n}根，数据样本有限")
         score -= 1
 
     if k.source in ("tencent(fqkline)",):
-        warnings.append("K线数据来自腾讯降级源，技术指标精度可能受限")
+        warnings.append("K线数据来自腾讯降级源，数据精度可能受限")
         score -= 1
     elif k.source == "all_failed":
         warnings.append("K线数据全部获取失败")
         score = 1
 
-    # Support/resistance sanity
-    if n >= 5:
-        from ..indicators.technical import compute_indicators
-
-        ind = compute_indicators(k)
-        price = ind.get("price", 0)
-        support = ind.get("support", 0)
-        resistance = ind.get("resistance", 0)
-        if price and support and resistance:
-            if support >= price:
-                warnings.append(
-                    f"支撑位({support})高于当前价({price})，数据可能存在异常"
-                )
-                score -= 1
-            if resistance <= price:
-                warnings.append(
-                    f"阻力位({resistance})低于当前价({price})，数据可能存在异常"
-                )
-                score -= 1
-            if support >= resistance:
-                warnings.append("支撑位高于阻力位，技术指标数据异常")
-                score -= 1
-
-    confidence["技术面"] = _score_to_level(score)
+    confidence["K线数据"] = _score_to_level(score)
 
 
 def _check_capital_flow(
@@ -168,8 +145,8 @@ def _check_social(
 ) -> None:
     n = len(info.social_posts)
     if n == 0:
-        confidence["市场情绪"] = "低"
-        warnings.append("舆情数据为空，情绪分析不可用")
+        confidence["舆情数据"] = "低"
+        warnings.append("舆情数据为空")
         return
 
     score = 3
@@ -178,13 +155,13 @@ def _check_social(
     elif n >= 10:
         pass
     elif n >= 5:
-        warnings.append(f"舆情样本仅{n}条，情绪分析代表性有限，仅供参考")
+        warnings.append(f"舆情样本仅{n}条，数据代表性有限，仅供参考")
         score -= 1
     else:
-        warnings.append(f"舆情样本仅{n}条，情绪分析参考价值极低")
+        warnings.append(f"舆情样本仅{n}条，数据参考价值较低")
         score = 1
 
-    confidence["市场情绪"] = _score_to_level(score)
+    confidence["舆情数据"] = _score_to_level(score)
 
 
 def _check_divergence(info: StockInfo, warnings: list[str]) -> None:

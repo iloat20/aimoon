@@ -10,15 +10,16 @@ Each sub-fetcher runs independently; failures don't abort the pipeline.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 from ..models.stock import CapitalFlowData
-from ..utils import resolve_market
-from .base import BaseDataCollector
+from ..utils import resolve_market, silent_failure
+from .base import DataCollector
 
 
-class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
+class CapitalFlowCollector(DataCollector[CapitalFlowData]):
     """Collects market capital flow data for a single A-share."""
 
     name = "fund_flow"
@@ -30,10 +31,12 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
         """Run all sub-fetchers; return aggregated CapitalFlowData."""
         data = CapitalFlowData(symbol=symbol)
 
-        # Primary: pysnowball (3/5/10/20 day data)
-        await self._fetch_via_pysnowball(symbol, data)
-        await self._fetch_northbound(symbol, data)
-        await self._fetch_lhb(symbol, data)
+        # Primary sources: run concurrently
+        await asyncio.gather(
+            self._fetch_via_pysnowball(symbol, data),
+            self._fetch_northbound(symbol, data),
+            self._fetch_lhb(symbol, data),
+        )
 
         # Fallback: akshare (daily order breakdown)
         if not data.main_net_5d and not data.net_3d:
@@ -51,11 +54,15 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
                 df = await asyncio.to_thread(self._ak_individual_flow, symbol)
                 if df is not None and not df.empty:
                     break
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    "[akshare_individual_flow_attempt_%d] %s: %s",
+                    attempt + 1,
+                    type(e).__name__,
+                    e,
+                )
                 if attempt == 0:
                     await asyncio.sleep(1)
-                    continue
-                return False
         else:
             return await self._fetch_eastmoney_flow_http(symbol, data)
 
@@ -72,7 +79,12 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
 
             self._sources_ok.append("akshare(个股资金流)")
             return True
-        except Exception:
+        except Exception as e:
+            logging.warning(
+                "[akshare_individual_flow_parse] %s: %s",
+                type(e).__name__,
+                e,
+            )
             return False
 
     def _ak_individual_flow(self, symbol: str):
@@ -93,7 +105,7 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
 
         url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
         params = {
-            "lmt": "5",
+            "lmt": "20",
             "klt": "101",
             "secid": secid,
             "fields1": "f1,f2,f3,f7",
@@ -133,13 +145,14 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
 
             self._sources_ok.append("eastmoney(资金流HTTP)")
             return True
-        except Exception:
+        except Exception as e:
+            logging.warning("[eastmoney_flow_http] %s: %s", type(e).__name__, e)
             return False
 
     async def _fetch_northbound(self, symbol: str, data: CapitalFlowData) -> None:
         """北向资金持股变化 + 北向整体净流入."""
         # 1. 个股北向持股变化（东方财富 API，季度数据）
-        try:
+        with silent_failure("eastmoney_northbound_holdings"):
             cf_result = await asyncio.to_thread(self._em_northbound, symbol)
             if cf_result:
                 data.northbound_chg = cf_result.get("change_value", 0.0)
@@ -148,11 +161,9 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
                 data.northbound_hold_ratio = cf_result.get("hold_ratio", 0.0)
                 data.northbound_date = cf_result.get("date", "")
                 self._sources_ok.append("eastmoney(北向持股)")
-        except Exception:
-            pass
 
         # 2. 北向整体净流入（沪深股通）
-        try:
+        with silent_failure("akshare_northbound_flow"):
             df_flow = await asyncio.to_thread(self._ak_northbound_flow)
             if df_flow is not None and not df_flow.empty:
                 north = df_flow[df_flow["资金方向"] == "北向"]
@@ -161,8 +172,6 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
                     data.northbound_net_flow = float(total_net) * 1e8
                     if "eastmoney(北向持股)" not in self._sources_ok:
                         self._sources_ok.append("akshare(北向)")
-        except Exception:
-            pass
 
     def _em_northbound(self, symbol: str) -> dict:
         """东方财富 API 获取个股北向持股（季度数据）."""
@@ -215,7 +224,7 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
 
     async def _fetch_lhb(self, symbol: str, data: CapitalFlowData) -> None:
         """龙虎榜（最近上榜记录）. Uses stock_lhb_detail_em for the last ~30 days."""
-        try:
+        with silent_failure("akshare_lhb"):
             df = await asyncio.to_thread(self._ak_lhb, symbol)
             if df is None or df.empty:
                 return
@@ -239,21 +248,23 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
                     break
 
             self._sources_ok.append("akshare(龙虎榜)")
-        except Exception:
-            pass
 
     def _ak_lhb(self, symbol: str):
         import akshare as ak
 
         start = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
         end = datetime.now().strftime("%Y%m%d")
-        return ak.stock_lhb_detail_em(symbol=symbol, start_date=start, end_date=end)
+        df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
+        if df is None or df.empty:
+            return df
+        # API no longer accepts symbol param; filter by code column
+        return df[df["代码"] == symbol] if "代码" in df.columns else df
 
     # ---------- pysnowball fallback ----------
 
     async def _fetch_via_pysnowball(self, symbol: str, data: CapitalFlowData) -> None:
         """Fetch 3/5/10/20 day net flow via pysnowball."""
-        try:
+        with silent_failure("pysnowball_capital_flow"):
             from ..financial.pysnowball_adapter import PysnowballAdapter
 
             adapter = PysnowballAdapter()
@@ -265,5 +276,3 @@ class FundFlowCollector(BaseDataCollector[CapitalFlowData]):
             data.net_10d = cf.get("net_10d", 0.0)
             data.net_20d = cf.get("net_20d", 0.0)
             self._sources_ok.append("pysnowball(资金流)")
-        except Exception:
-            pass

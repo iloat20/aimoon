@@ -6,37 +6,28 @@ import pytest
 class TestScoringConstants:
     """Verify scoring constants are correctly defined."""
 
-    def test_weights_sum_to_one(self):
+    def test_basic_constants_exist(self):
         from src.aimoon.scoring.constants import (
+            CAPITAL_FLOW_STRONG_IN,
+            DEFAULT_SCORE,
+            FUND_ROE_EXCELLENT,
+            MAX_SCORE,
+            MIN_SCORE,
+            NEWS_BUY_RATIO_BULLISH,
             WEIGHT_CAPITAL_FLOW,
             WEIGHT_FUNDAMENTAL,
             WEIGHT_NEWS,
-            WEIGHT_SENTIMENT,
-            WEIGHT_TECHNICAL,
         )
 
-        total = (
-            WEIGHT_SENTIMENT
-            + WEIGHT_TECHNICAL
-            + WEIGHT_FUNDAMENTAL
-            + WEIGHT_CAPITAL_FLOW
-            + WEIGHT_NEWS
-        )
-        assert total == 1.0, f"Weights sum to {total}, expected 1.0"
-
-    def test_sentiment_thresholds_sorted_descending(self):
-        from src.aimoon.scoring.constants import SENTIMENT_THRESHOLDS
-
-        prev = 2.0
-        for threshold, _ in SENTIMENT_THRESHOLDS:
-            assert threshold < prev, f"Thresholds must be descending: got {threshold} after {prev}"
-            prev = threshold
-
-    def test_sentiment_thresholds_in_range(self):
-        from src.aimoon.scoring.constants import MAX_SCORE, MIN_SCORE, SENTIMENT_THRESHOLDS
-
-        for _, score in SENTIMENT_THRESHOLDS:
-            assert MIN_SCORE <= score <= MAX_SCORE
+        assert WEIGHT_FUNDAMENTAL > 0
+        assert WEIGHT_CAPITAL_FLOW > 0
+        assert WEIGHT_NEWS > 0
+        assert DEFAULT_SCORE == 3
+        assert MIN_SCORE == 1
+        assert MAX_SCORE == 5
+        assert FUND_ROE_EXCELLENT > 0
+        assert NEWS_BUY_RATIO_BULLISH > 0
+        assert CAPITAL_FLOW_STRONG_IN > 0
 
 
 class TestCapitalFlowScore:
@@ -64,14 +55,14 @@ class TestCapitalFlowScore:
         )
 
     def test_neutral_flow(self, neutral_flow):
-        from src.aimoon.indicators.capital_flow import capital_flow_score
+        from src.aimoon.scoring import capital_flow_score
 
         score, detail, force = capital_flow_score(neutral_flow)
         assert score == 3
         assert force == "持平"
 
     def test_strong_inflow(self, strong_inflow):
-        from src.aimoon.indicators.capital_flow import capital_flow_score
+        from src.aimoon.scoring import capital_flow_score
 
         score, detail, force = capital_flow_score(strong_inflow)
         assert score == 5
@@ -109,24 +100,6 @@ class TestUtils:
         sym, market, name = resolve_symbol("1")
         assert sym == "000001"
         assert market == "SZ"
-
-    def test_classify_sentiment_positive(self):
-        from src.aimoon.utils import classify_sentiment
-
-        assert classify_sentiment("主力资金大幅买入，业绩大增") == "positive"
-        assert classify_sentiment("这是个大利好") == "positive"
-
-    def test_classify_sentiment_negative(self):
-        from src.aimoon.utils import classify_sentiment
-
-        assert classify_sentiment("暴跌出逃，踩踏了") == "negative"
-        assert classify_sentiment("利空来袭，退市风险") == "negative"
-
-    def test_classify_sentiment_neutral(self):
-        from src.aimoon.utils import classify_sentiment
-
-        assert classify_sentiment("今日大盘震荡") == "neutral"
-        assert classify_sentiment("") == "neutral"
 
     def test_extract_toutiao_url(self):
         from src.aimoon.utils import extract_toutiao_url

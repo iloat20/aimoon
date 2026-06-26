@@ -5,6 +5,7 @@ Priority: akshare → 新浪API → 腾讯API
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime
 from typing import Any
@@ -13,12 +14,12 @@ import httpx
 
 from ..models.stock import StockQuote
 from ..utils import to_sina_symbol
-from .base import BaseDataCollector
+from .base import DataCollector
 
 # Sina API endpoints
-_SINA_URL = "http://hq.sinajs.cn/list={symbol}"
+_SINA_URL = "https://hq.sinajs.cn/list={symbol}"
 # Tencent API endpoints
-_TENCENT_URL = "http://qt.gtimg.cn/q={symbol}"
+_TENCENT_URL = "https://qt.gtimg.cn/q={symbol}"
 
 # Sina referer header (required)
 _SINA_HEADERS = {
@@ -30,7 +31,7 @@ _SINA_HEADERS = {
 }
 
 
-class QuoteCollector(BaseDataCollector[StockQuote]):
+class QuoteCollector(DataCollector[StockQuote]):
     """Fetch real-time stock quotes with multi-source fallback."""
 
     name = "quote"
@@ -42,6 +43,11 @@ class QuoteCollector(BaseDataCollector[StockQuote]):
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=10.0)
         return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def fetch(self, symbol: str, name: str = "", **kwargs: Any) -> StockQuote:
         """Fetch quote with three-level fallback."""
@@ -85,7 +91,7 @@ class QuoteCollector(BaseDataCollector[StockQuote]):
         try:
             import akshare as ak
 
-            df = ak.stock_zh_a_spot_em()
+            df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
             row = df[df["代码"] == symbol]
             if row.empty:
                 return None
@@ -191,7 +197,7 @@ class QuoteCollector(BaseDataCollector[StockQuote]):
             price=float(fields[3]) if fields[3] else 0,
             change=float(fields[32]) if fields[32] else 0,
             change_pct=float(fields[33]) if fields[33] else 0,
-            volume=int(float(fields[6])) if fields[6] else 0,
+            volume=int(float(fields[6]) * 100) if fields[6] else 0,  # 手→股
             amount=float(fields[38]) * 10000 if fields[38] else 0,  # 万元→元
             high=float(fields[34]) if fields[34] else 0,
             low=float(fields[35]) if fields[35] else 0,

@@ -27,15 +27,6 @@ _HEADERS = {
     "Origin": "https://www.cninfo.com.cn",
 }
 
-# Category mapping for filtering announcement types
-_CATEGORY_MAP = {
-    "年报": "category_ndbg_szsh;",
-    "半年报": "category_bndbwj_szsh;",
-    "季报": "category_dljc_szsh;",
-    "分红": "category_fhzcj_szsh;",
-    "业绩预告": "category_yjyg_szsh;",
-}
-
 
 class CninfoCollector(BaseCollector):
     """Collects company announcements from 巨潮资讯 (cninfo.com.cn).
@@ -118,15 +109,18 @@ class CninfoCollector(BaseCollector):
                     else:
                         url = ""
 
-                    # Parse publish time (timestamp in ms)
+                    # Parse publish time (timestamp in ms or string)
                     pub_ts = item.get("announcementTime", 0)
-                    if isinstance(pub_ts, (int, float)) and pub_ts > 1000000000000:
-                        pub_ts /= 1000
-                    pub_date = (
-                        datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d")
-                        if pub_ts
-                        else ""
-                    )
+                    if isinstance(pub_ts, str):
+                        pub_date = pub_ts[:10]
+                    else:
+                        if isinstance(pub_ts, (int, float)) and pub_ts > 1000000000000:
+                            pub_ts /= 1000
+                        pub_date = (
+                            datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d")
+                            if pub_ts
+                            else ""
+                        )
 
                     posts.append(
                         SocialPost(

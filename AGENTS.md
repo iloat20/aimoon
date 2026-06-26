@@ -39,12 +39,6 @@ Playwright collectors (guba, toutiao, wechat) spin up real browsers — first ru
 - **Report**: `output/<symbol>_<timestamp>.html`; inline CSS Jinja2 template; all dimensions scored 1-5
 - **No 小红书/抖音 collector** — explicitly removed by user
 
-## Technical indicators
-
-`indicators/technical.py` — pure pandas (no talib). Computes: MA alignment (多头/空头/粘合),
-MACD(12,26,9), KDJ(9,3,3) with 金叉/死叉/钝化, RSI(6,14), Bollinger(20,2),
-support/resistance (60-day range), volume ratio, rule-based 1-5 score.
-
 Stock code → market: `6xxxx` → SH, `0/3xxxx` → SZ, `4/8xxxx` → BJ.
 
 ## Config
@@ -59,7 +53,7 @@ Pydantic-settings loads from `.env` (in .gitignore). Key vars:
 
 ```bash
 uv sync --group dev          # pytest + ruff + bandit + pylint
-uv run ruff check src/       # line-length 88, select E/F/I/N/W/UP
+uv run ruff check src/       # line-length 100, select E/F/I/N/W/UP
 uv run mypy src/aimoon/      # ignore_missing_imports, warn_unused_ignores
 ```
 

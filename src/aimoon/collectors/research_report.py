@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from ..models.stock import ResearchReport, ResearchReportData
-from .base import BaseDataCollector
+from .base import DataCollector
 
 
-class ResearchReportCollector(BaseDataCollector[ResearchReportData]):
+class ResearchReportCollector(DataCollector[ResearchReportData]):
     """Fetch institutional research reports for a single A-share."""
 
     name = "research_report"
@@ -37,9 +37,10 @@ class ResearchReportCollector(BaseDataCollector[ResearchReportData]):
         buy = hold = neutral = 0
         eps_sum = pe_sum = 0.0
         eps_count = 0
+        pe_count = 0
 
         current_year = datetime.now().year
-        one_year_ago = datetime.now().replace(year=current_year - 1)
+        one_year_ago = datetime.now() - timedelta(days=365)
 
         for _, row in df.iterrows():
             date_str = str(row.get("日期", ""))[:10]
@@ -83,11 +84,12 @@ class ResearchReportCollector(BaseDataCollector[ResearchReportData]):
                 eps_count += 1
             if report.pe_this_yr > 0:
                 pe_sum += report.pe_this_yr
+                pe_count += 1
 
             reports.append(report)
 
         avg_eps = round(eps_sum / eps_count, 2) if eps_count else 0.0
-        avg_pe = round(pe_sum / len(reports), 2) if reports else 0.0
+        avg_pe = round(pe_sum / pe_count, 2) if pe_count else 0.0
 
         return ResearchReportData(
             symbol=symbol,

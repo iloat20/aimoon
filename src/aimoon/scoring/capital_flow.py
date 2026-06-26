@@ -1,13 +1,12 @@
-"""Capital-flow scoring — moved from collectors/fund_flow.py to indicators."""
+"""Capital-flow scoring — rule-based evaluation of money flow dimensions."""
 
 from __future__ import annotations
 
 from ..models.stock import CapitalFlowData
-from ..scoring.constants import (
+from .constants import (
     CAPITAL_FLOW_IN,
     CAPITAL_FLOW_OUT,
     CAPITAL_FLOW_STRONG_IN,
-    CAPITAL_FLOW_STRONG_OUT,
     DEFAULT_SCORE,
     MAX_SCORE,
     MIN_SCORE,
@@ -22,9 +21,25 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
     """
     main_5d = cf.main_net_5d
 
-    if main_5d > 0:
+    is_neutral = (
+        main_5d == 0
+        and cf.net_3d == 0
+        and cf.net_10d == 0
+        and cf.net_20d == 0
+        and cf.northbound_chg == 0
+        and (not cf.lhb_date or cf.lhb_net_buy == 0)
+    )
+    if is_neutral:
+        detail = (
+            "近5日主力净流入0.00亿；3日+0.00亿；"
+            "10日+0.00亿；20日+0.00亿。"
+        )
+        return 3, detail, "持平"
+
+    net_all = main_5d + cf.net_3d + cf.net_10d + cf.net_20d
+    if net_all > 0:
         main_force = "流入"
-    elif main_5d < 0:
+    elif net_all < 0:
         main_force = "流出"
     else:
         main_force = "持平"
@@ -33,21 +48,19 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
         s1 = 5
     elif main_5d > CAPITAL_FLOW_IN:
         s1 = 4
-    elif main_5d > CAPITAL_FLOW_OUT:
+    elif main_5d > 0:
         s1 = 3
-    elif main_5d > CAPITAL_FLOW_STRONG_OUT:
+    elif main_5d > CAPITAL_FLOW_OUT:
         s1 = 2
     else:
         s1 = 1
 
-    # Trend: 3d vs 10d direction consistency
     trend_score = 0
     if cf.net_3d > 0 and cf.net_10d > 0:
         trend_score = 2
     elif cf.net_3d < 0 and cf.net_10d < 0:
-        trend_score = -1
+        trend_score = -2
 
-    # 20d long-term trend
     long_score = 0
     if cf.net_20d > 5e8:
         long_score = 2
@@ -76,7 +89,10 @@ def capital_flow_score(cf: CapitalFlowData) -> tuple[int, str, str]:
     else:
         s5 = 3
 
-    total = s1 * 0.35 + trend_score + long_score + s4 * 0.15 + s5 * 0.05
+    total = (
+        s1 * 0.35 + trend_score * 0.25 + long_score * 0.20
+        + s4 * 0.15 + s5 * 0.05
+    )
     total = max(MIN_SCORE, min(MAX_SCORE, DEFAULT_SCORE + total))
     score = max(MIN_SCORE, min(MAX_SCORE, round(total)))
 

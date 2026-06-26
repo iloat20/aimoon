@@ -7,6 +7,7 @@ Uses stock.xueqiu.com subdomain to avoid WAF on main domain.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime
 
@@ -15,7 +16,7 @@ import httpx
 from ..config.settings import get_settings
 from ..models.social import CollectResult, SocialPost
 from ..models.stock import StockQuote
-from ..utils import to_xueqiu_symbol
+from ..utils import silent_failure, to_xueqiu_symbol
 from .base import BaseCollector
 
 # stock.xueqiu.com avoids WAF on main xueqiu.com for quote APIs
@@ -64,6 +65,11 @@ class XueqiuCollector(BaseCollector):
             )
         return self._client
 
+    async def aclose(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     def _symbol_xq(self, symbol: str) -> str:
         """Convert code to Xueqiu symbol format: SH600519."""
         return to_xueqiu_symbol(symbol)
@@ -107,7 +113,8 @@ class XueqiuCollector(BaseCollector):
                 source="雪球",
                 updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
-        except Exception:
+        except Exception as e:
+            logging.warning("[xueqiu_fetch_quote] %s: %s", type(e).__name__, e)
             return None
 
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
@@ -120,40 +127,33 @@ class XueqiuCollector(BaseCollector):
         seen_titles: set[str] = set()
 
         # Strategy 1: Stock-specific search (精确搜索，优先使用)
-        try:
+        with silent_failure("xueqiu_search_stock_posts"):
             search_posts = await self._search_stock_posts(symbol, stock_name)
             for p in search_posts:
                 if p.title not in seen_titles:
                     seen_titles.add(p.title)
                     posts.append(p)
-        except Exception:
-            pass
 
         # Strategy 2: Hot posts — only take posts that mention the stock
         if len(posts) < 10:
-            try:
+            with silent_failure("xueqiu_fetch_hot_posts"):
                 hot_posts = await self._fetch_hot_posts()
                 for p in hot_posts:
                     if p.title not in seen_titles and (
                         symbol in p.title
-                        or p.title.startswith(stock_name[:2])
-                        or stock_name[:2] in p.title
+                        or stock_name in p.title
                     ):
                         seen_titles.add(p.title)
                         posts.append(p)
-            except Exception:
-                pass
 
         # Strategy 3: Playwright fallback (bypass WAF with real browser)
         if len(posts) < 3:
-            try:
+            with silent_failure("xueqiu_collect_via_playwright"):
                 pw_posts = await self._collect_via_playwright(symbol, stock_name)
                 for p in pw_posts:
                     if p.title not in seen_titles:
                         seen_titles.add(p.title)
                         posts.append(p)
-            except Exception:
-                pass
 
         posts = posts[:10]
 
@@ -175,16 +175,17 @@ class XueqiuCollector(BaseCollector):
             if resp.status_code != 200 or "aliyun_waf" in resp.text:
                 return []
             data = resp.json()
-        except Exception:
+        except Exception as e:
+            logging.warning("[xueqiu_fetch_hot_posts] %s: %s", type(e).__name__, e)
             return []
 
         items = data.get("items", [])
         posts: list[SocialPost] = []
         for item in items[:10]:
             try:
-                os = item.get("original_status", {}) or {}
-                title = os.get("title", "") or os.get("description", "")
-                text = os.get("description", "") or title
+                orig = item.get("original_status", {}) or {}
+                title = orig.get("title", "") or orig.get("description", "")
+                text = orig.get("description", "") or title
 
                 posts.append(
                     SocialPost(
@@ -193,24 +194,25 @@ class XueqiuCollector(BaseCollector):
                         content=text,
                         url=(
                             f"https://xueqiu.com/"
-                            f"{os.get('user', {}).get('profile', '')}"
-                            f"/{os.get('id', '')}"
+                            f"{orig.get('user', {}).get('profile', '')}"
+                            f"/{orig.get('id', '')}"
                         ),
-                        author=str(os.get("user", {}).get("screen_name", "")),
+                        author=str(orig.get("user", {}).get("screen_name", "")),
                         published_at=(
                             datetime.fromtimestamp(
-                                os.get("created_at", 0) / 1000
+                                orig.get("created_at", 0) / 1000
                             ).isoformat()
-                            if os.get("created_at")
+                            if orig.get("created_at")
                             else ""
                         ),
-                        likes=int(os.get("like_count", 0)),
-                        comments=int(os.get("reply_count", 0)),
-                        shares=int(os.get("retweet_count", 0)),
-                        views=int(os.get("view_count", 0)),
+                        likes=int(orig.get("like_count", 0)),
+                        comments=int(orig.get("reply_count", 0)),
+                        shares=int(orig.get("retweet_count", 0)),
+                        views=int(orig.get("view_count", 0)),
                     )
                 )
-            except Exception:
+            except Exception as e:
+                logging.warning("[xueqiu_hot_post_parse] %s: %s", type(e).__name__, e)
                 continue
         return posts
 
@@ -236,7 +238,8 @@ class XueqiuCollector(BaseCollector):
             if resp.status_code != 200 or "aliyun_waf" in resp.text:
                 return []
             data = resp.json()
-        except Exception:
+        except Exception as e:
+            logging.warning("[xueqiu_search_stock_posts] %s: %s", type(e).__name__, e)
             return []
 
         items = data.get("list", data.get("items", []))
@@ -268,7 +271,12 @@ class XueqiuCollector(BaseCollector):
                         views=int(item.get("view_count", 0)),
                     )
                 )
-            except Exception:
+            except Exception as e:
+                logging.warning(
+                    "[xueqiu_search_post_parse] %s: %s",
+                    type(e).__name__,
+                    e,
+                )
                 continue
         return posts
 
@@ -370,7 +378,12 @@ class XueqiuCollector(BaseCollector):
                                     views=int(item.get("view_count", 0)),
                                 )
                             )
-                        except Exception:
+                        except Exception as e:
+                            logging.warning(
+                                "[xueqiu_pw_search_post_parse] %s: %s",
+                                type(e).__name__,
+                                e,
+                            )
                             continue
 
                 if len(posts) < 3:
@@ -385,12 +398,15 @@ class XueqiuCollector(BaseCollector):
                     if hot_result and not hot_result.get("_raw"):
                         for item in hot_result.get("items", [])[:10]:
                             try:
-                                os = item.get("original_status", {}) or {}
-                                title = os.get("title", "") or os.get("description", "")
-                                text = os.get("description", "") or title
+                                orig = item.get("original_status", {}) or {}
+                                title = (
+                                    orig.get("title", "")
+                                    or orig.get("description", "")
+                                )
+                                text = orig.get("description", "") or title
                                 if symbol not in title and (
                                     not stock_name
-                                    or stock_name[:2] not in title
+                                    or stock_name not in title
                                 ):
                                     continue
                                 posts.append(
@@ -400,28 +416,33 @@ class XueqiuCollector(BaseCollector):
                                         content=text,
                                         url=(
                                             f"https://xueqiu.com/"
-                                            f"{os.get('user', {}).get('profile', '')}"
-                                            f"/{os.get('id', '')}"
+                                            f"{orig.get('user', {}).get('profile', '')}"
+                                            f"/{orig.get('id', '')}"
                                         ),
                                         author=str(
-                                            os.get("user", {}).get(
+                                            orig.get("user", {}).get(
                                                 "screen_name", ""
                                             )
                                         ),
                                         published_at=(
                                             datetime.fromtimestamp(
-                                                os.get("created_at", 0) / 1000
+                                                orig.get("created_at", 0) / 1000
                                             ).isoformat()
-                                            if os.get("created_at")
+                                            if orig.get("created_at")
                                             else ""
                                         ),
-                                        likes=int(os.get("like_count", 0)),
-                                        comments=int(os.get("reply_count", 0)),
-                                        shares=int(os.get("retweet_count", 0)),
-                                        views=int(os.get("view_count", 0)),
+                                        likes=int(orig.get("like_count", 0)),
+                                        comments=int(orig.get("reply_count", 0)),
+                                        shares=int(orig.get("retweet_count", 0)),
+                                        views=int(orig.get("view_count", 0)),
                                     )
                                 )
-                            except Exception:
+                            except Exception as e:
+                                logging.warning(
+                                    "[xueqiu_pw_hot_post_parse] %s: %s",
+                                    type(e).__name__,
+                                    e,
+                                )
                                 continue
 
                 return posts

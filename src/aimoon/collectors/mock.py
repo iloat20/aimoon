@@ -118,24 +118,12 @@ def mock_analysis_report(symbol: str, name: str) -> AnalysisReport:
     return AnalysisReport(
         symbol=symbol,
         name=name,
-        summary=f"综合来看，{name}({symbol})目前处于震荡整理阶段。市场情绪偏中性，"
-        f"基本面表现稳健，技术面存在支撑。建议投资者保持关注，逢低布局。",
-        sentiment=DimensionScore(
-            name="市场情绪",
-            score=3,
-            weight=0.25,
-            analysis="社交媒体讨论热度中等，看多与看空观点分歧明显，整体偏中性。",
-        ),
-        technical=DimensionScore(
-            name="技术面",
-            score=4,
-            weight=0.15,
-            analysis="股价处于上升通道中，均线多头排列，成交量配合良好，短期看好。",
-        ),
+        summary=f"综合来看，{name}({symbol})基本面表现稳健，资金面偏暖，"
+        f"建议投资者保持关注，逢低布局。",
         fundamental=DimensionScore(
             name="基本面",
             score=4,
-            weight=0.20,
+            weight=0.30,
             analysis="营收和净利润双增长，ROE保持在较高水平，现金流充裕，基本面扎实。",
         ),
         capital_flow=DimensionScore(
@@ -150,25 +138,10 @@ def mock_analysis_report(symbol: str, name: str) -> AnalysisReport:
             weight=0.15,
             analysis="近期相关新闻报道以中性偏正面为主，无重大负面事件。",
         ),
-        overall_rating=4,
-        sentiment_detail="社区讨论热度中等，多头与空头均有一定数量，观点分歧明显。",
-        technical_detail="股价在20日均线上方运行，MACD金叉，短期趋势向好。",
         fundamental_detail="PE处于行业中等水平，ROE约15%，成长性良好。",
         capital_flow_detail="主力资金近5日净流入约2亿元，北向持股比例微增。",
         news_detail="近期无重大利好或利空消息，市场关注度一般。",
-        bullish_ratio=0.55,
-        trend="震荡偏多",
-        support_price=round(random.uniform(5, 50), 2),
-        resistance_price=round(random.uniform(6, 60), 2),
         main_force="小幅流入",
-        news_sentiment="中性",
-        key_topics=["财报发布", "行业政策", "机构调研", "分红方案"],
-        key_events=["发布年报", "高管增持"],
-        risk_warnings=[
-            "市场整体波动风险",
-            "行业政策变化风险",
-            "公司业绩不达预期风险",
-        ],
         investment_advice=(
             "【免责声明】本报告由AI自动生成，仅供参考，不构成任何投资建议。"
             "投资有风险，入市需谨慎。请结合自身情况独立决策。"
@@ -180,16 +153,13 @@ def mock_analysis_report(symbol: str, name: str) -> AnalysisReport:
             f"## 二、财务健康度评估\n\n"
             f"公司财务状况良好，营收和净利润保持稳定增长。ROE处于较高水平，"
             f"现金流充裕，资产负债率在合理范围内。\n\n"
-            f"## 三、市场情绪与舆情分析\n\n"
-            f"社交媒体讨论热度中等，市场对该股关注度一般。"
-            f"看多与看空观点分歧明显，整体情绪偏中性。\n\n"
-            f"## 四、技术面分析\n\n"
-            f"股价处于上升通道中，均线呈多头排列。MACD金叉信号明确，"
-            f"成交量配合良好。短期支撑位和阻力位清晰。\n\n"
-            f"## 五、资金面分析\n\n"
+            f"## 三、资金面分析\n\n"
             f"近期主力资金呈净流入状态，北向资金小幅增持。"
             f"资金面整体偏暖，有助于股价企稳回升。\n\n"
-            f"## 六、综合投资建议与评级\n\n"
+            f"## 四、行业与市场前景\n\n"
+            f"行业整体处于稳定增长阶段，公司作为龙头企业有望持续受益。"
+            f"市场关注度适中，机构持仓比例合理。\n\n"
+            f"## 五、投资建议与风险提示\n\n"
             f"评级：【中性持有】\n"
             f"建议投资者保持关注，在回调时逢低布局。\n"
         ),

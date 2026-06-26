@@ -1,19 +1,9 @@
 """Scoring module — constants, weights, and threshold definitions."""
 
-# Dimension weights (must sum to 1.0)
-WEIGHT_SENTIMENT = 0.25      # 市场情绪
-WEIGHT_TECHNICAL = 0.15      # 技术面
-WEIGHT_FUNDAMENTAL = 0.30    # 基本面
-WEIGHT_CAPITAL_FLOW = 0.15   # 资金面
-WEIGHT_NEWS = 0.15           # 新闻舆情
-
-# Sentiment scoring thresholds (bull_ratio = positive / total)
-SENTIMENT_THRESHOLDS = [
-    (0.7, 5),    # >= 70% → 5 分
-    (0.6, 4),    # >= 60% → 4 分
-    (0.4, 3),    # >= 40% → 3 分
-    (0.2, 2),    # >= 20% → 2 分
-]
+# Dimension weights (for reference, no longer used for overall rating)
+WEIGHT_FUNDAMENTAL = 0.50    # 基本面
+WEIGHT_CAPITAL_FLOW = 0.25   # 资金面
+WEIGHT_NEWS = 0.25           # 新闻舆情
 
 # Fundamental scoring thresholds
 FUND_ROE_EXCELLENT = 15      # ROE >= 15% → +1

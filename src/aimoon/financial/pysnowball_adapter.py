@@ -6,11 +6,11 @@ Data format: each value is [amount, yoy_ratio], e.g. [3199亿, 0.024].
 
 from __future__ import annotations
 
-from datetime import datetime
+import asyncio
 
 from ..config.settings import get_settings
 from ..models.stock import FinancialData
-from ..utils import to_xueqiu_symbol
+from ..utils import silent_failure, to_xueqiu_symbol
 
 
 def _first(items: list | None) -> dict | None:
@@ -25,9 +25,12 @@ def _val(data: dict, key: str) -> float:
     v = data.get(key, 0)
     if v is None:
         return 0.0
-    if isinstance(v, (list, tuple)):
-        return float(v[0]) if len(v) > 0 else 0.0
-    return float(v)
+    try:
+        if isinstance(v, (list, tuple)):
+            return float(v[0]) if len(v) > 0 else 0.0
+        return float(v)
+    except (ValueError, TypeError):
+        return 0.0
 
 
 def _yoy(data: dict, key: str) -> float:
@@ -39,17 +42,6 @@ def _yoy(data: dict, key: str) -> float:
         if len(v) > 1 and v[1] is not None:
             return float(v[1]) * 100  # Convert to percentage
     return 0.0
-
-
-def _ts_to_str(ms: int | float | str | None) -> str:
-    """Convert Unix timestamp (ms) to readable date string."""
-    try:
-        ts: int = int(float(str(ms)))
-        if ts > 1_000_000_000_000:  # milliseconds
-            ts //= 1000
-        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-    except (ValueError, TypeError, OSError):
-        return str(ms) if ms else ""
 
 
 class PysnowballAdapter:
@@ -64,18 +56,16 @@ class PysnowballAdapter:
         if self._initialized:
             return
         if self._token:
-            try:
+            with silent_failure("pysnowball_set_token"):
                 import pysnowball as ball
 
                 ball.set_token(self._token)
-            except Exception:
-                pass
         self._initialized = True
 
     async def fetch(self, symbol: str) -> FinancialData:
         self._ensure_init()
         try:
-            return self._fetch_via_pysnowball(symbol)
+            return await asyncio.to_thread(self._fetch_via_pysnowball, symbol)
         except Exception as e:
             return FinancialData(symbol=symbol, source=f"pysnowball_failed: {e}")
 
@@ -89,10 +79,8 @@ class PysnowballAdapter:
         self._ensure_init()
         result: dict = {}
 
-        try:
+        with silent_failure("pysnowball_fetch_capital_flow"):
             result = self._fetch_capital_flow_impl(symbol)
-        except Exception:
-            pass
 
         return result
 
@@ -103,7 +91,7 @@ class PysnowballAdapter:
         result: dict = {}
 
         # --- Historical flow (多周期累计) ---
-        try:
+        with silent_failure("pysnowball_capital_history"):
             hist_raw = ball.capital_history(xq_symbol, count=25)
             hist_data = (
                 hist_raw.get("data", {})
@@ -128,9 +116,6 @@ class PysnowballAdapter:
             if sum20 is not None:
                 result["net_20d"] = float(sum20)
 
-        except Exception:
-            pass
-
         return result
 
     def _fetch_via_pysnowball(self, symbol: str) -> FinancialData:
@@ -140,7 +125,7 @@ class PysnowballAdapter:
         result = FinancialData(symbol=symbol, source="雪球(pysnowball)")
 
         # --- Balance Sheet ---
-        try:
+        with silent_failure("pysnowball_balance_sheet"):
             bs = ball.balance(xq_symbol)
             bs_data = bs.get("data", {}) if isinstance(bs, dict) else {}
             items = bs_data.get("list", [])
@@ -153,11 +138,9 @@ class PysnowballAdapter:
                 result.equity = _val(latest, "total_assets") - _val(
                     latest, "total_liab"
                 )
-        except Exception:
-            pass
 
         # --- Income Statement ---
-        try:
+        with silent_failure("pysnowball_income_statement"):
             inc = ball.income(xq_symbol)
             inc_data = inc.get("data", {}) if isinstance(inc, dict) else {}
             items = inc_data.get("list", [])
@@ -169,11 +152,9 @@ class PysnowballAdapter:
                 result.net_profit = _val(latest, "net_profit")
                 result.revenue_yoy = _yoy(latest, "total_revenue")
                 result.net_profit_yoy = _yoy(latest, "net_profit")
-        except Exception:
-            pass
 
         # --- Cash Flow ---
-        try:
+        with silent_failure("pysnowball_cash_flow"):
             cf = ball.cash_flow(xq_symbol)
             cf_data = cf.get("data", {}) if isinstance(cf, dict) else {}
             items = cf_data.get("list", [])
@@ -182,11 +163,9 @@ class PysnowballAdapter:
                 result.operating_cf = _val(latest, "ncf_from_oa")
                 result.investing_cf = _val(latest, "ncf_from_ia")
                 result.financing_cf = _val(latest, "ncf_from_fa")
-        except Exception:
-            pass
 
         # --- Key Indicators (ROE, EPS, etc.) ---
-        try:
+        with silent_failure("pysnowball_indicators"):
             ind = ball.indicator(xq_symbol)
             ind_data = ind.get("data", {}) if isinstance(ind, dict) else {}
             items = ind_data.get("list", [])
@@ -195,7 +174,5 @@ class PysnowballAdapter:
                 result.roe = _val(latest, "avg_roe")
                 result.eps = _val(latest, "basic_eps")
                 result.bvps = _val(latest, "np_per_share")
-        except Exception:
-            pass
 
         return result

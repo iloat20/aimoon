@@ -39,7 +39,7 @@ class BaseCollector(ABC):
         )
 
 
-class BaseDataCollector[T](ABC):
+class DataCollector[T](ABC):
     """Abstract base for non-social data collectors (quote, K-line, fund flow, etc.).
 
     Returns typed data models directly rather than CollectResult.
@@ -74,10 +74,18 @@ class CollectorRegistry:
         """Run all collectors concurrently with per-collector timeout."""
         tasks = []
         for c in self._collectors.values():
-            task = asyncio.ensure_future(self._collect_one(c, symbol, stock_name))
+            task = asyncio.ensure_future(
+                self._collect_one(c, symbol, stock_name)
+            )
             tasks.append(task)
 
-        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        raw_results = await asyncio.gather(
+            *[
+                asyncio.wait_for(t, timeout=timeout)
+                for t in tasks
+            ],
+            return_exceptions=True,
+        )
 
         processed: list[CollectResult] = []
         for col, res in zip(self._collectors.values(), raw_results):

@@ -1,33 +1,20 @@
-"""Shared utilities for symbol/market resolution and text parsing."""
+"""Legacy compatibility layer — re-exports from shared/ package.
+
+Prefer importing from `aimoon.shared.*` directly.
+"""
 
 from __future__ import annotations
 
-import re as _re
+import logging
+from contextlib import contextmanager
 
-_MARKET_MAP = {"6": "SH", "0": "SZ", "3": "SZ", "4": "BJ", "8": "BJ"}
-
-
-def resolve_market(symbol: str) -> str:
-    """Resolve stock code to market: SH/SZ/BJ."""
-    return _MARKET_MAP.get(symbol[0], "SZ")
-
-
-def resolve_symbol(raw: str) -> tuple[str, str, str]:
-    """Resolve raw stock code to (symbol, market, name)."""
-    symbol = raw.strip().zfill(6)
-    market = resolve_market(symbol)
-    return symbol, market, symbol
-
-
-def to_sina_symbol(symbol: str) -> str:
-    """Convert 6-digit code to Sina format: sh600519 or sz000001."""
-    m = resolve_market(symbol)
-    return f"{m.lower()}{symbol}"
-
-
-def to_xueqiu_symbol(symbol: str) -> str:
-    """Convert 6-digit code to Xueqiu format: SH600519."""
-    return f"{resolve_market(symbol)}{symbol}"
+from .shared.symbols import (  # noqa: F401 — re-export
+    resolve_market,
+    resolve_symbol,
+    to_eastmoney_market,
+    to_sina_symbol,
+    to_xueqiu_symbol,
+)
 
 
 def parse_chinese_count(txt: str) -> int:
@@ -48,11 +35,9 @@ def parse_chinese_count(txt: str) -> int:
 
 
 def extract_toutiao_url(href: str) -> str:
-    """Extract actual article URL from Toutiao jump link.
+    """Extract actual article URL from Toutiao jump link."""
+    import re as _re
 
-    Tries triple-encoded group ID patterns, then url parameter fallback.
-    Returns empty string if no match found.
-    """
     m = _re.search(r"group%252F(\d{15,})", href)
     if m:
         return f"https://www.toutiao.com/article/{m.group(1)}/"
@@ -67,3 +52,50 @@ def extract_toutiao_url(href: str) -> str:
         from urllib.parse import unquote
         return unquote(m.group(1))
     return ""
+
+
+@contextmanager
+def silent_failure(context: str, default_return=None):
+    try:
+        yield
+    except Exception as e:
+        _exc = type(e).__name__
+        if _exc in (
+            "ConnectionError",
+            "ConnectionAbortedError",
+            "RemoteDisconnected",
+            "TimeoutError",
+            "OSError",
+        ):
+            logging.debug("[%s] %s: %s", context, _exc, e)
+        else:
+            logging.warning("[%s] %s: %s", context, _exc, e)
+
+
+def retry_on_connection(
+    func, *args, retries: int = 2, delay: float = 1.0, **kwargs
+):
+    """Call *func* with retries on transient connection errors."""
+    import time
+
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except (
+            ConnectionError,
+            ConnectionAbortedError,
+            TimeoutError,
+            OSError,
+        ) as exc:
+            last_exc = exc
+            if attempt < retries:
+                logging.debug(
+                    "[retry] %s attempt %d/%d failed: %s",
+                    func.__qualname__,
+                    attempt + 1,
+                    retries,
+                    exc,
+                )
+                time.sleep(delay * (attempt + 1))
+    raise last_exc  # type: ignore[misc]

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import warnings
 from datetime import datetime
 
 from . import __version__
@@ -21,6 +22,12 @@ from .utils import resolve_symbol
 
 
 def main() -> None:
+    warnings.filterwarnings(
+        "ignore",
+        message="pkg_resources is deprecated",
+        category=UserWarning,
+        module="py_mini_racer",
+    )
     parser = argparse.ArgumentParser(
         description="aimoon - A股AI分析工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
