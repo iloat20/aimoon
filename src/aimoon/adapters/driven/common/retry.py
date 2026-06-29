@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import contextmanager
@@ -42,5 +43,34 @@ def retry_on_connection(func, *args, retries: int = 2, delay: float = 1.0, **kwa
                     exc,
                 )
                 time.sleep(delay * (attempt + 1))
+    assert last_exc is not None
+    raise last_exc
+
+
+async def async_retry_on_connection(func, *args, retries: int = 2, delay: float = 1.0, **kwargs):
+    """Async version: use asyncio.sleep instead of time.sleep.
+
+    Use this in async contexts to avoid blocking the event loop.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except (
+            ConnectionError,
+            ConnectionAbortedError,
+            TimeoutError,
+            OSError,
+        ) as exc:
+            last_exc = exc
+            if attempt < retries:
+                logging.debug(
+                    "[retry] %s attempt %d/%d failed: %s",
+                    func.__qualname__,
+                    attempt + 1,
+                    retries,
+                    exc,
+                )
+                await asyncio.sleep(delay * (attempt + 1))
     assert last_exc is not None
     raise last_exc
