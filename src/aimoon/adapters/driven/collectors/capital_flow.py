@@ -37,23 +37,26 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
         return self._client
 
     async def fetch(self, symbol: str, **kwargs: Any) -> CapitalFlowData:
-        """Run all sub-fetchers; return aggregated CapitalFlowData."""
+        """Run sub-fetchers with smart fallback; return aggregated CapitalFlowData."""
         self._sources_ok = []  # H2: reset per call
         data = CapitalFlowData(symbol=symbol)
         sources: list[str] = []  # M5: local list, no shared state mutation
 
-        # Primary: pysnowball capital_history
+        # 1. 先运行 pysnowball（主源）
         await self._fetch_via_pysnowball(symbol, data, sources)
 
-        # Fallback: akshare if pysnowball didn't contribute
-        if not data.main_net_5d and not data.main_net_3d:
-            await self._fetch_via_akshare(symbol, data, sources)
-
-        # Northbound + LHB
-        await asyncio.gather(
+        # 2. 并行运行：akshare（fallback）+ northbound + lhb
+        #    akshare 内部有判断：如果 pysnowball 已贡献数据则直接返回
+        results = await asyncio.gather(
+            self._fetch_via_akshare(symbol, data, sources),
             self._fetch_northbound(symbol, data, sources),
             self._fetch_lhb(symbol, data, sources),
+            return_exceptions=True,
         )
+
+        for r in results:
+            if isinstance(r, Exception):
+                logging.warning("[capital_flow_subfetch] %s: %s", type(r).__name__, r)
 
         self._sources_ok = sources
         data.source = "+".join(self._sources_ok) if self._sources_ok else "all_failed"
