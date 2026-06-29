@@ -4,7 +4,9 @@
 
 ```bash
 # 安装
-uv tool install --editable .
+uv sync
+pip install -e .
+uv run playwright install chromium
 
 # 配置（编辑 .env 填入 API Key）
 cp .env.example .env
@@ -25,9 +27,9 @@ aimoon 000858 -o ./reports     # 五粮液，指定输出目录
 | 数据源 | 采集方式 | 数据量 | 状态 |
 |--------|----------|--------|------|
 | 实时行情(含PE) | 雪球 stock.xueqiu.com API | — | ✅ |
-| 财务数据 | pysnowball (资产负债表/利润表/现金流) | — | ✅ |
+| 财务数据 | pysnowball (资产负债表/利润表/现金流) | 年报+季报 | ✅ |
 | K线历史 | akshare (前复权日线) | 120根 | ✅ |
-| 资金流向 | pysnowball + 东方财富(北向) | — | ✅ |
+| 资金流向 | pysnowball + akshare + 东方财富(北向) | — | ✅ |
 | 机构研报 | akshare (东方财富) | 最近一年 | ✅ |
 | 最新年报/半年报/季报 | 巨潮资讯 API | 缓存30天 | ✅ |
 | 东方财富股吧 | Playwright | 15条 | ✅ |
@@ -116,85 +118,140 @@ CACHE_DIR=./cache                             # 数据缓存目录
 
 ## 架构
 
+采用 **六边形架构（Ports & Adapters）** + DDD 分层设计：
+
 ```
-用户输入股票代码 (600519)
-     │
-     ▼
-┌─ ① 数据采集 ─────────────────────────────────────────────┐
-│                                                           │
-│  行情    → 雪球(含PE) → 新浪 → 腾讯   (三级兜底)          │
-│  财报    → pysnowball                                     │
-│  K线     → akshare (前复权日线120根)                       │
-│  资金    → pysnowball + 东方财富(北向)                     │
-│  研报    → akshare (东方财富，最近一年)                    │
-│  年报    → 巨潮资讯 API (缓存30天)                         │
-│  股吧    → Playwright (15条)                               │
-│  公告    → 巨潮资讯 API (20条)                             │
-│  微信    → 搜狗搜索 Playwright绕反爬 (20条)                │
-│  头条    → Playwright (18-20条)                            │
-│                                                           │
-└───────────────────────┬───────────────────────────────────┘
-                        ▼
-┌─ ② 数据整合 + 质量校验 ──────────────────────────────────┐
-│   - 各采集器按序执行，单个失败不影响全局                      │
-│   - 格式校验 + 跨源交叉验证 + 时效性检查                    │
-│   - 数据置信度评分（高/中/低）                               │
-└───────────────────────┬───────────────────────────────────┘
-                        ▼
-┌─ ③ AI 分析 (DeepSeek v4-flash) ──────────────────────────┐
-│   深度思考模式 · 当前时间注入 · 财务报告缓存读取            │
-│   6维度: 情绪25% + 技术15% + 基本面20%                     │
-│          资金15% + 新闻15% + 综合10%                       │
-└───────────────────────┬───────────────────────────────────┘
-                        ▼
-┌─ ④ HTML 报告 (Jinja2 + Chart.js) ────────────────────────┐
-│   亮色/暗色主题切换 · 响应式Grid · 红涨绿跌                    │
-│   K线折线图 · 三列并排卡片 · 20条帖子展示                   │
-│   纯静态HTML，可离线查看                                    │
-└─────────────────────────────────────────────────────────────┘
+                    ┌──────────────────────────────────────────┐
+                    │           Adapters (Driving)            │
+                    │  CLI entry point  ·  PipelineOrchestrator│
+                    └─────────────────────┬────────────────────┘
+                                          │
+                    ┌─────────────────────▼────────────────────┐
+                    │        Application Layer (Core)          │
+                    │  services/  ·  ports/ (output ports)     │
+                    │  — orchestration only, no business logic │
+                    └─────────────────────┬────────────────────┘
+                                          │
+                    ┌─────────────────────▼────────────────────┐
+                    │          Domain Layer (Core)             │
+                    │  aggregates  ·  entities  ·  value objs  │
+                    │  domain services  ·  repository ports    │
+                    │  — pure business logic, no IO            │
+                    └─────────────────────┬────────────────────┘
+                                          │
+                    ┌─────────────────────▼────────────────────┐
+                    │          Adapters (Driven)               │
+                    │  collectors  ·  AI analyzer  ·  report   │
+                    │  validation  ·  config  ·  financial     │
+                    └──────────────────────────────────────────┘
 ```
+
+### 分层结构
+
+- **`core/domain/`** — 领域模型（无外部依赖，仅 Pydantic）
+  - `aggregates/stock_analysis.py` — StockAnalysis 聚合根
+  - `entities/` — 实体：quote, financial, kline, capital_flow, social, research
+  - `value_objects/` — 不可变值对象：KlineBar, DimensionScore, AnalysisReport, CollectResult, FinancialReport
+  - `services/` — 纯领域服务：scoring（评分规则）、symbol resolution
+  - `repositories/` — 资源库接口（数据访问输入端口）
+
+- **`core/application/`** — 应用层（仅编排）
+  - `services/stock_analysis_service.py` — `collect_and_analyze()` 主用例函数
+  - `ports/` — 输出端口接口：AIAnalyzer, DataValidator, ReportGenerator
+
+- **`adapters/driving/`** — 驱动适配器（输入侧）
+  - `cli/main.py` — CLI 入口
+  - `cli/pipeline.py` — PipelineOrchestrator，组装所有适配器
+
+- **`adapters/driven/`** — 被驱动适配器（输出侧）
+  - `collectors/` — 数据采集适配器（Composite Repository 模式）
+  - `ai/` — DeepSeek AI 分析适配器（支持 Tool Calling + 流式输出）
+  - `report/` — HTML 报告生成器（Jinja2）
+  - `validation/` — 数据完整性校验
+  - `financial/` — 财务报告适配器
+  - `config/` — 配置适配器
+
+### 关键设计决策
+
+- **函数式应用服务** — 无类式 UseCase，纯函数 + 显式依赖注入
+- **Composite Repository** — `CompositeStockAnalysisRepository` 组合多个采集器，统一对外提供 `StockAnalysisRepository` 端口
+- **统一 Pydantic 模型** — 单一模型层，无 dataclass/Pydantic 双系统
+- **依赖方向**: `core/` 从不导入 `adapters/`，所有依赖指向内部
+
+### 评分模型
+
+11 因子评分（1-5 分），3 维度加权：
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| 基本面 | 50% | ROE、营收同比、净利润同比 |
+| 资金面 | 25% | 主力净流入、北向变化、龙虎榜 |
+| 新闻舆情 | 25% | 机构研报买入/增持占比 |
+
+---
 
 ## 项目结构
 
 ```
 src/aimoon/
-├── main.py              # CLI 入口 + 流程编排
-├── config/settings.py   # 配置管理 (Pydantic + .env)
-├── models/              # 数据模型
-│   ├── stock.py         # StockQuote, FinancialData, KlineData, FinancialReportData
-│   ├── social.py        # SocialPost, CollectResult
-│   └── report.py        # AnalysisReport, DimensionScore
-├── collectors/          # 数据采集器
-│   ├── base.py          # 采集器基类 + 注册表
-│   ├── quote.py         # 行情（雪球→新浪→腾讯）
-│   ├── kline.py         # K线历史（akshare）
-│   ├── fund_flow.py     # 资金流向
-│   ├── research_report.py # 机构研报（东方财富，最近一年）
-│   ├── eastmoney_playwright.py # 东方财富股吧 (Playwright, 15条)
-│   ├── cninfo.py        # 巨潮资讯·公司公告 (20条)
-│   ├── wechat.py        # 微信公众号（搜狗搜索 Playwright, 20条）
-│   ├── toutiao.py       # 今日头条（Playwright, 18-20条）
-│   └── mock.py          # Mock 数据生成器
-├── financial/           # 财务数据
-│   ├── pysnowball_adapter.py # pysnowball 适配器
-│   └── annual_report.py      # 年报/半年报/季报获取与缓存(30天)
-├── indicators/          # 技术指标
-│   ├── technical.py     # MA/MACD/KDJ/RSI/Bollinger
-│   └── capital_flow.py  # 资金流向指标计算
-├── ai/                  # DeepSeek 分析引擎
-│   └── analyzer.py      # DeepSeek v4-flash 深度思考模式
-├── validation/          # 数据质量
-│   ├── integrity_checker.py
-│   ├── cross_validator.py
-│   ├── format_validator.py
-│   └── freshness_checker.py
-├── scoring/             # 多维评分
-│   └── scorer.py        # 11因子评分模型
-├── pipeline.py          # 流程编排
-├── report/              # 报告生成
-│   ├── generator.py     # Jinja2 模板渲染
-│   └── templates/index.html
-└── utils.py             # 工具函数
+├── __init__.py                    # 版本号（从 package metadata 读取）
+├── adapters/
+│   ├── driving/                   # 驱动适配器（输入侧）
+│   │   └── cli/
+│   │       ├── main.py            # CLI 入口
+│   │       └── pipeline.py        # PipelineOrchestrator — 流程编排
+│   └── driven/                    # 被驱动适配器（输出侧）
+│       ├── collectors/            # 数据采集器
+│       │   ├── base.py            # 采集器基类 + 注册表
+│       │   ├── quote.py           # 行情（雪球→新浪→腾讯 三级兜底）
+│       │   ├── kline.py           # K线历史（akshare）
+│       │   ├── capital_flow.py    # 资金流向（pysnowball + akshare + 东方财富）
+│       │   ├── research_report.py # 机构研报（东方财富，最近一年）
+│       │   ├── eastmoney_playwright.py # 东方财富股吧 (Playwright, 15条)
+│       │   ├── cninfo.py         # 巨潮资讯·公司公告 (20条)
+│       │   ├── wechat.py         # 微信公众号（搜狗搜索 Playwright, 20条）
+│       │   ├── toutiao.py        # 今日头条（Playwright, 18-20条）
+│       │   ├── social_orchestrator.py # 社交采集编排器
+│       │   ├── composite_repo.py # 组合资源库（统一对外接口）
+│       │   ├── mock_repo.py      # Mock 数据资源库
+│       │   └── mock.py           # Mock 数据生成器
+│       ├── ai/                    # DeepSeek 分析引擎
+│       │   ├── analyzer.py        # DeepSeekAIAnalyzer（Tool Calling + 流式）
+│       │   ├── prompts.py         # Prompt 模板
+│       │   ├── data_cleaner.py    # 社交文本清洗
+│       │   └── web_search_tool.py # Web 搜索工具（Bing → DuckDuckGo 兜底）
+│       ├── report/                # 报告生成
+│       │   ├── generator.py       # Jinja2 模板渲染
+│       │   └── templates/index.html
+│       ├── financial/             # 财务数据处理
+│       │   └── akshare_adapter.py # akshare 适配器
+│       ├── validation/            # 数据质量
+│       │   └── integrity_checker.py
+│       ├── config/                # 配置
+│       │   └── settings.py        # Pydantic-settings + .env
+│       └── common/                # 共享工具
+│           ├── browser.py         # Playwright 浏览器管理
+│           ├── cache.py           # 缓存工具
+│           ├── parsers.py         # 解析工具
+│           └── retry.py           # 重试工具
+└── core/
+    ├── domain/                    # 领域层（纯业务逻辑）
+    │   ├── aggregates/
+    │   │   └── stock_analysis.py  # StockAnalysis 聚合根
+    │   ├── entities/              # 实体（quote, financial, kline 等）
+    │   ├── value_objects/         # 值对象（DimensionScore, AnalysisReport 等）
+    │   ├── services/              # 领域服务
+    │   │   ├── scoring.py         # 11 因子评分模型
+    │   │   └── symbols.py         # 股票代码解析
+    │   └── repositories/          # 资源库接口（端口）
+    │       └── stock_analysis_repo.py
+    └── application/               # 应用层（编排）
+        ├── services/
+        │   └── stock_analysis_service.py  # collect_and_analyze() 主用例
+        └── ports/                 # 输出端口接口
+            ├── ai_analyzer.py
+            ├── data_validator.py
+            └── report_generator.py
 ```
 
 ## 输出示例
@@ -206,8 +263,7 @@ src/aimoon/
 - **K线走势图**：近120日收盘价折线图 + 成交量柱状图（Chart.js 交互式图表）
 - **全网热度**：各平台帖子列表（15-20条，含点赞/评论/链接）
 - **机构研报**：评级分布、EPS预测、PDF下载链接（最近一年）
-- **AI 综合分析报告**：DeepSeek v4-flash 深度思考模式生成
-- **数据质量校验**：置信度评分
+- **AI 综合分析报告**：DeepSeek v4-flash 深度思考模式生成，支持 Web 搜索工具调用
 - **亮色/暗色主题切换**：右上角按钮一键切换，状态自动保存
 - **数据来源清单**：每个平台采集状态
 
@@ -219,9 +275,9 @@ src/aimoon/
 
 ```bash
 uv sync --group dev          # 安装开发依赖（pytest + ruff + bandit + pylint）
-uv sync --extra selenium     # 启用东方财富股吧 Selenium 增强采集
-uv run ruff check src/       # Lint 检查
+uv run ruff check src/       # Lint 检查 (line-length 100)
 uv run mypy src/aimoon/      # 类型检查
+uv run pytest                # 运行测试
 ```
 
 ---
