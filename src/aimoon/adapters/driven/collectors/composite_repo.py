@@ -78,13 +78,10 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             await self._quote_collector.aclose()
 
     async def _collect_all_inner(self, symbol: str, name: str) -> StockAnalysis:
-        quote = await self._collect_quote(symbol, name)
-        if quote.name:
-            name = quote.name
-
-        print(" 并行采集财务(年报+季报)/K线/资金流/研报...")
+        print(" 并行采集行情/财务/K线/资金流/研报...")
         t0 = time.monotonic()
         results = await asyncio.gather(
+            self._fetch_quote(symbol, name),
             self._collect_financial(symbol),
             self._collect_quarterly_financial(symbol),
             self._kline_collector.fetch(symbol),
@@ -94,8 +91,10 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
+        quote = self._unwrap_quote(results[0], symbol, name)
+
         financial = self._unwrap(
-            results[0],
+            results[1],
             FinancialData,
             symbol=symbol,
             platform="财务数据(年报)",
@@ -105,7 +104,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         quarterly = self._unwrap(
-            results[1],
+            results[2],
             QuarterlyFinancialData,
             symbol=symbol,
             platform="财务数据(季报)",
@@ -118,7 +117,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         kline = self._unwrap(
-            results[2],
+            results[3],
             KlineData,
             symbol=symbol,
             platform="K线数据",
@@ -128,7 +127,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         capital_flow = self._unwrap(
-            results[3],
+            results[4],
             CapitalFlowData,
             symbol=symbol,
             platform="资金流向",
@@ -138,7 +137,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         research = self._unwrap(
-            results[4],
+            results[5],
             ResearchReportData,
             symbol=symbol,
             platform="研报数据",
@@ -148,12 +147,12 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
 
-        all_posts, social_results = await self._social_collector.collect(symbol, name)
+        all_posts, social_results = await self._social_collector.collect(symbol, quote.name or name)
         self._collect_results.extend(social_results)
 
         return StockAnalysis(
             symbol=symbol,
-            name=name,
+            name=quote.name or name,
             market=resolve_market(symbol),
             quote=quote,
             financial=financial,
@@ -172,10 +171,16 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         """
         return self._collect_results
 
-    async def _collect_quote(self, symbol: str, name: str) -> StockQuote:
-        print(" 采集实时行情...")
-        try:
-            quote = await self._quote_collector.fetch(symbol, name=name)
+    async def _fetch_quote(self, symbol: str, name: str) -> StockQuote:
+        """纯采集，不打印不追踪结果。"""
+        return await self._quote_collector.fetch(symbol, name=name)
+
+    def _unwrap_quote(self, result: object, symbol: str, name: str) -> StockQuote:
+        """解包 quote 结果，打印状态，记录 CollectResult。"""
+        quote = None
+        if not isinstance(result, Exception):
+            quote = result
+        if quote and quote.price > 0:
             info = f"{quote.name}: {quote.price} ({quote.change_pct:+.2f}%) PE={quote.pe}"
             print(f"   {info} [来源: {quote.source}]")
             self._collect_results.append(
@@ -186,19 +191,22 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
                     elapsed_ms=0,
                 )
             )
-        except Exception as e:
-            quote = StockQuote(symbol=symbol, name=name, source="获取失败")
-            print(f"   行情: 获取失败 [{type(e).__name__}]")
-            self._collect_results.append(
-                CollectResult(
-                    platform="实时行情",
-                    status="failed",
-                    count=0,
-                    elapsed_ms=0,
-                    error=str(e),
-                )
+            return quote
+        error = str(result) if isinstance(result, Exception) else "价格为零"
+        if isinstance(result, Exception):
+            print(f"   行情: 获取失败 [{type(result).__name__}]")
+        else:
+            print("   行情: 获取失败（价格为零）")
+        self._collect_results.append(
+            CollectResult(
+                platform="实时行情",
+                status="failed",
+                count=0,
+                elapsed_ms=0,
+                error=error,
             )
-        return quote
+        )
+        return StockQuote(symbol=symbol, name=name, source="获取失败")
 
     async def _collect_financial(self, symbol: str) -> FinancialData:
         if self._financial_collector is not None:
