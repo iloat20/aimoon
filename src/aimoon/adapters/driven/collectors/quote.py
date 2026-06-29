@@ -7,10 +7,14 @@ from typing import Any
 
 import httpx
 
+from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.core.domain.entities.quote import StockQuote
 from aimoon.core.domain.services.symbols import to_sina_symbol
 
 from .base import DataCollector
+
+# 1-minute disk TTL cache — repeated runs during debug skip HTTP requests entirely.
+_quote_cache = DiskTtlCache(namespace="quote", ttl_seconds=60)
 
 # Sina API endpoints
 _SINA_URL = "https://hq.sinajs.cn/list={symbol}"
@@ -43,10 +47,18 @@ class QuoteCollector(DataCollector[StockQuote]):
             self._client = None
 
     async def fetch(self, symbol: str, **kwargs: Any) -> StockQuote:
-        """Fetch quote with dual-source fallback (both <1s, per-stock).
+        """Fetch quote with caching. Cache hit avoids HTTP requests entirely."""
+        cached = _quote_cache.get(f"quote:{symbol}")
+        if cached is not None:
+            return StockQuote.model_validate(cached)
 
-        Sina: fast price + name. Tencent: PE/PB/market_cap/turnover.
-        """
+        result = await self._fetch_uncached(symbol, **kwargs)
+        if result and result.price > 0:
+            _quote_cache.set(f"quote:{symbol}", result.model_dump())
+        return result
+
+    async def _fetch_uncached(self, symbol: str, **kwargs: Any) -> StockQuote:
+        """原始 fetch 逻辑（无缓存）。"""
         name = kwargs.pop("name", "")
         # Level 1: Sina API (<1s)
         try:
@@ -59,7 +71,7 @@ class QuoteCollector(DataCollector[StockQuote]):
                 return result
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             pass
-        # Level 2: Tencent API (<1s, has PE/PB/market_cap)
+        # Level 2: Tencent API
         result = await self._fetch_tencent(symbol, name)
         if result is not None and result.price > 0:
             if name and not name.isdigit():
