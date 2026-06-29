@@ -78,7 +78,7 @@ class AkshareFinancialAdapter:
             return FinancialData.model_validate(cached)
 
         try:
-            result = await asyncio.to_thread(self._fetch_all, symbol, report_type)
+            result = await self._fetch_all(symbol, report_type)
         except Exception as e:
             logger.warning("[akshare] fetch failed for %s: %s", symbol, e)
             return FinancialData(symbol=symbol, source=f"akshare_failed: {e}")
@@ -90,50 +90,57 @@ class AkshareFinancialAdapter:
 
         return result
 
-    def _fetch_all(self, symbol: str, report_type: str = "年报") -> FinancialData:
-        """Fetch and merge data from all three financial statements."""
+    async def _fetch_all(self, symbol: str, report_type: str = "年报") -> FinancialData:
+        """Fetch and merge data from all three financial statements in parallel."""
         result = FinancialData(symbol=symbol, source="akshare(东方财富)")
-
-        # Determine akshare symbol prefix
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
 
-        # Fetch profit sheet (income statement)
-        try:
-            income_df = ak.stock_profit_sheet_by_report_em(symbol=ak_symbol)
-            if income_df is not None and not income_df.empty:
-                income_df = _filter_report_type(income_df, report_type)
-                self._parse_income_statement(result, income_df)
-        except Exception as e:
-            logger.debug("[akshare] income statement failed: %s", e)
+        loop = asyncio.get_running_loop()
+        income_df, bs_df, cf_df = await asyncio.gather(
+            loop.run_in_executor(None, self._sync_income, ak_symbol, report_type),
+            loop.run_in_executor(None, self._sync_balance, ak_symbol, report_type),
+            loop.run_in_executor(None, self._sync_cashflow, ak_symbol, report_type),
+            return_exceptions=True,
+        )
 
-        # Fetch balance sheet
-        try:
-            bs_df = ak.stock_balance_sheet_by_report_em(symbol=ak_symbol)
-            if bs_df is not None and not bs_df.empty:
-                bs_df = _filter_report_type(bs_df, report_type)
-                self._parse_balance_sheet(result, bs_df)
-        except Exception as e:
-            logger.debug("[akshare] balance sheet failed: %s", e)
+        if isinstance(income_df, pd.DataFrame) and not income_df.empty:
+            self._parse_income_statement(result, income_df)
+        if isinstance(bs_df, pd.DataFrame) and not bs_df.empty:
+            self._parse_balance_sheet(result, bs_df)
+        if isinstance(cf_df, pd.DataFrame) and not cf_df.empty:
+            self._parse_cash_flow(result, cf_df)
 
-        # Fetch cash flow statement
-        try:
-            cf_df = ak.stock_cash_flow_sheet_by_report_em(symbol=ak_symbol)
-            if cf_df is not None and not cf_df.empty:
-                cf_df = _filter_report_type(cf_df, report_type)
-                self._parse_cash_flow(result, cf_df)
-        except Exception as e:
-            logger.debug("[akshare] cash flow failed: %s", e)
-
-        # Check if we got any meaningful data
         if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
             result.source = "akshare_empty"
-
-        # Calculate ROE = net_profit / equity
         if result.net_profit != 0 and result.equity > 0:
             result.roe = round(result.net_profit / result.equity * 100, 2)
 
         return result
+
+    def _sync_income(self, ak_symbol: str, report_type: str):
+        """同步获取利润表（在线程池中运行）。"""
+        import akshare as ak
+        df = ak.stock_profit_sheet_by_report_em(symbol=ak_symbol)
+        if df is not None and not df.empty:
+            return _filter_report_type(df, report_type)
+        return None
+
+    def _sync_balance(self, ak_symbol: str, report_type: str):
+        """同步获取资产负债表。"""
+        import akshare as ak
+        df = ak.stock_balance_sheet_by_report_em(symbol=ak_symbol)
+        if df is not None and not df.empty:
+            return _filter_report_type(df, report_type)
+        return None
+
+    def _sync_cashflow(self, ak_symbol: str, report_type: str):
+        """同步获取现金流表。"""
+        import akshare as ak
+        df = ak.stock_cash_flow_sheet_by_report_em(symbol=ak_symbol)
+        if df is not None and not df.empty:
+            return _filter_report_type(df, report_type)
+        return None
 
     @staticmethod
     def _filter_by_report_type(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
