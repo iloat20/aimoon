@@ -1,8 +1,7 @@
 """Capital flow (资金面) collector with multi-source fallback.
 
-Primary: pysnowball (3/5/10/20 day data)
+Primary: pysnowball capital_history (3/5/10/20 day data)
 Fallback: akshare stock_individual_fund_flow (East Money)
-HTTP fallback: East Money push2his API
 
 Each sub-fetcher runs independently; failures don't abort the pipeline.
 """
@@ -16,7 +15,6 @@ from typing import Any
 
 from aimoon.adapters.driven.common.retry import silent_failure
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
-from aimoon.core.domain.services.symbols import resolve_market
 
 from .base import DataCollector
 
@@ -35,71 +33,87 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
         data = CapitalFlowData(symbol=symbol)
         sources: list[str] = []  # M5: local list, no shared state mutation
 
-        # Primary sources: run concurrently (each only writes its own data fields)
+        # Primary: pysnowball capital_history
+        await self._fetch_via_pysnowball(symbol, data, sources)
+
+        # Fallback: akshare if pysnowball didn't contribute
+        if not data.main_net_5d and not data.main_net_3d:
+            await self._fetch_via_akshare(symbol, data, sources)
+
+        # Northbound + LHB
         await asyncio.gather(
-            self._fetch_via_akshare(symbol, data, sources),
             self._fetch_northbound(symbol, data, sources),
             self._fetch_lhb(symbol, data, sources),
         )
-
-        # M4: Fallback only if pysnowball didn't contribute
-        pysnowball_ok = any("pysnowball" in s for s in sources)
-        if not pysnowball_ok and not data.main_net_5d and not data.main_net_3d:
-            await self._fetch_individual_flow(symbol, data, sources)
 
         self._sources_ok = sources
         data.source = "+".join(self._sources_ok) if self._sources_ok else "all_failed"
         return data
 
-    # ---------- akshare sources ----------
+    # ---------- pysnowball primary source ----------
 
-    async def _fetch_individual_flow(
+    async def _fetch_via_pysnowball(
         self, symbol: str, data: CapitalFlowData, sources: list[str]
     ) -> None:
-        """Fallback: fetch net flow from akshare."""
-        for attempt in range(2):
-            try:
-                df = await asyncio.to_thread(self._ak_individual_flow, symbol)
-                if df is not None and not df.empty:
-                    break
-            except Exception as e:
-                logging.warning(
-                    "[akshare_individual_flow_attempt_%d] %s: %s",
-                    attempt + 1,
-                    type(e).__name__,
-                    e,
-                )
-                if attempt == 0:
-                    await asyncio.sleep(1)
-        else:
-            return
-
+        """Fetch 3/5/10/20 day net flow via pysnowball capital_history."""
         try:
-            if "主力净流入-净额" in df.columns:
-                vals = df["主力净流入-净额"].values
-                # M11: only set windows with sufficient data points
-                # Data is sorted asc by date (oldest first), so tail() gets recent
-                if len(vals) >= 5:
-                    data.main_net_5d = float(sum(vals[-5:]))
-                if len(vals) >= 3:
-                    data.main_net_3d = float(sum(vals[-3:]))
-                if len(vals) >= 10:
-                    data.main_net_10d = float(sum(vals[-10:]))
-                if len(vals) >= 20:
-                    data.main_net_20d = float(sum(vals[-20:]))
-
-            sources.append("akshare(个股资金流)")
+            result = await asyncio.to_thread(self._call_pysnowball, symbol)
+            if not result:
+                return
+            data_sum = result.get("data") or {}
+            if data_sum.get("sum5"):
+                data.main_net_5d = float(data_sum["sum5"])
+            if data_sum.get("sum3"):
+                data.main_net_3d = float(data_sum["sum3"])
+            if data_sum.get("sum10"):
+                data.main_net_10d = float(data_sum["sum10"])
+            if data_sum.get("sum20"):
+                data.main_net_20d = float(data_sum["sum20"])
+            if any([data.main_net_5d, data.main_net_3d, data.main_net_10d, data.main_net_20d]):
+                sources.append("pysnowball(雪球)")
         except Exception as e:
-            logging.warning(
-                "[akshare_individual_flow_parse] %s: %s",
-                type(e).__name__,
-                e,
-            )
+            logging.warning("[pysnowball_capital_flow] %s: %s", type(e).__name__, e)
 
-    def _ak_individual_flow(self, symbol: str):
-        import akshare as ak
+    def _call_pysnowball(self, symbol: str) -> dict:
+        """Call pysnowball capital_history API."""
+        import pysnowball as ball
 
-        return ak.stock_individual_fund_flow(stock=symbol, market=resolve_market(symbol).lower())
+        from aimoon.adapters.driven.config.settings import get_settings
+
+        # Ensure token is set
+        settings = get_settings()
+        if settings.xueqiu_token:
+            ball.set_token(settings.xueqiu_token)
+
+        # pysnowball requires symbol with market prefix (e.g., SH600519)
+        if symbol.startswith("6"):
+            ball_symbol = f"SH{symbol}"
+        elif symbol.startswith(("0", "3")):
+            ball_symbol = f"SZ{symbol}"
+        else:
+            ball_symbol = f"BJ{symbol}"
+
+        return ball.capital_history(ball_symbol, count=20)
+
+    # ---------- akshare fallback ----------
+
+    async def _fetch_via_akshare(
+        self, symbol: str, data: CapitalFlowData, sources: list[str]
+    ) -> None:
+        """Fallback: fetch net flow from akshare individual fund flow."""
+        try:
+            from ..financial.akshare_adapter import AkshareFinancialAdapter
+
+            adapter = AkshareFinancialAdapter()
+            cf = await adapter.fetch_capital_flow(symbol)
+            if cf:
+                data.main_net_5d = cf.get("main_net_5d", 0.0)
+                data.main_net_3d = cf.get("main_net_3d", 0.0)
+                data.main_net_10d = cf.get("main_net_10d", 0.0)
+                data.main_net_20d = cf.get("main_net_20d", 0.0)
+                sources.append("akshare(个股资金流)")
+        except Exception as e:
+            logging.warning("[akshare_capital_flow_fallback] %s: %s", type(e).__name__, e)
 
     async def _fetch_northbound(
         self, symbol: str, data: CapitalFlowData, sources: list[str]
