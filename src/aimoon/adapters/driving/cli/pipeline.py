@@ -16,6 +16,7 @@ from aimoon.adapters.driven.collectors import (
     CompositeStockAnalysisRepository,
     MockStockAnalysisRepository,
 )
+from aimoon.adapters.driven.collectors.social_orchestrator import close_shared_browser
 from aimoon.adapters.driven.config.settings import get_settings
 from aimoon.adapters.driven.financial.akshare_adapter import AkshareFinancialAdapter
 from aimoon.adapters.driven.report.generator import HtmlReportGenerator
@@ -40,16 +41,20 @@ class PipelineOrchestrator:
         data_validator = IntegrityDataValidator()
         report_generator = HtmlReportGenerator()
 
-        return await collect_and_analyze(
-            symbol=symbol,
-            name=name,
-            repo=repo,
-            ai_analyzer=ai_analyzer,
-            data_validator=data_validator,
-            report_generator=report_generator,
-            output_dir=self._output_dir,
-            skip_ai=skip_ai,
-        )
+        try:
+            return await collect_and_analyze(
+                symbol=symbol,
+                name=name,
+                repo=repo,
+                ai_analyzer=ai_analyzer,
+                data_validator=data_validator,
+                report_generator=report_generator,
+                output_dir=self._output_dir,
+                skip_ai=skip_ai,
+            )
+        finally:
+            # Close Playwright browser to prevent Python 3.13 cleanup warning
+            await close_shared_browser()
 
     async def run_mock(self, symbol: str, name: str) -> Path:
         """Run full pipeline with mock data."""
