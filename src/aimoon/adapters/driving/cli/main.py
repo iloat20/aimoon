@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import traceback
 import warnings
@@ -42,11 +43,9 @@ def main() -> None:
         category=UserWarning,
         module="py_mini_racer",
     )
-    # Suppress harmless Python 3.13 asyncio task duration warnings
-    warnings.filterwarnings(
-        "ignore",
-        message=".*Executing.*took.*seconds.*",
-    )
+    # Suppress harmless Python 3.13 asyncio slow-task warnings
+    warnings.filterwarnings("ignore", category=Warning, module="asyncio")
+    os.environ["PYTHONASYNCIODEBUG"] = "0"
     _suppress_asyncio_pipe_warning()
     parser = argparse.ArgumentParser(
         description="aimoon - A股AI分析工具",
