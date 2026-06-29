@@ -42,6 +42,11 @@ def main() -> None:
         category=UserWarning,
         module="py_mini_racer",
     )
+    # Suppress harmless Python 3.13 asyncio task duration warnings
+    warnings.filterwarnings(
+        "ignore",
+        message=".*Executing.*took.*seconds.*",
+    )
     _suppress_asyncio_pipe_warning()
     parser = argparse.ArgumentParser(
         description="aimoon - A股AI分析工具",
