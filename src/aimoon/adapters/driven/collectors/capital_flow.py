@@ -235,20 +235,3 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
 
             return pd.DataFrame()
         return df[df["代码"] == symbol]
-
-    # ---------- pysnowball fallback ----------
-
-    async def _fetch_via_akshare(
-        self, symbol: str, data: CapitalFlowData, sources: list[str]
-    ) -> None:
-        """Fetch 3/5/10/20 day net flow via akshare."""
-        from ..financial.akshare_adapter import AkshareFinancialAdapter
-
-        adapter = AkshareFinancialAdapter()
-        cf = await adapter.fetch_capital_flow(symbol)
-        if cf:
-            data.main_net_5d = cf.get("main_net_5d", 0.0)
-            data.main_net_3d = cf.get("main_net_3d", 0.0)
-            data.main_net_10d = cf.get("main_net_10d", 0.0)
-            data.main_net_20d = cf.get("main_net_20d", 0.0)
-            sources.append("akshare")
