@@ -28,8 +28,15 @@ class KlineCollector(DataCollector[KlineData]):
 
     name = "kline"
 
-    def __init__(self, days: int = 180) -> None:
+    def __init__(self, days: int = 180, client: httpx.AsyncClient | None = None) -> None:
         self._days = days
+        self._client_provided = client is not None
+        self._client = client
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=15.0)
+        return self._client
 
     async def fetch(self, symbol: str, **kwargs: Any) -> KlineData:
         """Fetch K-line with three-level fallback.
@@ -145,10 +152,10 @@ class KlineCollector(DataCollector[KlineData]):
         """
         tsymbol = to_sina_symbol(symbol)
         params = {"param": f"{tsymbol},day,,,{self._days * 2},qfq"}
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(_TENCENT_URL, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        client = await self._get_client()
+        resp = await client.get(_TENCENT_URL, params=params)
+        resp.raise_for_status()
+        data = resp.json()
 
         if data.get("code") != 0:
             return None

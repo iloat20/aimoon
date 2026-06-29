@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
+
 from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
 from aimoon.adapters.driven.collectors import (
     CompositeStockAnalysisRepository,
@@ -34,27 +36,31 @@ class PipelineOrchestrator:
 
     async def run(self, symbol: str, name: str, *, skip_ai: bool = False) -> Path:
         """Run full pipeline with real data collection."""
-        repo = CompositeStockAnalysisRepository(
-            financial_collector=AkshareFinancialAdapter(),
-        )
-        ai_analyzer = DeepSeekAIAnalyzer(mock=self._mock_mode)
-        data_validator = IntegrityDataValidator()
-        report_generator = HtmlReportGenerator()
-
-        try:
-            return await collect_and_analyze(
-                symbol=symbol,
-                name=name,
-                repo=repo,
-                ai_analyzer=ai_analyzer,
-                data_validator=data_validator,
-                report_generator=report_generator,
-                output_dir=self._output_dir,
-                skip_ai=skip_ai,
+        async with httpx.AsyncClient(
+            timeout=15.0,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        ) as http:
+            repo = CompositeStockAnalysisRepository(
+                financial_collector=AkshareFinancialAdapter(),
+                http_client=http,
             )
-        finally:
-            # Close Playwright browser to prevent Python 3.13 cleanup warning
-            await close_shared_browser()
+            ai_analyzer = DeepSeekAIAnalyzer(mock=self._mock_mode, http_client=http)
+            data_validator = IntegrityDataValidator()
+            report_generator = HtmlReportGenerator()
+            try:
+                return await collect_and_analyze(
+                    symbol=symbol,
+                    name=name,
+                    repo=repo,
+                    ai_analyzer=ai_analyzer,
+                    data_validator=data_validator,
+                    report_generator=report_generator,
+                    output_dir=self._output_dir,
+                    skip_ai=skip_ai,
+                )
+            finally:
+                # Close Playwright browser to prevent Python 3.13 cleanup warning
+                await close_shared_browser()
 
     async def run_mock(self, symbol: str, name: str) -> Path:
         """Run full pipeline with mock data."""

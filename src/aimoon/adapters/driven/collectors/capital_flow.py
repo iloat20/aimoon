@@ -13,6 +13,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+import httpx
+
 from aimoon.adapters.driven.common.retry import silent_failure
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 
@@ -24,8 +26,15 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
 
     name = "fund_flow"
 
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._sources_ok: list[str] = []
+        self._client_provided = client is not None
+        self._client = client
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=15.0)
+        return self._client
 
     async def fetch(self, symbol: str, **kwargs: Any) -> CapitalFlowData:
         """Run all sub-fetchers; return aggregated CapitalFlowData."""
@@ -121,7 +130,7 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
         """北向资金持股变化 + 北向整体净流入."""
         # 1. 个股北向持股变化（东方财富 API，季度数据）
         with silent_failure("eastmoney_northbound_holdings"):
-            cf_result = await asyncio.to_thread(self._em_northbound, symbol)
+            cf_result = await self._em_northbound(symbol)
             if cf_result:
                 data.northbound_chg = cf_result.get("change_value", 0.0)
                 data.northbound_hold_shares = cf_result.get("hold_shares", 0.0)
@@ -141,10 +150,8 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
                     if "eastmoney(北向持股)" not in sources:
                         sources.append("akshare(北向)")
 
-    def _em_northbound(self, symbol: str) -> dict:
+    async def _em_northbound(self, symbol: str) -> dict:
         """东方财富 API 获取个股北向持股（季度数据）."""
-        import httpx
-
         from aimoon.adapters.driven.config.settings import get_settings
 
         url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
@@ -162,8 +169,8 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             "User-Agent": get_settings().default_user_agent,
             "Referer": "https://data.eastmoney.com/",
         }
-
-        resp = httpx.get(url, params=params, headers=headers, timeout=10)
+        client = await self._get_client()
+        resp = await client.get(url, params=params, headers=headers)
         data = resp.json()
         result = data.get("result") or {}
         items = result.get("data") or []

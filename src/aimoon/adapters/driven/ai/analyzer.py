@@ -39,6 +39,7 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         api_key: str = "",
         api_url: str = "",
         settings: Any = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._provided_settings = settings
         if settings is not None:
@@ -49,6 +50,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         self.api_key = api_key or self._settings.deepseek_api_key
         base = self._settings.deepseek_base_url.rstrip("/")
         self.api_url = api_url or f"{base}/v1/chat/completions"
+        self._http = http_client or httpx.AsyncClient(
+            timeout=180.0,
+            limits=httpx.Limits(max_keepalive_connections=5),
+        )
 
     async def analyze(
         self,
@@ -119,24 +124,23 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             None if model returned a final text response (no tool calls).
         """
         settings = self._provided_settings or self._settings
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                self.api_url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.deepseek_model,
-                    "messages": messages,
-                    "temperature": settings.deepseek_temperature,
-                    "max_tokens": settings.deepseek_max_tokens,
-                    "tools": tools,
-                    "tool_choice": "auto",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await self._http.post(
+            self.api_url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.deepseek_model,
+                "messages": messages,
+                "temperature": settings.deepseek_temperature,
+                "max_tokens": settings.deepseek_max_tokens,
+                "tools": tools,
+                "tool_choice": "auto",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         choice = data["choices"][0]
         message = choice["message"]
@@ -171,24 +175,23 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
     async def _stream_final_response(self, messages: list[dict]) -> str:
         """Send a streaming request and return the full accumulated text."""
         settings = self._provided_settings or self._settings
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream(
-                "POST",
-                self.api_url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.deepseek_model,
-                    "messages": messages,
-                    "temperature": settings.deepseek_temperature,
-                    "max_tokens": settings.deepseek_max_tokens,
-                    "stream": True,
-                },
-            ) as resp:
-                resp.raise_for_status()
-                return await self._collect_stream(resp)
+        async with self._http.stream(
+            "POST",
+            self.api_url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.deepseek_model,
+                "messages": messages,
+                "temperature": settings.deepseek_temperature,
+                "max_tokens": settings.deepseek_max_tokens,
+                "stream": True,
+            },
+        ) as resp:
+            resp.raise_for_status()
+            return await self._collect_stream(resp)
 
     @staticmethod
     async def _collect_stream(resp: httpx.Response) -> str:

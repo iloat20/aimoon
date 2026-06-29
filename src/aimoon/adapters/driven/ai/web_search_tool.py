@@ -11,6 +11,20 @@ import re
 
 import httpx
 
+_search_client: httpx.AsyncClient | None = None
+
+
+def _get_search_client() -> httpx.AsyncClient:
+    global _search_client
+    if _search_client is None:
+        _search_client = httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=True,
+            limits=httpx.Limits(max_keepalive_connections=5),
+        )
+    return _search_client
+
+
 _TOOL_DEFINITION = {
     "type": "function",
     "function": {
@@ -55,14 +69,14 @@ async def _search_bing(query: str, max_results: int) -> str:
 
     ua = get_settings().default_user_agent
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(
-                "https://cn.bing.com/search",
-                params={"q": query},
-                headers={"User-Agent": ua},
-            )
-            resp.raise_for_status()
-            return _parse_bing(resp.text, max_results)
+        client = _get_search_client()
+        resp = await client.get(
+            "https://cn.bing.com/search",
+            params={"q": query},
+            headers={"User-Agent": ua},
+        )
+        resp.raise_for_status()
+        return _parse_bing(resp.text, max_results)
     except Exception as e:
         logging.warning("[web_search_bing] %s: %s", type(e).__name__, e)
         return ""
@@ -114,14 +128,14 @@ async def _search_ddg(query: str, max_results: int) -> str:
 
     ua = get_settings().default_user_agent
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.post(
-                "https://html.duckduckgo.com/html/",
-                headers={"User-Agent": ua},
-                data={"q": query, "b": ""},
-            )
-            resp.raise_for_status()
-            return _parse_ddg(resp.text, max_results)
+        client = _get_search_client()
+        resp = await client.post(
+            "https://html.duckduckgo.com/html/",
+            headers={"User-Agent": ua},
+            data={"q": query, "b": ""},
+        )
+        resp.raise_for_status()
+        return _parse_ddg(resp.text, max_results)
     except Exception as e:
         logging.warning("[web_search_ddg] %s: %s", type(e).__name__, e)
         return ""

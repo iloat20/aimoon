@@ -29,6 +29,7 @@ class QuoteCollector(DataCollector[StockQuote]):
     name = "quote"
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self._client_provided = client is not None
         self._client = client
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -37,7 +38,7 @@ class QuoteCollector(DataCollector[StockQuote]):
         return self._client
 
     async def aclose(self) -> None:
-        if self._client is not None:
+        if self._client is not None and not self._client_provided:
             await self._client.aclose()
             self._client = None
 

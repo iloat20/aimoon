@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import httpx
+
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
@@ -44,11 +46,15 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         capital_flow_collector: CapitalFlowCollector | None = None,
         research_collector: ResearchReportCollector | None = None,
         social_collector: SocialMediaOrchestrator | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._quote_collector = quote_collector or QuoteCollector()
+        self._http = http_client
+        self._quote_collector = quote_collector or QuoteCollector(client=http_client)
         self._financial_collector = financial_collector
-        self._kline_collector = kline_collector or KlineCollector()
-        self._capital_flow_collector = capital_flow_collector or CapitalFlowCollector()
+        self._kline_collector = kline_collector or KlineCollector(client=http_client)
+        self._capital_flow_collector = (
+            capital_flow_collector or CapitalFlowCollector(client=http_client)
+        )
         self._research_collector = research_collector or ResearchReportCollector()
         self._social_collector = social_collector or SocialMediaOrchestrator()
         self._collect_results: list[CollectResult] = []
