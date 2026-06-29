@@ -6,12 +6,36 @@ All free, no API key required.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import time as _time_module
 
 import httpx
 
 _search_client: httpx.AsyncClient | None = None
+
+_search_cache: dict[str, tuple[float, str]] = {}
+_SEARCH_CACHE_TTL = 300  # 5 分钟
+
+
+def _get_cached_search(query: str) -> str | None:
+    """获取缓存的搜索结果，过期返回 None。"""
+    key = hashlib.md5(query.encode()).hexdigest()
+    if key in _search_cache:
+        ts, result = _search_cache[key]
+        if _time_module.time() - ts < _SEARCH_CACHE_TTL:
+            return result
+        del _search_cache[key]
+    return None
+
+
+def _set_cached_search(query: str, result: str) -> None:
+    """缓存搜索结果。"""
+    key = hashlib.md5(query.encode()).hexdigest()
+    _search_cache[key] = (_time_module.time(), result)
+    if len(_search_cache) > 100:
+        _search_cache.clear()
 
 
 def _get_search_client() -> httpx.AsyncClient:
@@ -53,14 +77,21 @@ def get_tool_definitions() -> list[dict]:
 
 
 async def execute_web_search(query: str, max_results: int = 5) -> str:
-    """Execute a web search with fallback: Bing → DuckDuckGo."""
+    """Execute a web search with fallback: Bing → DuckDuckGo. Results are cached."""
+    # 检查缓存
+    cached = _get_cached_search(query)
+    if cached is not None:
+        return cached
+
     result = await _search_bing(query, max_results)
-    if result:
-        return result
-    result = await _search_ddg(query, max_results)
-    if result:
-        return result
-    return "搜索失败: 所有搜索引擎均不可用"
+    if not result:
+        result = await _search_ddg(query, max_results)
+    if not result:
+        result = "搜索失败: 所有搜索引擎均不可用"
+
+    # 缓存结果
+    _set_cached_search(query, result)
+    return result
 
 
 async def _search_bing(query: str, max_results: int) -> str:
