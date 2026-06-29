@@ -166,9 +166,11 @@ class SocialMediaOrchestrator:
                 if p_name == "巨潮资讯":
                     error_msg = result.error if result else "未知错误"
                     print(f"   巨潮资讯: {len(mock)}条 (mock) [{error_msg}]")
-                elif p_name in ("今日头条", "微信公众号") and result and result.status == "skipped":
-                    skip_reason = result.error or "skipped"
-                    print(f"   {p_name}: {len(mock)}条 (mock) [{skip_reason}]")
+                elif p_name in ("今日头条", "微信公众号") and result and result.status == "failed":
+                    error_msg = result.error or "未知错误"
+                    print(f"   {p_name}: {len(mock)}条 (mock) [采集失败: {error_msg}]")
+                elif p_name in ("今日头条", "微信公众号") and is_failed:
+                    print(f"   {p_name}: {len(mock)}条 (mock) [模块导入失败]")
                 else:
                     print(f"   {p_name}: {len(mock)}条 (mock)")
 
