@@ -122,10 +122,7 @@ class TestReportGenerator:
         from aimoon.core.domain.entities.capital_flow import CapitalFlowData
         from aimoon.core.domain.entities.financial import FinancialData
         from aimoon.core.domain.entities.kline import KlineData
-        from aimoon.core.domain.value_objects.analysis_report import (
-            AnalysisReport,
-            DimensionScore,
-        )
+        from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
         stock = StockAnalysis(
             symbol="600519",
@@ -142,10 +139,6 @@ class TestReportGenerator:
             summary="贵州茅台基本面良好，业绩稳健增长。",
             report_text="详细分析报告内容...",
             investment_advice="本报告由AI自动生成。",
-            fundamental=DimensionScore(name="基本面", score=4, weight=0.20),
-            capital_flow=DimensionScore(name="资金面", score=3, weight=0.15),
-            news=DimensionScore(name="新闻舆情", score=3, weight=0.15),
-            total_score=3.3,
         )
 
         generator = HtmlReportGenerator()

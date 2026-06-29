@@ -9,8 +9,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from aimoon.core.domain.value_objects.dimension_score import DimensionScore
-
 
 class AnalysisReport(BaseModel):
     """完整的AI分析报告。"""
@@ -22,14 +20,6 @@ class AnalysisReport(BaseModel):
     generated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
     summary: str = ""
-
-    fundamental: DimensionScore = Field(default_factory=DimensionScore)
-    capital_flow: DimensionScore = Field(default_factory=DimensionScore)
-    news: DimensionScore = Field(default_factory=DimensionScore)
-
-    main_force: str = ""
-
-    total_score: float = 0.0
 
     data_warnings: list[str] = Field(default_factory=list)
     data_confidence: dict[str, str] = Field(default_factory=dict)

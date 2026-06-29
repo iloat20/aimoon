@@ -14,7 +14,6 @@ from aimoon.core.domain.entities.research import ResearchReport, ResearchReportD
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.services.symbols import resolve_market
 from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
-from aimoon.core.domain.value_objects.dimension_score import DimensionScore
 from aimoon.core.domain.value_objects.financial_report import FinancialReportData
 from aimoon.core.domain.value_objects.kline_bar import KlineBar
 
@@ -134,25 +133,6 @@ def mock_analysis_report(symbol: str, name: str) -> AnalysisReport:
         name=name,
         summary=f"综合来看，{name}({symbol})基本面表现稳健，资金面偏暖，"
         f"建议投资者保持关注，逢低布局。",
-        fundamental=DimensionScore(
-            name="基本面",
-            score=4,
-            weight=0.50,
-            analysis="营收和净利润双增长，ROE保持在较高水平，现金流充裕，基本面扎实。",
-        ),
-        capital_flow=DimensionScore(
-            name="资金面",
-            score=3,
-            weight=0.25,
-            analysis="近期主力资金呈净流入状态，北向资金小幅增持，资金面偏暖。",
-        ),
-        news=DimensionScore(
-            name="新闻舆情",
-            score=3,
-            weight=0.25,
-            analysis="近期相关新闻报道以中性偏正面为主，无重大负面事件。",
-        ),
-        main_force="小幅流入",
         data_warnings=[
             "部分财务数据为模拟数据，仅供参考",
             "研报数据样本量较小，统计结论可能存在偏差",

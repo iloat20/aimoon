@@ -1,6 +1,6 @@
 """DeepSeek AI analysis engine.
 
-DeepSeekAIAnalyzer — orchestrates data -> scoring -> AnalysisReport.
+DeepSeekAIAnalyzer — orchestrates data -> AnalysisReport.
 Handles streaming SSE collection, tool-calling, and user message construction.
 """
 

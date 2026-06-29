@@ -12,19 +12,9 @@ from pathlib import Path
 from aimoon.core.application.ports import AIAnalyzer, DataValidator, ReportGenerator
 from aimoon.core.domain import (
     AnalysisReport,
-    DimensionScore,
     StockAnalysis,
-    calculate_total_score,
-    capital_flow_score,
-    fundamental_score,
-    news_score,
 )
 from aimoon.core.domain.repositories import StockAnalysisRepository
-from aimoon.core.domain.services.scoring import (
-    WEIGHT_CAPITAL_FLOW,
-    WEIGHT_FUNDAMENTAL,
-    WEIGHT_NEWS,
-)
 
 
 async def collect_and_analyze(
@@ -66,7 +56,12 @@ async def collect_and_analyze(
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(stock_analysis, ai_analyzer)
 
-    analysis = _build_analysis(stock_analysis, analysis, data_warnings, data_confidence)
+    analysis = analysis.model_copy(
+        update={
+            "data_warnings": data_warnings,
+            "data_confidence": data_confidence,
+        }
+    )
 
     logging.info("生成报告...")
     try:
@@ -87,7 +82,7 @@ async def analyze_stock(
     *,
     skip_ai: bool = False,
 ) -> AnalysisReport:
-    """仅分析：验证 → AI分析 → 计算维度评分。
+    """仅分析：验证 → AI分析。
 
     用于已有数据的重新分析。
 
@@ -110,25 +105,14 @@ async def analyze_stock(
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(stock_analysis, ai_analyzer)
 
-    analysis = _build_analysis(stock_analysis, analysis, data_warnings, data_confidence)
-
-    return analysis
-
-
-def _build_analysis(
-    stock_analysis: StockAnalysis,
-    analysis: AnalysisReport,
-    data_warnings: list[str],
-    data_confidence: dict[str, str],
-) -> AnalysisReport:
-    """合并校验结果与维度评分，返回最终 AnalysisReport。"""
     analysis = analysis.model_copy(
         update={
             "data_warnings": data_warnings,
             "data_confidence": data_confidence,
         }
     )
-    return _compute_dimension_scores(stock_analysis, analysis)
+
+    return analysis
 
 
 def _validate_data(
@@ -176,62 +160,3 @@ def _fallback_analysis(stock_analysis: StockAnalysis) -> AnalysisReport:
         report_text="AI分析暂不可用，以下为基础数据汇总。",
         investment_advice=("本报告由AI自动生成，仅供参考，不构成投资建议。"),
     )
-
-
-def _compute_dimension_scores(
-    stock_analysis: StockAnalysis, analysis: AnalysisReport
-) -> AnalysisReport:
-    """计算各维度评分，返回新的 AnalysisReport 对象。"""
-    cap_score = 3
-    cap_detail = "详见报告正文（资金面分析）。"
-    main_force = "持平"
-    if stock_analysis.capital_flow and stock_analysis.capital_flow.source != "all_failed":
-        try:
-            cap_score, cap_detail, main_force = capital_flow_score(stock_analysis.capital_flow)
-        except Exception as e:
-            logging.warning("[capital_flow_score_calc] %s: %s", type(e).__name__, e)
-    turnover = stock_analysis.quote.turnover if stock_analysis.quote else 0.0
-    if 0 < turnover < 0.1:
-        cap_score = 3
-        cap_detail = "今日交投清淡，主力资金无明显动向，呈观望态势"
-        main_force = "持平"
-
-    fund_score = 3
-    fund_detail = "数据不足，使用默认评分"
-    try:
-        fund_score, fund_detail = fundamental_score(stock_analysis.financial)
-    except Exception as e:
-        logging.warning("[fundamental_score_calc] %s: %s", type(e).__name__, e)
-
-    news_score_val = 3
-    news_detail = "数据不足，使用默认评分"
-    try:
-        news_score_val, news_detail = news_score(stock_analysis.research)
-    except Exception as e:
-        logging.warning("[news_score_calc] %s: %s", type(e).__name__, e)
-
-    result = analysis.model_copy(
-        update={
-            "fundamental": DimensionScore(
-                name="基本面",
-                score=fund_score,
-                weight=WEIGHT_FUNDAMENTAL,
-                analysis=fund_detail,
-            ),
-            "capital_flow": DimensionScore(
-                name="资金面",
-                score=cap_score,
-                weight=WEIGHT_CAPITAL_FLOW,
-                analysis=cap_detail,
-            ),
-            "news": DimensionScore(
-                name="新闻舆情",
-                score=news_score_val,
-                weight=WEIGHT_NEWS,
-                analysis=news_detail,
-            ),
-            "main_force": main_force,
-        }
-    )
-    result = result.model_copy(update={"total_score": calculate_total_score(result)})
-    return result
