@@ -274,18 +274,18 @@ class AkshareFinancialAdapter:
             df = await asyncio.to_thread(ak.stock_individual_fund_flow, stock=symbol, market=market)
             if df is None or df.empty:
                 return {}
-            # Data is sorted desc by date; columns include 主力净流入-净额
+            # Data is sorted asc by date (oldest first); tail() gets recent days
             row_count = len(df)
             main_col = "主力净流入-净额"
-            result: dict[str, Any] = {"recent_date": str(df.iloc[0]["日期"])}
+            result: dict[str, Any] = {"recent_date": str(df.iloc[-1]["日期"])}
             if row_count >= 5:
-                result["main_net_5d"] = float(df.head(5)[main_col].sum())
+                result["main_net_5d"] = float(df.tail(5)[main_col].sum())
             if row_count >= 3:
-                result["main_net_3d"] = float(df.head(3)[main_col].sum())
+                result["main_net_3d"] = float(df.tail(3)[main_col].sum())
             if row_count >= 10:
-                result["main_net_10d"] = float(df.head(10)[main_col].sum())
+                result["main_net_10d"] = float(df.tail(10)[main_col].sum())
             if row_count >= 20:
-                result["main_net_20d"] = float(df.head(20)[main_col].sum())
+                result["main_net_20d"] = float(df.tail(20)[main_col].sum())
             return result
         except Exception as e:
             logger.debug("[akshare] capital_flow failed for %s: %s", symbol, e)

@@ -78,6 +78,7 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             if "主力净流入-净额" in df.columns:
                 vals = df["主力净流入-净额"].values
                 # M11: only set windows with sufficient data points
+                # Data is sorted asc by date (oldest first), so tail() gets recent
                 if len(vals) >= 5:
                     data.main_net_5d = float(sum(vals[-5:]))
                 if len(vals) >= 3:
