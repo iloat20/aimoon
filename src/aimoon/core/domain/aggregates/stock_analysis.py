@@ -5,7 +5,7 @@ StockAnalysis 是股票分析聚合的根，负责维护单只股票
 不能直接修改内部状态。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -35,7 +35,9 @@ class StockAnalysis(BaseModel):
     annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
     semi_annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
     quarterly_report: FinancialReportData = Field(default_factory=FinancialReportData)
-    collected_at: datetime = Field(default_factory=datetime.now)
+    collected_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)  # noqa: UP017
+    )
 
     @model_validator(mode="before")
     @classmethod

@@ -35,7 +35,8 @@ def _set_cached_search(query: str, result: str) -> None:
     key = hashlib.md5(query.encode()).hexdigest()
     _search_cache[key] = (_time_module.time(), result)
     if len(_search_cache) > 100:
-        _search_cache.clear()
+        oldest_key = min(_search_cache, key=lambda k: _search_cache[k][0])
+        del _search_cache[oldest_key]
 
 
 def _get_search_client() -> httpx.AsyncClient:
@@ -54,7 +55,9 @@ _TOOL_DEFINITION = {
     "function": {
         "name": "web_search",
         "description": (
-            "搜索互联网获取实时信息，用于查询股票公告、财务数据、行情、行业动态等。"
+            "实时搜索互联网获取结构化商业数据，用于查询："
+            "分产品/分业务收入结构、竞争对手年报关键数据、行业市场规模与增长预测、"
+            "竞争格局与市场份额等。所有信息必须标注具体来源。"
             "当需要最新数据或训练数据中未包含的信息时调用此工具。"
         ),
         "parameters": {
@@ -62,7 +65,12 @@ _TOOL_DEFINITION = {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": '搜索关键词，如"茅台 2025年报 营收 分产品"',
+                    "description": (
+                        "搜索关键词，需简洁精确。"
+                        '如"格力电器 2025年报 分产品收入 空调 生活电器"、'
+                        '"美的集团 2025年报 营收 净利润 毛利率"、'
+                        '"家电行业 2025 市场规模 CAGR 弗若斯特沙利文"'
+                    ),
                 },
             },
             "required": ["query"],

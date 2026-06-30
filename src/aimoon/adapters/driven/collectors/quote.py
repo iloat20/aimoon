@@ -64,7 +64,7 @@ class QuoteCollector(DataCollector[StockQuote]):
         try:
             result = await self._fetch_sina(symbol)
             if result and result.price > 0:
-                if name and not name.isdigit():
+                if name and (not result.name or result.name == symbol):
                     result.name = name
                 if result.pe <= 0:
                     await self._enrich_from_tencent(symbol, result)
@@ -74,7 +74,7 @@ class QuoteCollector(DataCollector[StockQuote]):
         # Level 2: Tencent API
         result = await self._fetch_tencent(symbol, name)
         if result is not None and result.price > 0:
-            if name and not name.isdigit():
+            if name and (not result.name or result.name == symbol):
                 result.name = name
             return result
         # All sources failed
@@ -168,8 +168,10 @@ class QuoteCollector(DataCollector[StockQuote]):
         parts = quote_str.split("~")
         if len(parts) < 40:
             return None
-        if not name:
-            name = parts[1]
+        # Prefer API name over passed-in name (API returns real stock name)
+        api_name = parts[1] if parts[1] else name
+        if api_name:
+            name = api_name
         price = float(parts[3])
         prev_close = float(parts[4])
         change = price - prev_close

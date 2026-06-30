@@ -65,6 +65,7 @@ class ResearchReportData(BaseModel):
         else:
             if self.total_count != actual_total:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "total_count (%d) 与 reports 列表长度 (%d) 不一致，使用实际值",
                     self.total_count,

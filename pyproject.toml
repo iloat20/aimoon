@@ -1,6 +1,6 @@
 [project]
 name = "aimoon"
-version = "0.4.0"
+version = "0.4.2"
 description = "AI-powered A-share stock analysis with multi-platform data collection"
 requires-python = ">=3.12"
 readme = "README.md"
@@ -63,6 +63,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/aimoon/adapters/driving/cli/main.py" = ["E402"]
+"src/aimoon/adapters/driven/ai/prompts.py" = ["E501"]
+
 [tool.mypy]
 ignore_missing_imports = true
 warn_unused_ignores = true
@@ -97,6 +101,11 @@ disable = [
     "C0103",              # invalid-name (private module-level vars like _settings, _pw_*)
     "W0603",              # global-statement (singleton pattern)
 ]
+
+[tool.pytest.ini_options]
+addopts = "--basetemp=.pytest-tmp"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::UserWarning:py_mini_racer"]
 
 [dependency-groups]
 dev = [

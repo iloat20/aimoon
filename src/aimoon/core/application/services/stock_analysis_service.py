@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from aimoon.core.application.ports import AIAnalyzer, DataValidator, ReportGenerator
@@ -42,6 +43,7 @@ async def collect_and_analyze(
     Returns:
         生成的报告文件路径
     """
+    t0 = time.monotonic()
     logging.info("采集股票数据: %s %s", symbol, name)
     stock_analysis = await repo.collect_all(symbol, name)
     collect_results = await repo.get_collect_results()
@@ -70,7 +72,8 @@ async def collect_and_analyze(
         )
     except Exception as e:
         raise RuntimeError(f"生成报告失败: {type(e).__name__}: {e}") from e
-    logging.info("报告已生成: %s", report_path)
+    elapsed = int((time.monotonic() - t0) * 1000)
+    logging.info("报告已生成: %s (总耗时 %dms)", report_path, elapsed)
 
     return report_path
 

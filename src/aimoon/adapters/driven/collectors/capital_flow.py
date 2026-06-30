@@ -119,10 +119,14 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             adapter = AkshareFinancialAdapter()
             cf = await adapter.fetch_capital_flow(symbol)
             if cf:
-                data.main_net_5d = cf.get("main_net_5d", 0.0)
-                data.main_net_3d = cf.get("main_net_3d", 0.0)
-                data.main_net_10d = cf.get("main_net_10d", 0.0)
-                data.main_net_20d = cf.get("main_net_20d", 0.0)
+                if data.main_net_5d == 0.0:
+                    data.main_net_5d = cf.get("main_net_5d", 0.0)
+                if data.main_net_3d == 0.0:
+                    data.main_net_3d = cf.get("main_net_3d", 0.0)
+                if data.main_net_10d == 0.0:
+                    data.main_net_10d = cf.get("main_net_10d", 0.0)
+                if data.main_net_20d == 0.0:
+                    data.main_net_20d = cf.get("main_net_20d", 0.0)
                 sources.append("akshare(个股资金流)")
         except Exception as e:
             logging.warning("[akshare_capital_flow_fallback] %s: %s", type(e).__name__, e)

@@ -97,6 +97,9 @@ class AkshareFinancialAdapter:
         ak_symbol = f"{prefix}{symbol}"
 
         loop = asyncio.get_running_loop()
+        income_df: pd.DataFrame | BaseException
+        bs_df: pd.DataFrame | BaseException
+        cf_df: pd.DataFrame | BaseException
         income_df, bs_df, cf_df = await asyncio.gather(
             loop.run_in_executor(None, self._sync_income, ak_symbol, report_type),
             loop.run_in_executor(None, self._sync_balance, ak_symbol, report_type),
@@ -121,6 +124,7 @@ class AkshareFinancialAdapter:
     def _sync_income(self, ak_symbol: str, report_type: str):
         """同步获取利润表（在线程池中运行）。"""
         import akshare as ak
+
         df = ak.stock_profit_sheet_by_report_em(symbol=ak_symbol)
         if df is not None and not df.empty:
             return _filter_report_type(df, report_type)
@@ -129,6 +133,7 @@ class AkshareFinancialAdapter:
     def _sync_balance(self, ak_symbol: str, report_type: str):
         """同步获取资产负债表。"""
         import akshare as ak
+
         df = ak.stock_balance_sheet_by_report_em(symbol=ak_symbol)
         if df is not None and not df.empty:
             return _filter_report_type(df, report_type)
@@ -137,6 +142,7 @@ class AkshareFinancialAdapter:
     def _sync_cashflow(self, ak_symbol: str, report_type: str):
         """同步获取现金流表。"""
         import akshare as ak
+
         df = ak.stock_cash_flow_sheet_by_report_em(symbol=ak_symbol)
         if df is not None and not df.empty:
             return _filter_report_type(df, report_type)
@@ -187,7 +193,7 @@ class AkshareFinancialAdapter:
         if total_liab > 0:
             result.total_liabilities = total_liab
 
-        if result.total_assets > 0 and result.total_liabilities > 0:
+        if result.total_assets > 0:
             result.equity = result.total_assets - result.total_liabilities
 
     def _parse_cash_flow(self, result: FinancialData, df: pd.DataFrame) -> None:
@@ -206,7 +212,7 @@ class AkshareFinancialAdapter:
 
     async def fetch_financial(self, symbol: str, **kwargs: Any) -> FinancialData:
         """Alias for fetch() — matches PysnowballAdapter interface."""
-        return await self.fetch(symbol)
+        return await self.fetch(symbol, **kwargs)
 
     async def fetch_quarterly(self, symbol: str) -> QuarterlyFinancialData:
         """Fetch the latest non-annual report data.
@@ -227,6 +233,8 @@ class AkshareFinancialAdapter:
 
         # Filter out annual reports, sort by date descending, take the latest
         non_annual = df[df["REPORT_TYPE"] != "年报"] if "REPORT_TYPE" in df.columns else df
+        if "REPORT_DATE" in non_annual.columns:
+            non_annual = non_annual.sort_values("REPORT_DATE", ascending=False)
         if non_annual.empty:
             return QuarterlyFinancialData(symbol=symbol, source="akshare_quarterly_empty")
 
@@ -276,7 +284,7 @@ class AkshareFinancialAdapter:
             main_net_20d: 20-day main capital net inflow
             recent_date: date of the latest data
         """
-        market = "sh" if symbol.startswith("6") or symbol.startswith("0") else "bj"
+        market = "sh" if symbol.startswith("6") else "sz" if symbol.startswith(("0", "3")) else "bj"
         try:
             df = await asyncio.to_thread(ak.stock_individual_fund_flow, stock=symbol, market=market)
             if df is None or df.empty:

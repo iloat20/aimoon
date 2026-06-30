@@ -26,6 +26,9 @@ def _md_to_html(md_text: str) -> Markup:
     import bleach
     import markdown as md_lib
 
+    # Fix tables: convert <br> between table rows back to newlines
+    md_text = re.sub(r"( \|.*?)(?:<br\s*/?>)+(\s*\|)", r"\1\n\2", md_text)
+
     html = md_lib.markdown(md_text, extensions=["extra", "nl2br"])
     html = bleach.clean(
         html,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from abc import ABC, abstractmethod
 
@@ -10,6 +11,8 @@ import httpx
 
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.value_objects.collect_result import CollectResult
+
+logger = logging.getLogger(__name__)
 
 
 class BaseCollector(ABC):
@@ -96,10 +99,19 @@ class CollectorRegistry:
     ) -> CollectResult:
         t0 = time.monotonic()
         try:
-            return await collector.collect(symbol, stock_name)
+            result = await collector.collect(symbol, stock_name)
+            elapsed = int((time.monotonic() - t0) * 1000)
+            logger.debug("[%s] completed in %dms", collector.name, elapsed)
+            return result
         except TimeoutError:
-            return collector._timeout_msg((time.monotonic() - t0) * 1000)
+            elapsed = int((time.monotonic() - t0) * 1000)
+            logger.warning("[%s] timeout in %dms", collector.name, elapsed)
+            return collector._timeout_msg(elapsed)
         except (ConnectionError, OSError, httpx.HTTPError) as e:
-            return collector._fail(str(e), (time.monotonic() - t0) * 1000)
+            elapsed = int((time.monotonic() - t0) * 1000)
+            logger.warning("[%s] failed in %dms: %s", collector.name, elapsed, e)
+            return collector._fail(str(e), elapsed)
         except Exception as e:
-            return collector._fail(str(e), (time.monotonic() - t0) * 1000)
+            elapsed = int((time.monotonic() - t0) * 1000)
+            logger.warning("[%s] failed in %dms: %s", collector.name, elapsed, e)
+            return collector._fail(str(e), elapsed)

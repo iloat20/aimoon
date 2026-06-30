@@ -6,7 +6,20 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
-_ENV_FILE = Path(__file__).resolve().parents[5] / ".env"
+
+def _find_project_root() -> Path:
+    """Walk up from this file to find pyproject.toml, fallback to parents[5]."""
+    p = Path(__file__).resolve().parent
+    for _ in range(10):
+        if (p / "pyproject.toml").exists():
+            return p
+        if p.parent == p:
+            break
+        p = p.parent
+    return Path(__file__).resolve().parents[5]
+
+
+_ENV_FILE = _find_project_root() / ".env"
 
 
 class Settings(BaseSettings):
@@ -41,7 +54,7 @@ class Settings(BaseSettings):
 
     @property
     def project_root(self) -> Path:
-        return Path(__file__).resolve().parents[5]
+        return _find_project_root()
 
     @property
     def cache_path(self) -> Path:

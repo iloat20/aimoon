@@ -38,6 +38,11 @@ def _run(coro):
 class TestQuoteCollectorExceptionHandling:
     """Verify QuoteCollector narrows exception types properly."""
 
+    def setup_method(self):
+        from aimoon.adapters.driven.collectors.quote import _quote_cache
+
+        _quote_cache.clear()
+
     def test_fetch_sina_network_error_returns_fallback(self):
         """Sina network error should not silently swallow — must try tencent."""
         from aimoon.adapters.driven.collectors.quote import QuoteCollector

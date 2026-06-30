@@ -19,11 +19,100 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
 from ..config.settings import get_settings
-from .data_cleaner import clean_social_texts
 from .prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 from .web_search_tool import execute_web_search, get_tool_definitions
 
-_MAX_TOOL_ROUNDS = 5
+_MAX_TOOL_ROUNDS = 0
+
+# 行业关键词映射
+_INDUSTRY_KEYWORDS = {
+    "银行": ["银行", "工商银行", "建设银行", "农业银行", "招商银行", "兴业银行"],
+    "地产": ["地产", "万科", "保利", "恒大", "碧桂园", "融创"],
+    "消费": ["茅台", "五粮液", "泸州老窖", "伊利", "蒙牛", "海天"],
+    "家电": ["格力", "美的", "海尔", "海信", "TCL", "长虹"],
+    "科技": ["华为", "小米", "联想", "中兴", "立讯", "歌尔"],
+    "医药": ["恒瑞", "药明", "迈瑞", "片仔癀", "云南白药"],
+    "能源": ["中石油", "中石化", "中海油", "神华", "宁德时代"],
+    "汽车": ["比亚迪", "长城", "吉利", "蔚来", "小鹏", "理想"],
+}
+
+
+def _detect_industry(symbol: str, name: str) -> str:
+    """根据公司名称检测行业。"""
+    for industry, keywords in _INDUSTRY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in name:
+                return industry
+    if symbol.startswith("6"):
+        return "沪市"
+    elif symbol.startswith(("0", "3")):
+        return "深市"
+    else:
+        return "北交所"
+
+
+def _parse_xml_tool_calls(content: str) -> list[dict]:
+    """Parse XML-style tool calls from model content as fallback.
+
+    Handles DeepSeek's <｜｜DSML｜｜tool_calls> markup format.
+    Returns list of {name, arguments} dicts.
+    """
+    calls: list[dict] = []
+    for m in re.finditer(
+        r'<｜｜DSML｜｜invoke\s+name="([^"]+)">(.*?)</｜｜DSML｜｜invoke>',
+        content,
+        re.DOTALL,
+    ):
+        fn_name = m.group(1)
+        param_block = m.group(2)
+        param_m = re.search(
+            r'<｜｜DSML｜｜parameter\s+name="query"[^>]*>(.*?)</｜｜DSML｜｜parameter>',
+            param_block,
+            re.DOTALL,
+        )
+        query = param_m.group(1).strip() if param_m else ""
+        calls.append({"name": fn_name, "arguments": json.dumps({"query": query})})
+    return calls
+
+
+def _strip_xml_tool_calls(text: str) -> str:
+    """Remove XML-style tool call markup from response text."""
+    text = re.sub(
+        r"<｜｜DSML｜｜tool_calls>.*?</｜｜DSML｜｜tool_calls>", "", text, flags=re.DOTALL
+    )
+    text = re.sub(r"<｜｜DSML｜｜invoke.*?</｜｜DSML｜｜invoke>", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
+def _deduplicate_tail(text: str) -> str:
+    """Remove repeated blocks at the end of the response.
+
+    Handles two cases:
+    1. Last N paragraphs identical to preceding N paragraphs
+    2. Repeated text within the response (e.g., model outputs conclusion twice)
+    """
+    # Case 1: Deduplicate repeated paragraphs
+    paragraphs = re.split(r"\n\n+", text)
+    if len(paragraphs) >= 4:
+        for size in range(1, len(paragraphs) // 2 + 1):
+            candidate = paragraphs[-size:]
+            prev = paragraphs[-(2 * size) : -size]
+            if [p.strip() for p in candidate] == [p.strip() for p in prev]:
+                text = "\n\n".join(paragraphs[: -(size)])
+                paragraphs = re.split(r"\n\n+", text)
+
+    # Case 2: Deduplicate repeated text blocks within the response
+    # Find repeated substrings of 50+ chars at the end
+    for length in range(len(text) // 3, 50, -1):
+        tail = text[-length:]
+        # Find where this block first appears
+        first_pos = text.find(tail)
+        if first_pos >= 0 and first_pos + length < len(text):
+            # Block appears earlier and is repeated at end
+            # Remove the duplicate (keep first occurrence)
+            return text[:first_pos + length]
+
+    return text
 
 
 class DeepSeekAIAnalyzer(AIAnalyzerPort):
@@ -67,13 +156,36 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
 
             return mock_analysis_report(stock_info.symbol, stock_info.name)
 
+        # 检查缓存
+        from .cache import get_analysis_cache
+        cached = get_analysis_cache(stock_info.symbol)
+        if cached:
+            logging.info("[ai_analysis] cache hit for %s", stock_info.symbol)
+            return AnalysisReport(
+                symbol=stock_info.symbol,
+                name=stock_info.name,
+                summary=cached[:200] + "..." if len(cached) > 200 else cached,
+                report_text=cached,
+                investment_advice="本报告由DeepSeek AI自动生成，仅供参考，不构成投资建议。",
+            )
+
+        import time
+        t0 = time.monotonic()
         collected_data = self._build_data_dict(stock_info, reports, financial_md_path)
 
         try:
             md = await self._call_deepseek(stock_info.symbol, stock_info.name, collected_data)
+            md = _deduplicate_tail(md)
         except Exception as e:
             logging.warning("[ai_analyze_stock] %s: %s", type(e).__name__, e)
             md = "AI分析暂不可用，以下为基础数据汇总。"
+
+        elapsed = int((time.monotonic() - t0) * 1000)
+        logging.info("[ai_analysis] completed in %dms, output %d chars", elapsed, len(md))
+
+        # 写入缓存
+        from .cache import set_analysis_cache
+        set_analysis_cache(stock_info.symbol, md)
 
         short = md[:200]
         short = re.sub(r"\*\*(.*?)\*\*", r"\1", short)
@@ -101,20 +213,32 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ]
-        tools = get_tool_definitions()
 
         for _round_idx in range(_MAX_TOOL_ROUNDS):
-            tool_call_result = await self._call_with_tools(messages, tools)
+            tool_call_result = await self._call_with_tools(messages)
             if tool_call_result is None:
                 break
             messages, should_break = tool_call_result
             if should_break:
                 break
 
-        return await self._stream_final_response(messages)
+        if _MAX_TOOL_ROUNDS > 0 and any(
+            m.get("role") == "tool" for m in messages
+        ):
+            messages.append({
+                "role": "user",
+                "content": (
+                    "以上所有搜索已完成，数据已全部提供给你。"
+                    "请立即基于以上全部数据，输出完整的深度分析报告。"
+                    "不要再调用搜索工具，直接开始分析输出。"
+                ),
+            })
+
+        result = await self._stream_final_response(messages)
+        return _strip_xml_tool_calls(result)
 
     async def _call_with_tools(
-        self, messages: list[dict], tools: list[dict]
+        self, messages: list[dict]
     ) -> tuple[list[dict], bool] | None:
         """Send a non-streaming request; if model requests tool calls,
         execute them and append results to messages.
@@ -135,7 +259,7 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
                 "messages": messages,
                 "temperature": settings.deepseek_temperature,
                 "max_tokens": settings.deepseek_max_tokens,
-                "tools": tools,
+                "tools": get_tool_definitions(),
                 "tool_choice": "auto",
             },
         )
@@ -145,12 +269,25 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         choice = data["choices"][0]
         message = choice["message"]
 
-        if not message.get("tool_calls"):
+        tool_calls = message.get("tool_calls") or []
+
+        if not tool_calls:
+            content = message.get("content", "")
+            xml_calls = _parse_xml_tool_calls(content)
+            if xml_calls:
+                tool_calls = [
+                    {"id": f"xml_{i}", "function": tc}
+                    for i, tc in enumerate(xml_calls)
+                ]
+                message["tool_calls"] = tool_calls
+                message["content"] = _strip_xml_tool_calls(content)
+
+        if not tool_calls:
             return None
 
         messages.append(message)
 
-        for tc in message["tool_calls"]:
+        for tc in tool_calls:
             fn = tc["function"]
             fn_name = fn["name"]
             try:
@@ -213,7 +350,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
                 chunk = json.loads(payload)
             except json.JSONDecodeError:
                 continue
-            delta = chunk.get("choices", [{}])[0].get("delta", {})
+            choices = chunk.get("choices", [])
+            if not choices:
+                continue
+            delta = choices[0].get("delta", {})
             content = delta.get("content", "")
             if not content:
                 continue
@@ -263,23 +403,23 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         sections = [base]
 
         financial = data.get("financial", {})
-        # financial dict keys are Chinese (e.g. "报告期", "营收(亿)")
+        # financial dict keys are short (e.g. "period", "rev")
         # built by _build_data_dict, used directly for prompt display
-        if financial and financial.get("报告期"):
-            sections.append(f"\n\n【已采集财务数据（{financial.get('报告期', '')}）】")
+        if financial and financial.get("period"):
+            sections.append(f"\n\n【已采集财务数据（{financial.get('period', '')}）】")
             for k, v in financial.items():
                 if v and v != 0:
                     sections.append(f"- {k}: {v}")
 
         # Quarterly/semi-annual financial data
         quarterly = data.get("quarterly_financial", {})
-        if quarterly and quarterly.get("报告期"):
+        if quarterly and quarterly.get("period"):
             sections.append(
-                f"\n\n【最近一期季报/中报（{quarterly.get('报告期', '')}，"
-                f"{quarterly.get('report_type', '')}）】"
+                f"\n\n【最近一期季报/中报（{quarterly.get('period', '')}，"
+                f"{quarterly.get('type', '')}）】"
             )
             for k, v in quarterly.items():
-                if v and v != 0 and k not in ("报告期",):
+                if v and v != 0 and k not in ("period",):
                     sections.append(f"- {k}: {v}")
 
         md_path = data.get("financial_md_path")
@@ -372,30 +512,6 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         quarterly = info.quarterly_financial
         capital_flow = info.capital_flow
 
-        texts: dict[str, list[str]] = {
-            "xueqiu": [],
-            "eastmoney": [],
-            "toutiao": [],
-            "wechat": [],
-        }
-        for p in info.social_posts:
-            line = f"- {p.title} (赞{p.likes} 评{p.comments})"
-            plat = p.platform
-            if "雪球" in plat:
-                texts["xueqiu"].append(line)
-            elif "股吧" in plat:
-                texts["eastmoney"].append(line)
-            elif "头条" in plat:
-                texts["toutiao"].append(line)
-            elif "微信" in plat or "公众号" in plat:
-                texts["wechat"].append(line)
-
-        def _join(key: str) -> str:
-            return "\n".join(texts[key]) if texts[key] else "暂无数据"
-
-        raw_social = {k: _join(k) for k in texts}
-        cleaned_social = clean_social_texts(raw_social)
-
         capital_flow_dict = {
             "main_net_5d": capital_flow.main_net_5d,
             "main_net_3d": capital_flow.main_net_3d,
@@ -420,42 +536,60 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
                 "source": quote.source,
             },
             "financial": {
-                "营收(亿)": (round(financial.revenue / 1e8, 2) if financial.revenue else 0),
-                "营收同比%": financial.revenue_yoy,
-                "净利润(亿)": (round(financial.net_profit / 1e8, 2) if financial.net_profit else 0),
-                "净利润同比%": financial.net_profit_yoy,
-                "ROE%": financial.roe,
-                "EPS": financial.eps,
-                "总资产(亿)": (
-                    round(financial.total_assets / 1e8, 2) if financial.total_assets else 0
+                **(
+                    {"rev": round(financial.revenue / 1e8, 2)}
+                    if financial.revenue
+                    else {}
                 ),
-                "总负债(亿)": (
-                    round(financial.total_liabilities / 1e8, 2)
+                **({"rev_yoy": financial.revenue_yoy} if financial.revenue_yoy else {}),
+                **(
+                    {"np": round(financial.net_profit / 1e8, 2)}
+                    if financial.net_profit
+                    else {}
+                ),
+                **({"np_yoy": financial.net_profit_yoy} if financial.net_profit_yoy else {}),
+                **({"roe": financial.roe} if financial.roe else {}),
+                **({"eps": financial.eps} if financial.eps else {}),
+                **(
+                    {"ta": round(financial.total_assets / 1e8, 2)}
+                    if financial.total_assets
+                    else {}
+                ),
+                **(
+                    {"tl": round(financial.total_liabilities / 1e8, 2)}
                     if financial.total_liabilities
-                    else 0
+                    else {}
                 ),
-                "经营现金流(亿)": (
-                    round(financial.operating_cf / 1e8, 2) if financial.operating_cf else 0
+                **(
+                    {"ocf": round(financial.operating_cf / 1e8, 2)}
+                    if financial.operating_cf
+                    else {}
                 ),
-                "报告期": financial.report_period,
+                "period": financial.report_period,
+                "src": financial.source,
             },
             "quarterly_financial": {
-                "报告期": quarterly.report_period,
-                "报告类型": quarterly.report_type,
-                "营收(亿)": (round(quarterly.revenue / 1e8, 2) if quarterly.revenue else 0),
-                "营收同比%": quarterly.revenue_yoy,
-                "净利润(亿)": (round(quarterly.net_profit / 1e8, 2) if quarterly.net_profit else 0),
-                "净利润同比%": quarterly.net_profit_yoy,
+                "period": quarterly.report_period,
+                **({"type": quarterly.report_type} if quarterly.report_type else {}),
+                **(
+                    {"rev": round(quarterly.revenue / 1e8, 2)}
+                    if quarterly.revenue
+                    else {}
+                ),
+                **({"rev_yoy": quarterly.revenue_yoy} if quarterly.revenue_yoy else {}),
+                **(
+                    {"np": round(quarterly.net_profit / 1e8, 2)}
+                    if quarterly.net_profit
+                    else {}
+                ),
+                **({"np_yoy": quarterly.net_profit_yoy} if quarterly.net_profit_yoy else {}),
             },
             "capital_flow": capital_flow_dict,
             "annual_report": info.annual_report,
             "semi_annual_report": info.semi_annual_report,
             "quarterly_report": info.quarterly_report,
             "financial_md_path": str(financial_md_path) if financial_md_path else None,
-            "xueqiu": cleaned_social["xueqiu"],
-            "eastmoney": cleaned_social["eastmoney"],
-            "toutiao": cleaned_social["toutiao"],
-            "wechat": cleaned_social["wechat"],
+            "industry": _detect_industry(info.symbol, info.name),
             "kline_summary": getattr(info, "kline_summary", None),
         }
 
@@ -515,11 +649,13 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             if resistance_match:
                 orig = resistance_match.group(0)
                 replacement = orig.replace(resistance_match.group(1), str(safe_resistance))
-                new_md = (
-                    new_md[: resistance_match.start()]
-                    + replacement
-                    + new_md[resistance_match.end() :]
-                )
+                resistance_match_new = re.search(resistance_pattern, new_md, re.IGNORECASE)
+                if resistance_match_new:
+                    new_md = (
+                        new_md[: resistance_match_new.start()]
+                        + replacement
+                        + new_md[resistance_match_new.end() :]
+                    )
                 logging.info(
                     "[sanity_resistance] 阻力位 %.2f <= 现价 %.2f，已修正为 %.2f",
                     resistance_val,

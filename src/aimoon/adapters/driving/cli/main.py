@@ -37,6 +37,7 @@ def _suppress_asyncio_pipe_warning() -> None:
     It has no effect on functionality - the report is generated correctly.
     """
     import os
+
     # Set environment variable to suppress asyncio debug warnings
     os.environ["PYTHONASYNCIODEBUG"] = "0"
 
@@ -90,10 +91,18 @@ def main() -> None:
         print("\n错误: 请提供股票代码")
         sys.exit(1)
 
-    parsed_symbol, market, name = resolve_symbol(raw)
+    try:
+        parsed_symbol, market, name = resolve_symbol(raw)
+    except ValueError as e:
+        print(f"\n错误: {e}")
+        sys.exit(1)
 
     settings = get_settings()
     mock_mode = args.mock or settings.mock_mode
+
+    if args.test and mock_mode:
+        print("\n警告: --test 与 --mock 同时指定，test 模式优先（跳过AI，使用真实数据）")
+        mock_mode = False
 
     mode_label = "Mock模拟" if mock_mode else "测试(无AI)" if args.test else "真实数据"
     print(f"\n{'=' * 60}")

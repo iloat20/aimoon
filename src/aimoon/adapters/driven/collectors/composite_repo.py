@@ -52,8 +52,8 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         self._quote_collector = quote_collector or QuoteCollector(client=http_client)
         self._financial_collector = financial_collector
         self._kline_collector = kline_collector or KlineCollector(client=http_client)
-        self._capital_flow_collector = (
-            capital_flow_collector or CapitalFlowCollector(client=http_client)
+        self._capital_flow_collector = capital_flow_collector or CapitalFlowCollector(
+            client=http_client
         )
         self._research_collector = research_collector or ResearchReportCollector()
         self._social_collector = social_collector or SocialMediaOrchestrator()
@@ -177,9 +177,9 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
 
     def _unwrap_quote(self, result: object, symbol: str, name: str) -> StockQuote:
         """解包 quote 结果，打印状态，记录 CollectResult。"""
-        quote = None
+        quote: StockQuote | None = None
         if not isinstance(result, Exception):
-            quote = result
+            quote = result  # type: ignore[assignment]
         if quote and quote.price > 0:
             info = f"{quote.name}: {quote.price} ({quote.change_pct:+.2f}%) PE={quote.pe}"
             print(f"   {info} [来源: {quote.source}]")
