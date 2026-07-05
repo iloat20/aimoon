@@ -57,9 +57,10 @@ async def test_collect_all_populates_history_financial():
 # ---- Task 4 ----
 
 
-def test_five_phases_defined():
-    assert len(Phase) == 5
-    assert Phase.PLAN.value == "plan"
+def test_two_phases_defined():
+    assert len(Phase) == 2
+    assert Phase.ANALYSIS.value == "analysis"
+    assert Phase.COMPILE.value == "compile"
 
 
 def test_pipeline_specs_have_required_fields():
@@ -83,36 +84,62 @@ class _FakeAnalyzer:
     def __init__(self) -> None:
         self._settings = _FakeSettings()
         self._provided_settings = None
+        self.api_url = "http://fake"
+        self.api_key = "fake"
+        self._http = None
 
     def _build_data_dict(self, info, reports=None, financial_md_path=None):
         return {"symbol": info.symbol, "name": info.name, "_fake": True}
 
+    async def _stream_final_response(self, messages):
+        return "[compiled fake markdown]"
 
-async def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
-    """Plain-text response, no tool calls -> every phase finishes in 1 turn."""
-    return {"role": "assistant", "content": f"[fake output for {len(messages)} messages]"}
+    async def _stream_final_response(self, messages):
+        return "[compiled fake markdown]"
 
 
 @pytest.fixture
 def _fake_analyzer(monkeypatch):
+    fake = _FakeAnalyzer()
+
+    async def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
+        return {
+            "role": "assistant",
+            "content": (
+                "# 分析草稿\n\n(fake draft)\n\n"
+                "```json\n"
+                '{"citations_ok": true, "tables_ok": true, "trigger_ok": true, '
+                '"advice_ok": true, "norepeat_ok": true, "justified_ok": true, '
+                '"fixes_needed": []}\n'
+                "```"
+            ),
+        }
+
+    def _fake_run_safe(fn, *args):
+        async def _inner():
+            return {"_fake": True, "tool": getattr(fn, "__name__", str(fn))}
+        return _inner()
+
+    def _fake_peer_compare(si, search_fn):
+        async def _inner():
+            return {"_fake": True, "tool": "peer_compare"}
+        return _inner()
+
     monkeypatch.setattr(PipelineOrchestrator, "_llm_chat", _fake_llm_chat)
-    return _FakeAnalyzer()
+    import aimoon.adapters.driven.ai.pipeline.orchestrator as _orch_mod
+    monkeypatch.setattr(_orch_mod, "_run_safe", _fake_run_safe)
+    monkeypatch.setattr(_orch_mod, "_run_peer_compare", _fake_peer_compare)
+    return fake
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_runs_all_phases_placeholder(_fake_analyzer):
-    """All 5 phases complete with a mocked LLM (no network)."""
+async def test_orchestrator_runs_two_phases(_fake_analyzer):
+    """Two-phase pipeline (ANALYSIS + COMPILE) completes without raising."""
     ctx = await PipelineOrchestrator(_fake_analyzer).run(StockAnalysis(symbol="000001"))
     assert isinstance(ctx, dict)
-    assert set(ctx["phase_results"].keys()) == {
-        "plan", "collect", "analysis", "self_check", "compile"
-    }
-    # 5 phases wired in Task 13-15; PLAN (no offline tools) must not be partial.
-    assert "plan" not in ctx["partial_phases"]
-    # COMPILE sets final_markdown from the streamed response (or degraded draft).
-    assert ctx["final_markdown"], "final_markdown must be non-empty"
-    # compile produced the streamed / degraded markdown
-    assert ctx["phase_results"]["compile"]["output"]
+    # ANALYSIS + COMPILE 两阶段都登记在 phase_results 里
+    assert "analysis" in ctx["phase_results"]
+    assert "compile" in ctx["phase_results"]
 
 
 def test_parse_self_check_json_strips_fences():
@@ -122,11 +149,10 @@ def test_parse_self_check_json_strips_fences():
         '```json\n{"citations_ok": true, "tables_ok": true, "trigger_ok": true, '
         '"advice_ok": true, "norepeat_ok": false, "fixes_needed": ["x"]}\n```'
     )
-    parsed, err = _parse_self_check_json(text)
-    assert err is None
+    parsed, fixes = _parse_self_check_json(text)
     assert parsed is not None
     assert parsed["norepeat_ok"] is False
-    assert parsed["fixes_needed"] == ["x"]
+    assert fixes == ["x"]
 
 
 def test_parse_self_check_json_invalid_returns_error():

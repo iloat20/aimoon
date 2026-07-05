@@ -171,9 +171,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
     ) -> AnalysisReport:
         """AI analysis entry point - receives domain entity, returns AnalysisReport.
 
-        When ``use_pipeline_v2`` is True, run the 5-phase pipeline orchestrator;
-        otherwise preserve the existing single-shot behavior (``_legacy_analyze``).
-        Old callers (without the kwarg) work identically — DEFAULT OFF.
+        When ``use_pipeline_v2`` is True, run the two-phase pipeline orchestrator
+        (ANALYSIS + COMPILE); otherwise preserve the existing single-shot behavior
+        (``_legacy_analyze``). Old callers (without the kwarg) work identically —
+        DEFAULT OFF.
         """
         if use_pipeline_v2:
             return await self._pipeline_analyze(stock_info, reports, financial_md_path)
@@ -269,11 +270,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         reports: dict | None = None,
         financial_md_path: Path | None = None,
     ) -> AnalysisReport:
-        """5-phase pipeline v2 analysis entry (Task 12+).
+        """Two-phase pipeline v2 analysis entry (Plan B in brainstorming).
 
-        Receives the same inputs as ``_legacy_analyze`` but forwards them to
-        ``PipelineOrchestrator``, which runs PLAN → COLLECT → ANALYSIS →
-        SELF_CHECK → COMPILE and returns ``final_markdown``. The L1 disk cache
+        Runs ANALYSIS (parallel tools + LLM + self-check) then COMPILE
+        (long-form final report) and returns ``final_markdown``. The L1 disk cache
         (``cache.py``) is reused; on orchestrator failure a degraded fallback
         report is produced so the pipeline never aborts.
         """
@@ -288,7 +288,9 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             logging.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
         text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
         if not text:
-            text = _build_fallback_report(stock_info)
+            # v2 失败时降级到 legacy 一段式(而非数据汇总 fallback)
+            logging.info("[pipeline_v2] 降级到 legacy 一段式分析")
+            return await self._legacy_analyze(stock_info, reports, financial_md_path)
         from .cache import set_analysis_cache
         set_analysis_cache(stock_info.symbol, text)
         return self._build_report(stock_info, text)
