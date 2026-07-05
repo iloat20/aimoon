@@ -49,6 +49,8 @@ class AnalyzerRuntime(Protocol):
         financial_md_path: Path | None = None,
     ) -> dict[str, Any]: ...
 
+    async def _stream_final_response(self, messages: list[dict]) -> str: ...
+
 
 @dataclasses.dataclass
 class PipelineContext:
@@ -129,6 +131,12 @@ class PipelineOrchestrator:
             if result.get("partial"):
                 ctx.partial_phases.append(spec.phase.value)
             prior[spec.phase.value] = result.get("output", "")
+        # COMPILE 阶段产出最终 Markdown → 写入 final_markdown
+        compile_result = ctx.phase_results.get(Phase.COMPILE.value)
+        if isinstance(compile_result, dict) and not compile_result.get("partial"):
+            text = _phase_output_text(compile_result)
+            if text:
+                ctx.final_markdown = text
         return ctx.to_dict()
 
     # ---- per-phase dispatch ----------------------------------------------
@@ -151,7 +159,8 @@ class PipelineOrchestrator:
             return await self._phase_analysis(si, stock_md, prior)
         if phase == Phase.SELF_CHECK:
             return await self._phase_self_check(stock_md, prior)
-        # COMPILE filled in Task 15; placeholder for now.
+        if phase == Phase.COMPILE:
+            return await self._phase_compile(stock_md, prior)
         return {"output": "", "tool_results": {}, "partial": True, "note": "not_implemented"}
 
     async def _phase_plan(
@@ -353,6 +362,32 @@ class PipelineOrchestrator:
         except Exception as e:  # broad tolerance: keep original draft on failure
             logger.warning("[pipeline] reanalysis_with_fixes 失败 %s: %s", type(e).__name__, e)
             return analysis_output
+
+    async def _phase_compile(
+        self,
+        stock_md: str,
+        prior: dict[str, object],
+    ) -> dict[str, object]:
+        """COMPILE: 把经 SELF_CHECK 认可的 ANALYSIS 草稿拼装为对话,复用
+        analyzer._stream_final_response 产出最终 Markdown 终稿。"""
+        from ..analyzer import _strip_xml_tool_calls as _strip_xml
+
+        draft = _phase_output_text(prior.get("analysis"))
+        if not draft:
+            # 没有上游草稿时，用stock占位
+            draft = f"# 标的快照\n\n{stock_md}"
+        system = phase_system_prompt(Phase.COMPILE, stock_md, prior)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"# 经自检认可的草稿\n\n{draft}"},
+        ]
+        try:
+            text = await self.analyzer._stream_final_response(messages)
+        except Exception as e:  # broad tolerance: degrade to raw draft
+            logger.warning("[pipeline] COMPILE stream 失败 %s: %s", type(e).__name__, e)
+            text = draft
+        stripped = _strip_xml(text) if text else ""
+        return {"output": stripped or text, "tool_results": {}, "partial": False}
 
     # ---- LLM helpers ------------------------------------------------------
 

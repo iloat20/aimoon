@@ -88,7 +88,7 @@ class _FakeAnalyzer:
         return {"symbol": info.symbol, "name": info.name, "_fake": True}
 
 
-def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
+async def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
     """Plain-text response, no tool calls -> every phase finishes in 1 turn."""
     return {"role": "assistant", "content": f"[fake output for {len(messages)} messages]"}
 
@@ -107,8 +107,12 @@ async def test_orchestrator_runs_all_phases_placeholder(_fake_analyzer):
     assert set(ctx["phase_results"].keys()) == {
         "plan", "collect", "analysis", "self_check", "compile"
     }
-    # SELF_CHECK wired in Task 14; COMPILE in Task 15 -> partial until then.
-    assert "compile" in ctx["partial_phases"]
+    # 5 phases wired in Task 13-15; PLAN (no offline tools) must not be partial.
+    assert "plan" not in ctx["partial_phases"]
+    # COMPILE sets final_markdown from the streamed response (or degraded draft).
+    assert ctx["final_markdown"], "final_markdown must be non-empty"
+    # compile produced the streamed / degraded markdown
+    assert ctx["phase_results"]["compile"]["output"]
 
 
 def test_parse_self_check_json_strips_fences():
