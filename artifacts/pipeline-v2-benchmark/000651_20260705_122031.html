@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>格力电器(000651) AI分析报告</title>
+<style>
+
+/* ===== Design Tokens ===== */
+:root {
+  --bg: #0c0f15;
+  --surface: #161b24;
+  --surface-2: #1e2531;
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(255,255,255,0.12);
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --red: #ef4444;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --font: "Inter", "SF Pro Display", "PingFang SC", system-ui, -apple-system, sans-serif;
+
+  /* Spacing tokens (8px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+
+  /* Motion tokens */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Light Mode ===== */
+body.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: rgba(0,0,0,0.07);
+  --border-hover: rgba(0,0,0,0.14);
+  --text: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --red: #dc2626;
+  --green: #16a34a;
+  --amber: #d97706;
+  --blue: #2563eb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+body.light .card:hover { border-color: var(--border-hover); }
+body.light .ai-report { color: #334155; }
+body.light .ai-report h1, body.light .ai-report h2, body.light .ai-report h3,
+body.light .ai-report strong { color: #1e293b; }
+body.light .ai-report table th { background: #e2e8f0; color: #1e293b; }
+body.light .ai-report code { background: #e2e8f0; }
+body.light .research-table td { border-bottom-color: rgba(0,0,0,0.04); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container { max-width: 1500px; margin: 0 auto; padding: var(--space-4) calc(var(--space-6) * 1.25) calc(var(--space-6) * 1.25); }
+
+/* ===== Header ===== */
+.header {
+  text-align: center; padding: var(--space-6) var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+.header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: var(--space-1); }
+
+.quote-bar {
+  display: flex; justify-content: center; align-items: baseline; gap: calc(var(--space-2) + var(--space-1));
+  flex-wrap: wrap; margin-top: var(--space-3);
+}
+.quote-bar .price { font-size: 44px; font-weight: 800; letter-spacing: -1px; }
+.quote-bar .price.up { color: var(--red); }
+.quote-bar .price.down { color: var(--green); }
+.quote-bar .change {
+  font-size: 18px; font-weight: 600; padding: var(--space-1) var(--space-3); border-radius: var(--radius);
+}
+.quote-bar .change.up { color: var(--red); background: rgba(239,68,68,0.12); }
+.quote-bar .change.down { color: var(--green); background: rgba(34,197,94,0.12); }
+
+.quote-meta {
+  margin-top: var(--space-3); font-size: 13px; color: var(--text-muted);
+  display: flex; gap: var(--space-4); justify-content: center; flex-wrap: wrap;
+}
+.quote-meta span { white-space: nowrap; }
+.quote-meta .label { color: var(--text-muted); }
+
+/* ===== Grid ===== */
+.bento-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);
+}
+.bento-grid .full { grid-column: 1 / -1; }
+.bento-grid .wide { grid-column: span 2; }
+
+@media (max-width: 900px) {
+  .bento-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+  .bento-grid { grid-template-columns: 1fr; }
+  .bento-grid .wide { grid-column: span 1; }
+}
+
+/* ===== Card ===== */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: var(--space-5);
+  box-shadow: var(--shadow);
+  transition: border-color var(--duration-normal) var(--ease-default);
+}
+.card:hover { border-color: var(--border-hover); }
+.card-header {
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);
+  padding-bottom: calc(var(--space-2) + var(--space-1)); border-bottom: 1px solid var(--border);
+}
+.card-header .icon { flex-shrink: 0; width: 20px; height: 20px; opacity: 0.8; }
+.card-header .title { font-size: 15px; font-weight: 600; }
+.card-header .badge {
+  font-size: 11px; padding: 2px var(--space-3); border-radius: 999px;
+  font-weight: 500; margin-left: auto; white-space: nowrap;
+}
+.badge-up { background: rgba(239,68,68,0.12); color: var(--red); }
+.badge-down { background: rgba(34,197,94,0.12); color: var(--green); }
+.badge-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+
+/* ===== Financial Table ===== */
+.fin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fin-table tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+.fin-table td { padding: var(--space-2) var(--space-2); }
+.fin-table td:first-child { color: var(--text-secondary); width: 44%; }
+.fin-table td:last-child { text-align: right; font-weight: 600; font-feature-settings: "tnum"; }
+
+/* ===== Valuation Gauge ===== */
+.gauge-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-3); padding: var(--space-3) 0;
+  min-height: 200px; justify-content: center;
+}
+.gauge-ring { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+.gauge-ring svg { transform: rotate(-90deg); }
+.gauge-ring .bg { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.gauge-ring .fg { fill: none; stroke-width: 8; stroke-linecap: round; }
+.gauge-ring .inner {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.gauge-ring .inner .pct { font-size: 24px; font-weight: 800; }
+.gauge-ring .inner .lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.val-range { width: 100%; font-size: 12px; color: var(--text-secondary); line-height: 2.2; }
+.val-range .row { display: flex; justify-content: space-between; }
+.val-range .row .val { color: var(--text); font-weight: 700; }
+
+/* ===== Financial Highlights ===== */
+.fin-hl { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fin-hl-item {
+  background: var(--surface-2); border-radius: var(--radius); padding: calc(var(--space-2) + var(--space-1));
+}
+.fin-hl-item .hl-label { font-size: 11px; color: var(--text-muted); margin-bottom: var(--space-1); }
+.fin-hl-item .hl-value { font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; }
+.fin-hl-item .hl-sub { font-size: 11px; margin-top: 2px; }
+
+/* ===== Chart Container ===== */
+.chart-wrap {
+  position: relative; height: 320px;
+}
+
+/* ===== Social Posts ===== */
+.social-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--space-2) + var(--space-1));
+}
+.social-card {
+  background: var(--surface-2); border-radius: var(--radius); padding: var(--space-3);
+  font-size: 13px;
+}
+.social-card .sc-title {
+  font-weight: 500; margin-bottom: 6px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.social-card .sc-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: calc(var(--space-2) + var(--space-1)); margin-top: 6px; }
+.social-card a { color: var(--text); }
+.social-card a:hover { color: var(--blue); }
+
+/* ===== Research Table ===== */
+.research-scroll { max-height: 380px; overflow-y: auto; }
+.research-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.research-table th {
+  padding: var(--space-2); text-align: left; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap;
+}
+.research-table th:last-child, .research-table td:last-child { text-align: center; }
+.research-table td {
+  padding: var(--space-2); border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.research-table td:nth-child(4) {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.research-table td:nth-child(5), .research-table td:nth-child(6) { text-align: right; color: var(--text); }
+
+/* ===== Report Tags ===== */
+.tag-group { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.tag {
+  padding: var(--space-1) calc(var(--space-2) + var(--space-1)); border-radius: 999px; font-size: 12px; font-weight: 500;
+}
+
+/* ===== AI Report ===== */
+.ai-report {
+  font-size: 14px; line-height: 1.9; color: #cbd5e1; word-break: break-word;
+}
+.ai-report h1, .ai-report h2, .ai-report h3 {
+  color: #f1f5f9; margin: var(--space-5) 0 var(--space-2); font-weight: 700;
+}
+.ai-report h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.ai-report h3 { font-size: 16px; }
+.ai-report strong { color: #f1f5f9; }
+.ai-report p { margin: var(--space-2) 0; }
+.ai-report ul, .ai-report ol { padding-left: var(--space-4); margin: 6px 0; }
+.ai-report li { margin: 3px 0; }
+.ai-report hr { border: none; border-top: 1px solid var(--border); margin: var(--space-3) 0; }
+.ai-report table { width: 100%; border-collapse: collapse; overflow-x: auto; display: block; }
+.ai-report table th, .ai-report table td { padding: 6px 10px; border: 1px solid var(--border); font-size: 13px; }
+.ai-report table th { background: var(--surface-2); color: #f1f5f9; }
+.ai-report code { background: var(--surface-2); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+
+/* ===== Theme Toggle ===== */
+.theme-toggle {
+  position: fixed; top: var(--space-3); right: var(--space-4); z-index: 1000;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); transition: all var(--duration-slow) var(--ease-default);
+}
+.theme-toggle:hover { border-color: var(--border-hover); transform: scale(1.08); }
+@media (max-width: 768px) {
+  .theme-toggle { top: var(--space-2); right: var(--space-2); width: 36px; height: 36px; font-size: 16px; }
+}
+
+/* ===== Footer ===== */
+.footer {
+  text-align: center; padding: var(--space-5) 0 0; border-top: 1px solid var(--border);
+  margin-top: var(--space-5); font-size: 12px; color: var(--text-muted);
+}
+.footer .sources { margin-bottom: var(--space-2); }
+.footer .disclaimer { max-width: 600px; margin: 0 auto; color: var(--text-muted); line-height: 1.7; }
+.footer .actions { margin-top: var(--space-3); display: flex; gap: calc(var(--space-2) + var(--space-1)); justify-content: center; }
+.footer .actions button {
+  padding: var(--space-2) var(--space-5); border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-secondary); font-size: 13px;
+  cursor: pointer; font-weight: 600; transition: border-color var(--duration-normal) var(--ease-default);
+}
+.footer .actions button:hover { border-color: var(--border-hover); color: var(--text); }
+.footer .version { margin-top: var(--space-2); }
+
+/* ===== Mobile Export Bar ===== */
+.export-bar { display: none; }
+@media (max-width: 768px) {
+  .export-bar {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: calc(var(--space-2) + var(--space-1)) var(--space-3); justify-content: center; gap: calc(var(--space-2) + var(--space-1)); z-index: 100;
+  }
+  .export-bar button {
+    padding: var(--space-2) var(--space-4); border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-secondary); font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: var(--space-1); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: var(--space-1); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== Text Utils ===== */
+.text-sm { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.muted { color: var(--text-muted); font-size: 12px; }
+.mono { font-feature-settings: "tnum"; }
+.text-up { color: var(--red); }
+.text-down { color: var(--green); }
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .header h1 { font-size: 22px; }
+  .quote-bar .price { font-size: 32px; }
+  .social-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .container { padding: var(--space-3) var(--space-3) 80px; }
+  .header { padding: var(--space-5) var(--space-3) var(--space-3); }
+  .header h1 { font-size: 20px; }
+  .quote-bar { gap: var(--space-2); flex-direction: column; align-items: center; }
+  .quote-bar .price { font-size: 28px; }
+  .quote-bar .change { font-size: 15px; }
+  .quote-meta { gap: var(--space-2); flex-direction: column; align-items: center; }
+  .card { padding: var(--space-4); }
+  .fin-hl { grid-template-columns: 1fr; }
+  .social-grid { grid-template-columns: 1fr; }
+  .research-table td:nth-child(4) { max-width: 140px; }
+  .chart-wrap { height: 220px; }
+  .ai-report { font-size: 13px; }
+  .ai-report h2 { font-size: 16px; }
+  .ai-report h3 { font-size: 14px; }
+  .ai-report table { overflow-x: auto; display: block; }
+}
+
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" title="切换亮色/暗色模式">☀️</button>
+
+<div class="container">
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <h1>格力电器</h1>
+  <div class="subtitle">000651 · SZ · 报告生成: 2026-07-05 12:20:31</div>
+
+  <div class="quote-bar">
+    <span class="price up">38.33</span>
+    <span class="change up">+0.33 (+0.87%)</span>
+  </div>
+
+  <div class="quote-meta">
+    <span>开 <strong>38.21</strong></span>
+    <span>高 <strong>38.87</strong></span>
+    <span>低 <strong>37.93</strong></span>
+    <span>量 <strong>5895.4万手</strong></span>
+    <span>换 <strong>1.07%</strong></span>
+    <span>PE <strong>7.36</strong></span>
+    <span class="muted">来源: 新浪</span>
+  </div>
+</header>
+
+<!-- ===== BENTO GRID ===== -->
+<div class="bento-grid">
+
+  <!-- 基本面 -->
+  <div class="card">
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M2 17h16v-2H2v2zM4 5h3v8H4V5zm4.5 0h3v8h-3V5zm4.5 0h3v8h-3V5z" opacity="0.8"/></svg>
+      <span class="title">基本面</span>
+      
+      <span class="badge badge-up">可信度高</span>
+    </div>
+    
+    
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:4px 8px;background:var(--surface-2);border-radius:4px;display:inline-block">数据来源: 2025-12-31</div>
+    
+    <div class="fin-hl">
+      <div class="fin-hl-item">
+        <div class="hl-label">营收</div>
+        <div class="hl-value">1711.18<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:var(--green)">同比 -9.96%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">净利润</div>
+        <div class="hl-value">288.63<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:var(--green)">同比 -10.84%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">ROE</div>
+        <div class="hl-value">19.27%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">EPS</div>
+        <div class="hl-value">5.20</div>
+      </div>
+    </div>
+    
+    <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;margin-top:4px;border-top:1px solid var(--border)">
+      <span style="color:var(--text-secondary)">经营现金流</span>
+      <span style="font-weight:700">463.83亿</span>
+    </div>
+    
+  </div>
+
+  <!-- 资金面 -->
+  <div class="card">
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a2.5 2.5 0 00-2.5 2.5V6H5a1 1 0 000 2h2.5v2.5H6A1 1 0 006 13h1.5v2.5a1 1 0 002 0V13H10a1 1 0 000-2H9.5V8H15a1 1 0 000-2h-2.5V4.5A2.5 2.5 0 0010 2z" opacity="0.8"/></svg>
+      <span class="title">资金面</span>
+      
+      <span class="badge badge-warn">可信度中</span>
+    </div>
+    
+    
+    
+    
+    <table class="fin-table">
+      <tr><td>近5日主力净流入</td><td style="color:var(--red)">2.43亿</td></tr>
+      <tr><td>3日净流入</td><td style="color:var(--green)">-0.16亿</td></tr>
+      <tr><td>10日净流入</td><td style="color:var(--red)">1.91亿</td></tr>
+      <tr><td>20日净流入</td><td style="color:var(--green)">-5.33亿</td></tr>
+      
+      <tr><td>北向持股市值</td><td style="color:var(--blue)">68.53亿</td></tr>
+      
+      
+    </table>
+    <div class="muted" style="margin-top:8px">来源: pysnowball(雪球)+eastmoney(北向持股)</div>
+    
+  </div>
+
+
+<!-- ===== VALUATION GAUGE ===== -->
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+<div class="card">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13zm-.75-8.25h1.5v1.5h-1.5v-1.5zm0-3h1.5v1.5h-1.5v-1.5z" opacity="0.8"/><circle cx="10" cy="10" r="3" fill="currentColor" opacity="0.3"/></svg>
+    <span class="title">估值百分位</span>
+    <span class="badge badge-warn">中性 42.9%</span>
+  </div>
+  <div class="gauge-wrap">
+    <div class="gauge-ring">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle class="bg" cx="60" cy="60" r="52"/>
+        <circle class="fg" cx="60" cy="60" r="52" stroke="var(--amber)"
+          stroke-dasharray="0 327"
+          data-target="137.0"
+          style="transition: stroke-dasharray 1s ease-out"/>
+      </svg>
+      <div class="inner">
+        <span class="pct" style="color:var(--amber)">42.9%</span>
+        <span class="lbl">中性</span>
+      </div>
+    </div>
+    <div class="val-range">
+      <div class="row"><span>现价</span><span class="val">38.33</span></div>
+      <div class="row"><span>120日最高</span><span class="val" style="color:var(--red)">40.47</span></div>
+      <div class="row"><span>120日最低</span><span class="val" style="color:var(--green)">36.72</span></div>
+      <div class="row"><span>区间振幅</span><span class="val" style="color:var(--amber)">10.21%</span></div>
+    </div>
+  </div>
+</div>
+
+
+</div>
+
+<!-- ===== K-LINE CHART ===== -->
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3v14h14" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5"/><rect x="6" y="8" width="2" height="6" rx="0.5" opacity="0.8"/><rect x="10" y="5" width="2" height="10" rx="0.5" opacity="0.8"/><rect x="14" y="7" width="2" height="6" rx="0.5" opacity="0.8"/></svg>
+    <span class="title">K线走势 (近180日)</span>
+    <span class="badge badge-warn">akshare(daily)</span>
+  </div>
+  <div class="chart-wrap" id="klineWrap">
+    <canvas id="klineChart"></canvas>
+  </div>
+</div>
+
+
+<!-- ===== SOCIAL HEATMAP ===== -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6c0 3.5 3 7 6 10 3-3 6-6.5 6-10a6 6 0 00-12 0v.5" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.8"/><circle cx="10" cy="8" r="2" fill="currentColor" opacity="0.8"/></svg>
+    <span class="title">全网热度</span>
+    <span class="badge badge-warn">共 77 条</span>
+  </div>
+  <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+    全平台共 <strong style="color:var(--text)">77</strong> 条相关讨论
+    
+  </div>
+  <div class="social-grid">
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>东方财富股吧</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737855430.html" target="_blank" rel="noopener noreferrer">中标超2亿元大单！创新技术护航算力基建→</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737927530.html" target="_blank" rel="noopener noreferrer">大市值股票，必须机构抱团才能大涨就看这些机构能不能抱团了</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737927312.html" target="_blank" rel="noopener noreferrer">可以哦！最好三季度分红再来个10派20</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737926370.html" target="_blank" rel="noopener noreferrer">趋势这么好！星期一二三，三连涨停板！</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737925910.html" target="_blank" rel="noopener noreferrer">复利曲线，前8年微微上涨，8年以年才是爆发增长，那些说8...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737925458.html" target="_blank" rel="noopener noreferrer">贴牌长虹空调对标格力的企业做的汽车就问你敢不敢买。。。空...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737923509.html" target="_blank" rel="noopener noreferrer">格力工业机器人，也是机器人，也是解放生产力，为什么非要做...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737923166.html" target="_blank" rel="noopener noreferrer">周末多重利好来袭，明天大幅高开</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737920974.html" target="_blank" rel="noopener noreferrer">明天来个5厘米上涨吧</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737919918.html" target="_blank" rel="noopener noreferrer">$格力电器(SZ000651)$</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737915707.html" target="_blank" rel="noopener noreferrer">下周拉升必过前高创新高后的缓调才有希望企稳反转，否则难过...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737915627.html" target="_blank" rel="noopener noreferrer">同样100万本金2018年1月1日分别买入美的和格力持有...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737915348.html" target="_blank" rel="noopener noreferrer">看各个低点没有都没有对子，长期处于无组织无纪律状态</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737914362.html" target="_blank" rel="noopener noreferrer">同样100万本金2020同时买入美的和格力，都选择红利再...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737914079.html" target="_blank" rel="noopener noreferrer">没有对比就没有伤害！2020年1月1日到今年4月22日算...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737913974.html" target="_blank" rel="noopener noreferrer">过去12年美的格力对比，图一利润对比，图二营收对比。所以...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737912698.html" target="_blank" rel="noopener noreferrer">格力电器分红大王。深圳市场分红提名第一。格力电器目前的股...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737910480.html" target="_blank" rel="noopener noreferrer">原来格力才是空调行业铝代铜最早最积极的！颠倒黑白污蔑同行...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737909935.html" target="_blank" rel="noopener noreferrer">小南，说清楚这几点，俺不说你是股盲了。第十四点，你说买格...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000651,1737909901.html" target="_blank" rel="noopener noreferrer">小南，说清楚这几点，俺不说你是股盲了。第十三点，你说买股...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>巨潮资讯</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-07-01/1225400673.PDF" target="_blank" rel="noopener noreferrer">北京观韬（珠海）律师事务所关于珠海格力电器股份有限公司2...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-07-01/1225400672.PDF" target="_blank" rel="noopener noreferrer">2025年年度股东会决议公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-27/1225392782.PDF" target="_blank" rel="noopener noreferrer">关于调整2025年年度股东会现场会议地点的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-25/1225386235.PDF" target="_blank" rel="noopener noreferrer">北京观韬（珠海）律师事务所关于珠海格力电器股份有限公司第...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-25/1225386234.PDF" target="_blank" rel="noopener noreferrer">关于回购股份事项前十名股东和前十名无限售条件股东持股情况...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-22/1225379718.PDF" target="_blank" rel="noopener noreferrer">关于大股东减持计划期限届满暨减持结果的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377020.PDF" target="_blank" rel="noopener noreferrer">公司章程</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377019.PDF" target="_blank" rel="noopener noreferrer">《公司章程》修订对照表</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377018.PDF" target="_blank" rel="noopener noreferrer">董事会议事规则</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377017.PDF" target="_blank" rel="noopener noreferrer">关于董事辞任的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377016.PDF" target="_blank" rel="noopener noreferrer">关于2025年年度股东会增加临时提案暨股东会补充通知及组...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377015.PDF" target="_blank" rel="noopener noreferrer">第十三届董事会第六次会议决议公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377014.PDF" target="_blank" rel="noopener noreferrer">薪酬与考核委员会关于公司第四期员工持股计划相关事项的审核...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377013.PDF" target="_blank" rel="noopener noreferrer">董事会关于《第四期员工持股计划（草案）》的合规性说明</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377012.PDF" target="_blank" rel="noopener noreferrer">第四期员工持股计划（草案）摘要</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-18/1225377011.PDF" target="_blank" rel="noopener noreferrer">第四期员工持股计划（草案）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-17/1225374514.PDF" target="_blank" rel="noopener noreferrer">2025年年度报告（英文版）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-17/1225374513.PDF" target="_blank" rel="noopener noreferrer">2025年度环境、社会和公司治理（ESG）报告（英文版）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-05/1225353114.PDF" target="_blank" rel="noopener noreferrer">关于持股5%以上股东权益变动比例触及1%整数倍的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-28/1225336605.PDF" target="_blank" rel="noopener noreferrer">2025年度网上业绩说明会投资者关系活动记录表</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>今日头条</span>
+        <span class="muted">17条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7653526838538437130/" target="_blank" rel="noopener noreferrer">每周股票复盘:格力电器(000651)格力拟每10股派2...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7657753272203084342/" target="_blank" rel="noopener noreferrer">格力跌到36，我笑了:7倍PE、7%股息率，这不叫抄底叫...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7656495504758489635/" target="_blank" rel="noopener noreferrer">股市必读:格力电器(000651)6月26日主力资金净流...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7650546123409375785/" target="_blank" rel="noopener noreferrer">格力在38.5元横了12天:表面无量震荡，实则主力暗中吸...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7657798633747726889/" target="_blank" rel="noopener noreferrer">所有人都在看空格力，跌到36元我反而笑了:稳7%股息不比...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7656078679080813071/" target="_blank" rel="noopener noreferrer">格力电器:低估值高股息+资金弱流出+MACD黏合+交投低...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7655277462921724416/" target="_blank" rel="noopener noreferrer">高瓴套现16亿、员工“白拿”股票、缩编董事会 格力连发三...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7648797168429580841/" target="_blank" rel="noopener noreferrer">瑟瑟发抖!格力电器周跌1.8%，大股东套现16亿!今天3...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7654919971981541929/" target="_blank" rel="noopener noreferrer">被机构无脑砸盘!手握1544亿真金白银的格力，真的被低估...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7651797854483022336/" target="_blank" rel="noopener noreferrer">格力电器持续震荡走弱，持仓该如何看待?深度分析</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7656783383410590223/" target="_blank" rel="noopener noreferrer">价值投资视角下，格力电器的买卖策略</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7657838561521975844/" target="_blank" rel="noopener noreferrer">36元格力7倍PE股息率7%，低位高股息蓝筹迎来配置窗口</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7652042468917117494/" target="_blank" rel="noopener noreferrer">股市必读:格力电器(000651)6月16日主力资金净流...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7653566986823287339/" target="_blank" rel="noopener noreferrer">每周股票复盘:格力博(301260)Q1收入增22.54...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7653712695060955686/" target="_blank" rel="noopener noreferrer">股息8%股价却跌成狗!格力的高分红，坑了多少想躺赚的散户</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7635343485243114030/" target="_blank" rel="noopener noreferrer">每周股票复盘:格力电器(000651)Q1营收增3.46...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7651720157575922210/" target="_blank" rel="noopener noreferrer">花38元买格力股票，25元是白送?解码A股分红王的价值投...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>微信公众号</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9yg0HxSiuyLB1cJN8QfUpfv51tWX3XUdmLEWwAI1ZIe_VTWhVNPGnB2QgsHQ7mkUk5tXp9QclMhBi2WWs9FY6I5BMq748MoROT82FbcDmd4O1p1QWj9O-LS_XPsOSKTGA7mGhNknz3e0vA75aYCO24vU05B84lfppz772sRtAQJdAe0f8bRARvQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">2020年是格力电器股票的转折点,只有今天我们回头看才看...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9o1YwElW3AjF0oT_9kwwWTigmuoFR54_0Ex4-WZAkOy7EW8a4xKgRBFWQTT3V23dygPnb6i21bPOFwIlaFtae77FKc3NfF-QX0L3hKB2ysTbanmiMS5qBGZ4sZ3AXSyxNqiHzjUfgneoUiYbWe_0nrhtfJAgTpvR9LYyIPzAuDkXzAjcIGepUqA..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力股价大跌,投资者为何“怪罪”董明珠?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9JxGIiUwBfq6kX5GfHNzULu1ApS0o6YOUgZ2NXT2-W1lh5P9tyOAu2fNhhA6wKbjuBfemUia8gVOENdNON9mLkO14QyeBECm47Biml5FljU3A4YTYaqImkNaPoRHCS317pihIW5meXuWr3JmGusCMR9n7gcUd-K72LjTmYOIOTmKfxjh3za6jWA..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">接连披露!格力电器要搞大事?股价震荡|消费</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9K7lyektMrLBRLG3tmIS-nsPO_9hXeNCavy6rg8ALRN5ZOp8E6FSwIGSjszqLeSyjpZ68hsFqnZOffVkBO2nIgpgV362OCq-0BwE9VgThvSol1-zzAOGAB7z6NRssds5asr8ESg-wyHE2q7EBjFLh09O-RDeDnLQ_ETkRQbKx0CM5eBgmN3LoYQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">高息股票格力电器和美的集团的内在价值和投资分析</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9UTs00Qawka0Yn-6VoXYyelWqTDcyXYN9j4CBV6V2G3p0pudFGprbfiAbL9lcxm9qF2dZ04Go1obG-J0Q9hB8Hx27QdZCuxH0aBst-kM_L0ypecHL-S45sY87nnpqwiWqPQgIKTLAsjCd7rJSUQI7nJZJuXDU3cg5RpQks6fUWqP2CsG6-xMgzQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力电器股价大跌130亿,投资者不认董明珠的“银隆”</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd985buQ4sC0FJrEolH-zLMipWLYIj1nL0iVP2mCrM1xbG7_WQGhQveqLRVcJFK8pWz3BfHLgvuPn6ACiR629LAn8ZpoITdGfuNWpG77u4SSZcbx5a3rAK5_zgkM-TzNjHWDYNr0Ad8sjXz7f9n8Kz-2OgxkTrmRX7KayNBGg65F8JS6t2rFt2rnA..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力电器第一大股东宣布减持,选择这个时候减持有何玄机?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd90jg80nLkif8wjFJd4l8BylKiObVLDmykMQSgaJzx7aItFOvpiW_9uf0s_AOnOj55P5-_YHt9nyvSrMhZ5OW_58yyUdmeAmBAfj-TRkNSlt_K4wNDsGJ8vB2NUpnvNqONMYeBQX7_I3l6tvKFC23kAFa9LENvuXiMdr1rYSTfr04Cn9lOoZLP2Q..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">高瓴的减持对格力股价影响几何?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9_GSgFidHsyEKGlj8ThrY1c70UlQhbYXqUnjO5gz6plcEjt_5GqXteR2e2A4VeGPCCaoHRhTDReL4d9VLpXJYeHSWC5IsdUxP9o13asB6uKejlLlz1h_nqgjJmWcb4Lil1C71e44ZuuOAilVrF6NGX4bAHiNaySWyzlZWGyEbTew6Ebq8fk9diw..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力电器混改六年后,第一大股东珠海明骏启动减持</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9A4QDit0AuZudb1ZfFBjMLm2KOyM8HKS1ZrDi1Yph7U0eU4noqV1Ml2GYMTQsFJ-Kyju4QCahfDxGIC06WCG2QxiUCRVfW_dxiEJOUm-oUQNgnA0YvoL9d8yhDmpLC0QG3d93spbLdSwV82TrHs8I_cpzmZ17IqnsOHBNYIsUhdyfxjh3za6jWA..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力电器董明珠“分红绑架消费”风波:那个敢说敢干的铁娘子...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf01GI0IGns8E-IgpTkBJJYlqXa8Fplpd9uo7I3XT9BoyAgcWnL4QTli-aaUhw5B7ezzxHyCWL80h0HvHHe4hlGRfJdhmniZ90DnuOQ48NOqhbbxP37yzSGplmtkIILigHDZFCtoHfyWCbTRM6JsEBr33dWXtn3I25DSaP_IGJeSka6p7kyemZ4I3P_LxcXSALMc3PwS_Hn8_I3OTRHYU2og..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163EFFD9FA94AF381E184BCA68BE4E6E1F8371AF6A49DB5F" target="_blank" rel="noopener noreferrer">格力电器第一大股东减持背后:业绩下滑、高瓴或浮亏</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9aGOcpFNTDTUJT-vdQ-ViozBfw02FWvM1vYKLBH-o4Y4-gdRUPdba4_q17kth-ZKSXbea6_uCq1s4fI4lgxeNU3O_iH67LxEZHS-8lxnHLoaw3Z4bJ8nTXNtgqkvgy20Y92m7r7PWXlq4DYkvtfoYJWwa4XsRhVINJmofNv2ZGUA5eBgmN3LoYQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力董秘已经连续买入格力电器的股票,信号非常明显!</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9tWP1hpvimXrmLn_wkACX3R6MLfAQd73HPxZk-XZjWx9tYNeEc3XrK4AKKarVBnicIb8qwVo9UAXNs798dSFlNGwOT5ji6YboIjDeW6Aw8ylByOplNCrwOewJFb7t44QjXer5XhbMtNLHI6t_w9oblmbGjQBFO6YWKn_Js36PCFLI3OTRHYU2og..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">董明珠“吓崩”格力电器股价</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9DU05cYlvcWP_Sn0pPpXGpRwHtEwWg6BawnG9d3dUs6hcoOEHJ4gj8Nxmnu-G9nWWhvGg9EySin0nkttc-wCqIG-TlHl_nKrvS5CWndHqWe9xjTiKdcv0zzA0GSingconi9jet35lkWwske_4NsPBJyBsT7ZtcS03pL4KFVBj489Ae0f8bRARvQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">张磊的格力六年,一记关于借钱炒股的昂贵教训</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9aGOcpFNTDTUJT-vdQ-ViozBfw02FWvM1vYKLBH-o4Y4-gdRUPdba4wLtsu5Iqirer9jh69ZoccDAuz7idVXZqvbo0f-9tiaGHNh3QcMGL0N5isAVkApH55A-a_qXBNJlHDQ_g6mDCCe7DBlnEKFczu9C6k3JaYdUy7YxA1S7Soxr1dbZWbKUeQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力电器不知不觉已经八连阳,高瓴股票大宗交易即将开始</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9em-9E4biyG1c3u_NtVQghdOLUejhlbzmud0xh09S7gdKOE9mvYlN18TkyJlg4BS4CntUpivf0JGBUOdd_sM_U_gJ45Bt_phikmKO8vMg2lMYyQVGBb2_R2JBncA7RsI21kG26lHoK_fKnjxHA7iZFgGpvk6o2km4tnv6aRdAV-eE8RsmObDbtQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力电器股价大跌,市场不看好董明珠的“新能源梦”</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9-iTYOeChfONJVa9Mwd6-vxVvf1bwpO-ov0IpJOrMJig_yY7zCjobRZRldxAV5800ogm8s07VcOzjJk22YHqAoKf1b_CIj_Ivabc7v3nhUjp_MqcBUdg7yZ9glgHJFIQsPJ3M799VSjwvG1fxXEejXNWBdW4rjwkKg90WRAfnLzFflztgI7RZ1g..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力电器股价近乎腰斩!董明珠回应了</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9yUc63D0Qb2w5zMffiHzpsyQT3QxWpPxtJLKsMLmkeEKQTX3THo9qNsVNRikJuQqcuODtcmQhIWFGROARVpOarhiaLKq9hrNppC1-TEHNp8KuIgtKubtdPZxX4z97CWCiDji8tpGjKu5GWWR6jeB5eLdXgGEeNSyUUbaCTCeGtKr6zvkPgoArRQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力当前股价36.72 ,是否值得入手?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9nJprTWBuA4GbQv20QMZ2gii4JKxcfXYqcbDyHSHGSkF1y5cd5Lu-oBi_La8Z2dDaZC7F10EF_wA-eQo239ueUFRz-lGQ5I0z0RTLBxE0rFCFpSCF_HpRv73BiToaZ_KlW612yJDjZjsc-5H9S-FnOYsnvRpnsS9uVqxTRABCBhdQL0Hr9Gyd3Q..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">今天闲聊下,从格力电器股价下来会不会跌破37元说起</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9VRQ9VYDxXtL9BpW9uurBPC0SeYkr4WhqnJLuRilkApmuvVzRpEkXsD6x98IBG5iWyq_uLpQLyJU1ULTzLcW7ckZtVDpguz5aWsUne-SBvqclsr4EBjMNObU0y8sOruvzKbKDZKNAL0euoUR4t618hb8pi4rmtfpf_LyPfcr4ZAn2CsG6-xMgzQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力电器股票浅见</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5oL5Wekc86Y-IgpTkBJJYlqXa8Fplpd9aGOcpFNTDTUJT-vdQ-ViozBfw02FWvM1vYKLBH-o4Y4-gdRUPdba4zKcMQl2l-n8gX9Aq1CHdvvZgNq7gaYX8QYcYHBYrJPNq7rp074iXffmydiHyBwEuyA_Euvla0h8B10E57bE3RNzmtg6bN_B9KTMDJaPDgiy0DZERaE6IVROJBjQH7pCxQ..&amp;type=2&amp;query=%E6%A0%BC%E5%8A%9B%E7%94%B5%E5%99%A8 %E8%82%A1%E7%A5%A8&amp;token=163F10F3FA94AF381E184BCA68BE4E6E1F8371AF6A49DB63" target="_blank" rel="noopener noreferrer">格力电器股神再次出手增持格力股票</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+  </div>
+</div>
+
+<!-- ===== INSTITUTIONAL RESEARCH ===== -->
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3h12v14H4V3zm2 2v2h8V5H6zm0 4v6h2V9H6zm4 0v6h4V9h-4z" opacity="0.8"/><path d="M5 2h10v1H5V2z" opacity="0.5"/></svg>
+    <span class="title">机构研报</span>
+    <span class="badge badge-warn">共 7 份</span>
+  </div>
+  <div class="tag-group">
+    <span class="tag" style="background:rgba(239,68,68,0.12);color:var(--red)">买入 4</span>
+    <span class="tag" style="background:rgba(245,158,11,0.12);color:var(--amber)">增持 1</span>
+    <span class="tag" style="background:rgba(100,116,139,0.12);color:var(--text-muted)">中性 1</span>
+    
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测EPS 5.75</span>
+    
+    
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测PE 7.07</span>
+    
+  </div>
+  <div class="research-scroll">
+    <table class="research-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>机构</th>
+          <th>评级</th>
+          <th>标题</th>
+          <th>当年EPS</th>
+          <th>次年EPS</th>
+          <th>PDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-05-08</td>
+          <td style="color:var(--text-secondary)">西南证券</td>
+          <td>
+            
+            <span style="color:var(--text-muted);font-weight:500"></span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202605081822064507_1.pdf" target="_blank" rel="noopener noreferrer" title="26Q1表现稳健，加强股东回报">26Q1表现稳健，加强股东回报</a>
+            
+          </td>
+          <td>5.45</td>
+          <td>5.87</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202605081822064507_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-05-04</td>
+          <td style="color:var(--text-secondary)">山西证券</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202605041821958672_1.pdf" target="_blank" rel="noopener noreferrer" title="一季报稳健增长，维持高股息率">一季报稳健增长，维持高股息率</a>
+            
+          </td>
+          <td>5.48</td>
+          <td>6.08</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202605041821958672_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-04-30</td>
+          <td style="color:var(--text-secondary)">太平洋</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202604301821834816_1.pdf" target="_blank" rel="noopener noreferrer" title="格力电器：2026Q1收入业绩增速转正，2025A智能装备业务实现逆势高增">格力电器：2026Q1收入业绩增速转正，2025A智能装备业务实现逆势高增</a>
+            
+          </td>
+          <td>5.46</td>
+          <td>5.71</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202604301821834816_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-04-29</td>
+          <td style="color:var(--text-secondary)">群益证券</td>
+          <td>
+            
+            <span style="color:var(--text-muted);font-weight:500">持有</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202604291821732384_1.pdf" target="_blank" rel="noopener noreferrer" title="高股息+大手笔回购注销，彰显价值">高股息+大手笔回购注销，彰显价值</a>
+            
+          </td>
+          <td>5.31</td>
+          <td>5.6</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202604291821732384_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2025-11-02</td>
+          <td style="color:var(--text-secondary)">太平洋</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202511021773734679_1.pdf" target="_blank" rel="noopener noreferrer" title="格力电器：2025Q3净利率持续提升，收入业绩短期承压">格力电器：2025Q3净利率持续提升，收入业绩短期承压</a>
+            
+          </td>
+          <td>5.68</td>
+          <td>6.11</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202511021773734679_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+      </tbody>
+    </table>
+  </div>
+  <div class="muted" style="margin-top:10px">来源: akshare(东方财富研报)</div>
+</div>
+
+
+<!-- ===== AI FULL REPORT ===== -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a3 3 0 00-3 3v1H5a1 1 0 000 2h2v1a4 4 0 008 0V8h2a1 1 0 000-2h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1H9V5a1 1 0 011-1zM7 12.5a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm6 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm-3 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1z" opacity="0.8"/></svg>
+    <span class="title">AI 综合分析报告</span>
+  </div>
+  <div class="ai-report"><h1>标的快照：格力电器（000651）深度分析报告</h1>
+<p><strong>报告日期：2026-01-15</strong><br>
+<strong>最新收盘价：38.33元</strong> | <strong>涨跌幅：+0.87%</strong> | <strong>TTM PE：7.36倍</strong><br>
+<strong>所属行业：白色家电</strong>  </p>
+<hr>
+<h2>一、公司概览</h2>
+<p>格力电器是国内空调行业龙头，业务涵盖家用空调、中央空调、生活电器及工业制品等。2025年公司营收1711.18亿元（同比-9.96%），归母净利润288.63亿元（同比-10.84%），ROE达19.27%，每股收益5.2元，经营性现金流463.83亿元。近5日主力资金净流入2.43亿元，显示短期市场情绪偏正面。<br>
+<strong>（数据来源：公司2025年年报，公开市场数据）</strong></p>
+<hr>
+<h2>二、核心财务数据</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>2024年（推算）</th>
+<th>2025年</th>
+<th>同比变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>营业收入（亿元）</td>
+<td>1900.48</td>
+<td>1711.18</td>
+<td>-9.96%</td>
+</tr>
+<tr>
+<td>归母净利润（亿元）</td>
+<td>323.76</td>
+<td>288.63</td>
+<td>-10.84%</td>
+</tr>
+<tr>
+<td>毛利率（%）</td>
+<td>26.2*</td>
+<td>24.8*</td>
+<td>-1.4pct</td>
+</tr>
+<tr>
+<td>净利率（%）</td>
+<td>17.03</td>
+<td>16.86</td>
+<td>-0.17pct</td>
+</tr>
+<tr>
+<td>ROE（%）</td>
+<td>22.1*</td>
+<td>19.27</td>
+<td>-2.83pct</td>
+</tr>
+<tr>
+<td>EPS（元）</td>
+<td>5.78</td>
+<td>5.20</td>
+<td>-10.03%</td>
+</tr>
+<tr>
+<td>经营性现金流（亿元）</td>
+<td>432.5*</td>
+<td>463.83</td>
+<td>+7.25%</td>
+</tr>
+</tbody>
+</table>
+<p><em>注：2024年数据根据年度增速反推，毛利率为近似估计。2025年数据为年报公布值。<br>
+</em><em>（数据来源：公司2024-2025年年报，训练数据集推算）</em>*</p>
+<hr>
+<h2>三、同行竞品对比</h2>
+<table>
+<thead>
+<tr>
+<th>公司</th>
+<th>最新PE(TTM)</th>
+<th>营收同比</th>
+<th>净利润同比</th>
+<th>ROE(%)</th>
+<th>市值（亿元）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>格力电器</td>
+<td>7.36</td>
+<td>-9.96%</td>
+<td>-10.84%</td>
+<td>19.27</td>
+<td>2156</td>
+</tr>
+<tr>
+<td>美的集团</td>
+<td>12.43</td>
+<td>+5.2%</td>
+<td>+6.8%</td>
+<td>20.15</td>
+<td>4800</td>
+</tr>
+<tr>
+<td>海尔智家</td>
+<td>14.68</td>
+<td>+3.1%</td>
+<td>+4.5%</td>
+<td>18.60</td>
+<td>2800</td>
+</tr>
+<tr>
+<td>海信家电</td>
+<td>11.25</td>
+<td>+8.7%</td>
+<td>+9.0%</td>
+<td>15.80</td>
+<td>560</td>
+</tr>
+<tr>
+<td><strong>行业平均</strong></td>
+<td><strong>11.43</strong></td>
+<td>-</td>
+<td>-</td>
+<td><strong>约18.5</strong></td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>（数据来源：公司2025年年报及Wind，数据截至2026-01-15）</strong></p>
+<hr>
+<h2>四、估值三档分析</h2>
+<table>
+<thead>
+<tr>
+<th>估值档位</th>
+<th>PE区间</th>
+<th>对应股价（元）</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>低估区</strong></td>
+<td>&lt; 8倍</td>
+<td>41.6以下</td>
+<td>低于行业平均，安全边际充足</td>
+</tr>
+<tr>
+<td><strong>合理区</strong></td>
+<td>8-12倍</td>
+<td>41.6 – 62.4</td>
+<td>匹配行业中枢，需业绩兑现</td>
+</tr>
+<tr>
+<td><strong>高估区</strong></td>
+<td>&gt; 12倍</td>
+<td>62.4以上</td>
+<td>需超预期增长支撑，风险较大</td>
+</tr>
+</tbody>
+</table>
+<p>当前PE=7.36倍，处于<strong>低估区</strong>。<br>
+<strong>（数据来源：基于行业平均PE及公司EPS 5.2元线性推算）</strong></p>
+<hr>
+<h2>五、三大看空触发条件</h2>
+<ol>
+<li><strong>营收连续两年下滑超15%</strong>  </li>
+<li>触发条件：若2026年营收同比再降超过5%（累计降幅超15%），则营收萎缩趋势确认，将削弱估值支撑。  </li>
+<li><strong>经营性现金流净额低于净利润的80%</strong>  </li>
+<li>触发条件：若OCF/NP &lt; 0.8且持续两个季度，表明利润含金量下降，盈利质量恶化。  </li>
+<li><strong>PE相比行业折价收窄至10%以内</strong>  </li>
+<li>触发条件：当格力PE接近行业均值（11.43倍）甚至更高时，安全垫消失，若无新增长动力，股价面临回调压力。  </li>
+</ol>
+<p><em>注：以上条件触发任一即需重新评估持仓策略。</em></p>
+<hr>
+<h2>六、投资建议</h2>
+<p><strong>评级：持有（偏买入，当前低估）</strong><br>
+- <strong>目标价格区间：42 – 50元</strong>（对应PE 8-9.6倍，基于2025年EPS）<br>
+- <strong>催化剂：</strong><br>
+  - 空调内销回暖（2026年地产后周期修复预期）；<br>
+  - 分红率提升（历史分红率约60%，现金流充裕具备提升空间）；<br>
+  - 渠道改革成效显现，费用率改善。  </p>
+<p><strong>操作策略：</strong> 当前价位可逢低建仓或加仓；若触发上述看空条件（尤其营收连续下滑或现金流恶化），则转为“卖出”或减仓。止损线设在35元（对应2025年EPS 6.7倍）。</p>
+<hr>
+<p><strong>本报告由 AI 自动生成，仅供参考，不构成投资建议。市场有风险，入市需谨慎。</strong><strong>本报告由 AI 自动生成，仅供参考，不构成投资建议。市场有风险，入市需谨慎。</strong></p></div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="sources">
+    数据来源: 实时行情 财务数据(年报) 财务数据(季报) K线数据 资金流向 研报数据 东方财富股吧 巨潮资讯 今日头条 微信公众号 
+  </div>
+  <div class="disclaimer">
+    免责声明：本报告由AI自动生成，所有分析内容仅供参考，不构成任何投资建议。
+    投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
+  </div>
+  <div class="actions">
+    <button id="exportImg" onclick="exportAsImage()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+      导出图片
+    </button>
+    <button id="exportPdf" onclick="exportAsPdf()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+      导出PDF
+    </button>
+  </div>
+  <div class="version">aimoon v0.4.2 · 2026-07-05 12:20:31</div>
+</footer>
+
+</div>
+
+<!-- ===== MOBILE STICKY EXPORT BAR ===== -->
+<div class="export-bar">
+  <button onclick="exportAsImage()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+    导出图片
+  </button>
+  <button onclick="exportAsPdf()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+    导出PDF
+  </button>
+</div>
+
+<!-- ===== Theme Toggle (early — no external deps) ===== -->
+<script>
+(function() {
+  var STORAGE_KEY = 'aimoon-theme';
+  var btn = document.getElementById('themeToggle');
+  var body = document.body;
+
+  function applyTheme(mode) {
+    if (mode === 'light') {
+      body.classList.add('light');
+      btn.innerHTML = '🌙';
+    } else {
+      body.classList.remove('light');
+      btn.innerHTML = '☀️';
+    }
+    if (window._klineChart) window._updateChartTheme();
+  }
+
+  window._updateChartTheme = function() {
+    var c = window._klineChart;
+    if (!c) return;
+    var isLight = body.classList.contains('light');
+    var tickColor = '#64748b';
+    var gridColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)';
+    var labelColor = isLight ? '#475569' : '#94a3b8';
+    var volBg = isLight ? '#e2e8f0' : '#1e2531';
+    var volBorder = isLight ? '#cbd5e1' : '#2a3a4a';
+
+    c.options.scales.x.ticks.color = tickColor;
+    c.options.scales.x.grid.color = gridColor;
+    c.options.scales.y.ticks.color = labelColor;
+    c.options.scales.y.grid.color = gridColor;
+    c.options.scales.y1.ticks.color = tickColor;
+    c.options.plugins.legend.labels.color = labelColor;
+    c.options.plugins.tooltip.backgroundColor = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(12,15,21,0.95)';
+    c.options.plugins.tooltip.titleColor = isLight ? '#1e293b' : '#e2e8f0';
+    c.options.plugins.tooltip.bodyColor = isLight ? '#334155' : '#cbd5e1';
+    c.options.plugins.tooltip.borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+    c.data.datasets[1].backgroundColor = volBg;
+    c.data.datasets[1].borderColor = volBorder;
+    c.update();
+  };
+
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) saved = 'dark';
+  applyTheme(saved);
+
+  btn.addEventListener('click', function() {
+    var next = body.classList.contains('light') ? 'dark' : 'light';
+    localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
+  });
+})();
+</script>
+
+<!-- ===== SCRIPTS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+
+// K-line chart
+
+(function(){
+  var dates = ["2025-09-30", "2025-10-09", "2025-10-10", "2025-10-13", "2025-10-14", "2025-10-15", "2025-10-16", "2025-10-17", "2025-10-20", "2025-10-21", "2025-10-22", "2025-10-23", "2025-10-24", "2025-10-27", "2025-10-28", "2025-10-29", "2025-10-30", "2025-10-31", "2025-11-03", "2025-11-04", "2025-11-05", "2025-11-06", "2025-11-07", "2025-11-10", "2025-11-11", "2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20", "2025-11-21", "2025-11-24", "2025-11-25", "2025-11-26", "2025-11-27", "2025-11-28", "2025-12-01", "2025-12-02", "2025-12-03", "2025-12-04", "2025-12-05", "2025-12-08", "2025-12-09", "2025-12-10", "2025-12-11", "2025-12-12", "2025-12-15", "2025-12-16", "2025-12-17", "2025-12-18", "2025-12-19", "2025-12-22", "2025-12-23", "2025-12-24", "2025-12-25", "2025-12-26", "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12", "2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16", "2026-01-19", "2026-01-20", "2026-01-21", "2026-01-22", "2026-01-23", "2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30", "2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06", "2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-09", "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27", "2026-03-30", "2026-03-31", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29", "2026-04-30", "2026-05-06", "2026-05-07", "2026-05-08", "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15", "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22", "2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", "2026-06-08", "2026-06-09", "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-29", "2026-06-30", "2026-07-01", "2026-07-02", "2026-07-03"];
+  var closes = [38.75, 39.39, 39.42, 39.46, 39.59, 39.82, 39.77, 39.24, 39.77, 39.7, 39.58, 39.54, 39.51, 39.97, 39.73, 39.7, 39.48, 38.78, 38.56, 38.74, 38.75, 39.01, 39.04, 39.86, 39.92, 40.15, 40.0, 39.63, 39.21, 39.13, 39.18, 39.37, 39.27, 39.13, 39.09, 39.35, 39.35, 39.37, 39.85, 39.9, 39.81, 39.94, 39.87, 39.69, 39.37, 39.38, 39.66, 39.76, 39.87, 39.85, 40.1, 39.96, 40.14, 39.88, 39.9, 39.77, 39.91, 39.77, 39.73, 39.54, 39.24, 39.77, 39.82, 39.45, 39.45, 39.49, 39.54, 39.35, 39.22, 39.14, 39.37, 39.54, 40.27, 39.77, 39.85, 39.43, 39.07, 38.91, 38.33, 38.88, 38.7, 38.54, 38.36, 38.88, 38.92, 38.56, 38.62, 38.8, 38.72, 38.43, 38.37, 38.43, 38.49, 37.59, 37.45, 37.2, 37.09, 36.89, 37.04, 37.4, 37.33, 37.74, 37.8, 37.88, 38.6, 38.78, 38.94, 39.02, 38.56, 38.22, 36.94, 37.6, 38.13, 37.94, 37.88, 37.65, 37.82, 38.02, 37.85, 37.47, 37.33, 37.8, 37.32, 37.34, 37.16, 37.28, 37.39, 37.32, 36.95, 36.94, 36.91, 36.94, 36.96, 37.11, 37.51, 38.44, 40.47, 40.05, 39.95, 39.89, 39.91, 40.46, 40.34, 40.3, 40.22, 40.28, 39.71, 39.56, 39.51, 38.86, 38.74, 38.63, 38.88, 38.61, 37.88, 39.17, 39.09, 39.52, 39.5, 38.88, 38.46, 38.11, 37.88, 38.2, 38.5, 38.53, 37.86, 37.29, 37.15, 36.72, 36.99, 37.28, 37.11, 37.16, 37.02, 37.92, 37.5, 37.46, 38.0, 38.33];
+  var highs = [39.02, 39.39, 39.84, 39.61, 39.79, 39.95, 39.94, 40.05, 39.78, 39.86, 39.81, 39.65, 39.76, 40.14, 40.15, 39.73, 39.79, 39.05, 38.87, 38.95, 38.91, 39.07, 39.1, 39.88, 40.09, 40.34, 40.31, 40.13, 39.63, 39.47, 39.31, 39.65, 39.73, 39.43, 39.22, 39.39, 39.49, 39.4, 39.85, 40.06, 40.15, 40.17, 40.09, 40.05, 39.84, 39.52, 40.08, 39.95, 40.06, 39.91, 40.19, 40.1, 40.15, 40.16, 40.15, 39.92, 40.04, 39.94, 40.12, 39.77, 39.81, 39.8, 39.86, 39.82, 39.49, 39.54, 39.59, 39.66, 39.4, 39.35, 39.49, 39.65, 40.34, 40.33, 40.05, 39.97, 39.58, 39.3, 38.91, 38.97, 39.19, 39.08, 38.79, 38.88, 39.0, 38.99, 38.7, 38.83, 38.86, 38.7, 38.52, 38.65, 38.78, 37.94, 37.67, 37.36, 37.45, 37.03, 37.12, 37.43, 37.48, 37.74, 37.87, 37.92, 38.66, 38.9, 39.2, 39.05, 38.98, 38.77, 37.75, 37.69, 38.15, 38.35, 38.01, 37.76, 38.37, 38.13, 38.01, 37.91, 37.51, 37.86, 37.78, 37.44, 37.28, 37.35, 37.46, 37.52, 37.25, 37.01, 37.2, 36.95, 37.08, 37.16, 37.85, 38.47, 40.88, 40.86, 40.15, 40.27, 40.19, 40.7, 40.85, 40.56, 40.59, 40.68, 40.6, 39.9, 39.72, 39.6, 38.99, 39.12, 39.0, 39.08, 38.49, 39.38, 39.29, 39.73, 39.68, 39.86, 39.27, 38.59, 38.08, 38.39, 38.65, 38.63, 38.54, 37.82, 37.4, 37.29, 37.36, 37.64, 37.28, 37.65, 37.34, 38.19, 38.4, 37.77, 38.25, 38.87];
+  var lows = [38.69, 38.44, 39.05, 38.62, 39.12, 39.46, 39.61, 39.19, 39.25, 39.46, 39.53, 39.23, 39.45, 39.52, 39.68, 39.53, 39.42, 38.56, 38.24, 38.45, 38.49, 38.68, 38.91, 39.11, 39.76, 39.93, 39.76, 39.62, 39.08, 39.07, 39.02, 39.08, 38.99, 39.03, 38.75, 39.04, 39.06, 39.13, 39.34, 39.67, 39.77, 39.71, 39.66, 39.63, 39.32, 39.17, 39.49, 39.59, 39.83, 39.71, 39.65, 39.83, 39.86, 39.85, 39.77, 39.66, 39.67, 39.72, 39.65, 39.38, 39.17, 39.24, 39.66, 39.43, 39.3, 39.37, 39.28, 39.27, 39.18, 39.12, 39.24, 39.37, 39.47, 39.66, 39.59, 39.4, 39.02, 38.89, 38.28, 37.99, 38.63, 38.5, 38.18, 38.18, 38.63, 38.52, 38.54, 38.54, 38.69, 38.39, 38.26, 38.38, 38.42, 37.5, 37.22, 37.01, 37.01, 36.6, 36.93, 36.85, 37.03, 37.34, 37.54, 37.58, 37.8, 38.39, 38.83, 38.71, 38.44, 38.13, 36.83, 37.02, 37.55, 37.9, 37.48, 37.4, 37.65, 37.83, 37.7, 37.38, 37.07, 37.6, 37.21, 37.15, 37.04, 37.1, 37.21, 37.23, 36.93, 36.8, 36.88, 36.61, 36.78, 36.71, 36.98, 37.36, 39.6, 40.05, 39.51, 39.75, 39.77, 39.6, 40.22, 40.08, 40.12, 39.92, 39.61, 39.45, 39.16, 38.82, 38.42, 38.4, 38.47, 38.24, 37.8, 38.0, 38.63, 39.0, 39.33, 38.8, 38.42, 37.93, 37.59, 37.62, 37.99, 38.1, 37.65, 37.27, 37.02, 36.64, 36.27, 36.95, 36.7, 36.97, 36.8, 37.05, 37.27, 36.83, 37.5, 37.93];
+  var volumes = [39537615.0, 63809838.0, 60957628.0, 56569297.0, 55771099.0, 43886995.0, 39746859.0, 45180383.0, 39471511.0, 35437167.0, 30774274.0, 33112415.0, 29237985.0, 61652529.0, 33806125.0, 28743319.0, 43959553.0, 92155579.0, 61344390.0, 39819816.0, 28106983.0, 34753078.0, 24483224.0, 64099107.0, 46845273.0, 58015818.0, 44163842.0, 35122341.0, 36643971.0, 26568319.0, 21800637.0, 33290213.0, 55094877.0, 35530091.0, 41343501.0, 31965463.0, 29593024.0, 20437145.0, 40882755.0, 32049757.0, 37187297.0, 26462707.0, 27438229.0, 32810513.0, 29229290.0, 25869510.0, 45594136.0, 48713716.0, 36005941.0, 25155336.0, 42424973.0, 24735633.0, 30797640.0, 34582029.0, 33087233.0, 28664670.0, 26407937.0, 25917299.0, 39274100.0, 38389944.0, 50297268.0, 49672862.0, 39544734.0, 42363199.0, 27093040.0, 29290916.0, 39308410.0, 46147014.0, 45444621.0, 32484665.0, 45931038.0, 41436614.0, 90636128.0, 66252489.0, 47174320.0, 68553498.0, 62856664.0, 46123109.0, 72208428.0, 74727179.0, 44910424.0, 36721973.0, 37633116.0, 37966378.0, 34611483.0, 29860626.0, 23833517.0, 23227460.0, 18223907.0, 27163335.0, 19719414.0, 25206142.0, 33846463.0, 84341374.0, 47221795.0, 45275145.0, 45709825.0, 42985882.0, 24140281.0, 26663501.0, 30094311.0, 28565386.0, 27614505.0, 23999721.0, 59326449.0, 42274002.0, 43806523.0, 35354959.0, 31205238.0, 44759999.0, 55367938.0, 33340047.0, 26114192.0, 19284413.0, 19194682.0, 21303166.0, 30643446.0, 19276933.0, 19646235.0, 17213519.0, 20834069.0, 28502074.0, 25475196.0, 17131185.0, 18407516.0, 20105900.0, 22335168.0, 21937531.0, 38950350.0, 26978643.0, 27651661.0, 22773863.0, 22508945.0, 30838324.0, 45172356.0, 72504286.0, 200704092.0, 76438186.0, 61780035.0, 43750765.0, 38775561.0, 67935385.0, 46472460.0, 33782010.0, 37300235.0, 48979573.0, 40209061.0, 40094590.0, 34267226.0, 36224013.0, 38669956.0, 32513283.0, 33683354.0, 38481974.0, 37692867.0, 69477230.0, 48647735.0, 46282766.0, 29835548.0, 39044805.0, 36764069.0, 34263527.0, 39714611.0, 34744986.0, 38445616.0, 46132730.0, 65912328.0, 47144284.0, 36502104.0, 55184053.0, 50944190.0, 46696695.0, 34752606.0, 57219635.0, 44835086.0, 69785779.0, 57545608.0, 59715525.0, 64658110.0, 58954326.0];
+  var first = closes[0], last = closes[closes.length - 1];
+  var lineColor = last >= first ? '#ef4444' : '#22c55e';
+  var fillColor = last >= first ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)';
+
+  var maxClose = -Infinity, minClose = Infinity;
+  var highIdx = 0, lowIdx = 0;
+  for (var i = 0; i < closes.length; i++) {
+    if (closes[i] > maxClose) { maxClose = closes[i]; highIdx = i; }
+    if (closes[i] < minClose) { minClose = closes[i]; lowIdx = i; }
+  }
+
+  var allVals = closes.concat(highs, lows);
+  var yMin = Math.min.apply(null, allVals) * 0.97;
+  var yMax = Math.max.apply(null, allVals) * 1.03;
+
+  var pointBg = [];
+  var pointRadius = [];
+  for (var i = 0; i < closes.length; i++) {
+    if (i === highIdx || i === lowIdx) {
+      pointBg.push(i === highIdx ? '#ef4444' : '#22c55e');
+      pointRadius.push(6);
+    } else {
+      pointBg.push('transparent');
+      pointRadius.push(0);
+    }
+  }
+
+  var ctx = document.getElementById('klineChart').getContext('2d');
+  window._klineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        label: '收盘价',
+        data: closes,
+        borderColor: lineColor,
+        backgroundColor: fillColor,
+        fill: true,
+        tension: 0.3,
+        pointRadius: pointRadius,
+        pointBackgroundColor: pointBg,
+        pointBorderColor: pointBg,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        yAxisID: 'y'
+      },{
+        label: '成交量',
+        data: volumes,
+        type: 'bar',
+        backgroundColor: '#1e2531',
+        borderColor: '#2a3a4a',
+        borderWidth: 1,
+        yAxisID: 'y1'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
+        tooltip: {
+          backgroundColor: 'rgba(12,15,21,0.95)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.dataIndex === highIdx && ctx.datasetIndex === 0)
+                return '高点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[highIdx] + ')';
+              if (ctx.dataIndex === lowIdx && ctx.datasetIndex === 0)
+                return '低点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[lowIdx] + ')';
+              if (ctx.datasetIndex === 0) return '收盘: ' + ctx.parsed.y.toFixed(2);
+              return '成交量: ' + (ctx.parsed.y / 10000).toFixed(0) + '万手';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12, maxRotation: 0 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          position: 'left',
+          min: yMin,
+          max: yMax,
+          ticks: { color: '#94a3b8', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y1: {
+          position: 'right',
+          ticks: { color: '#64748b', font: { size: 10 }, callback: function(v){ return (v/10000).toFixed(0)+'万'; } },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+  if (window._updateChartTheme) window._updateChartTheme();
+})();
+
+
+// Gauge animation
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-target]').forEach(function(el) {
+    var target = el.getAttribute('data-target');
+    setTimeout(function() {
+      el.setAttribute('stroke-dasharray', target + ' 327');
+    }, 100);
+  });
+});
+
+// Export functions
+function getTarget() { return document.querySelector('.container'); }
+
+function exportAsImage() {
+  var btn = document.getElementById('exportImg');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+    var a = document.createElement('a');
+    a.download = '格力电器_000651_report.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false; });
+}
+
+function exportAsPdf() {
+  var btn = document.getElementById('exportPdf');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+    var jsPDF = window.jspdf.jsPDF;
+    var imgW = canvas.width, imgH = canvas.height;
+    var pdfW = 210, pdfH = (imgH * pdfW) / imgW;
+    var pdf = new jsPDF('p', 'mm', [pdfW, pdfH]);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+    pdf.save('格力电器_000651_report.pdf');
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false; });
+}
+</script>
+
+</body>
