@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>贵州茅台(600519) AI分析报告</title>
+<style>
+
+/* ===== Design Tokens ===== */
+:root {
+  --bg: #0c0f15;
+  --surface: #161b24;
+  --surface-2: #1e2531;
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(255,255,255,0.12);
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --red: #ef4444;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --font: "Inter", "SF Pro Display", "PingFang SC", system-ui, -apple-system, sans-serif;
+
+  /* Spacing tokens (8px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+
+  /* Motion tokens */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Light Mode ===== */
+body.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --border: rgba(0,0,0,0.07);
+  --border-hover: rgba(0,0,0,0.14);
+  --text: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --red: #dc2626;
+  --green: #16a34a;
+  --amber: #d97706;
+  --blue: #2563eb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+body.light .card:hover { border-color: var(--border-hover); }
+body.light .ai-report { color: #334155; }
+body.light .ai-report h1, body.light .ai-report h2, body.light .ai-report h3,
+body.light .ai-report strong { color: #1e293b; }
+body.light .ai-report table th { background: #e2e8f0; color: #1e293b; }
+body.light .ai-report code { background: #e2e8f0; }
+body.light .research-table td { border-bottom-color: rgba(0,0,0,0.04); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.container { max-width: 1500px; margin: 0 auto; padding: var(--space-4) calc(var(--space-6) * 1.25) calc(var(--space-6) * 1.25); }
+
+/* ===== Header ===== */
+.header {
+  text-align: center; padding: var(--space-6) var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+.header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: var(--space-1); }
+
+.quote-bar {
+  display: flex; justify-content: center; align-items: baseline; gap: calc(var(--space-2) + var(--space-1));
+  flex-wrap: wrap; margin-top: var(--space-3);
+}
+.quote-bar .price { font-size: 44px; font-weight: 800; letter-spacing: -1px; }
+.quote-bar .price.up { color: var(--red); }
+.quote-bar .price.down { color: var(--green); }
+.quote-bar .change {
+  font-size: 18px; font-weight: 600; padding: var(--space-1) var(--space-3); border-radius: var(--radius);
+}
+.quote-bar .change.up { color: var(--red); background: rgba(239,68,68,0.12); }
+.quote-bar .change.down { color: var(--green); background: rgba(34,197,94,0.12); }
+
+.quote-meta {
+  margin-top: var(--space-3); font-size: 13px; color: var(--text-muted);
+  display: flex; gap: var(--space-4); justify-content: center; flex-wrap: wrap;
+}
+.quote-meta span { white-space: nowrap; }
+.quote-meta .label { color: var(--text-muted); }
+
+/* ===== Grid ===== */
+.bento-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);
+}
+.bento-grid .full { grid-column: 1 / -1; }
+.bento-grid .wide { grid-column: span 2; }
+
+@media (max-width: 900px) {
+  .bento-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+  .bento-grid { grid-template-columns: 1fr; }
+  .bento-grid .wide { grid-column: span 1; }
+}
+
+/* ===== Card ===== */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: var(--space-5);
+  box-shadow: var(--shadow);
+  transition: border-color var(--duration-normal) var(--ease-default);
+}
+.card:hover { border-color: var(--border-hover); }
+.card-header {
+  display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);
+  padding-bottom: calc(var(--space-2) + var(--space-1)); border-bottom: 1px solid var(--border);
+}
+.card-header .icon { flex-shrink: 0; width: 20px; height: 20px; opacity: 0.8; }
+.card-header .title { font-size: 15px; font-weight: 600; }
+.card-header .badge {
+  font-size: 11px; padding: 2px var(--space-3); border-radius: 999px;
+  font-weight: 500; margin-left: auto; white-space: nowrap;
+}
+.badge-up { background: rgba(239,68,68,0.12); color: var(--red); }
+.badge-down { background: rgba(34,197,94,0.12); color: var(--green); }
+.badge-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+
+/* ===== Financial Table ===== */
+.fin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fin-table tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+.fin-table td { padding: var(--space-2) var(--space-2); }
+.fin-table td:first-child { color: var(--text-secondary); width: 44%; }
+.fin-table td:last-child { text-align: right; font-weight: 600; font-feature-settings: "tnum"; }
+
+/* ===== Valuation Gauge ===== */
+.gauge-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-3); padding: var(--space-3) 0;
+  min-height: 200px; justify-content: center;
+}
+.gauge-ring { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+.gauge-ring svg { transform: rotate(-90deg); }
+.gauge-ring .bg { fill: none; stroke: var(--surface-2); stroke-width: 8; }
+.gauge-ring .fg { fill: none; stroke-width: 8; stroke-linecap: round; }
+.gauge-ring .inner {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.gauge-ring .inner .pct { font-size: 24px; font-weight: 800; }
+.gauge-ring .inner .lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.val-range { width: 100%; font-size: 12px; color: var(--text-secondary); line-height: 2.2; }
+.val-range .row { display: flex; justify-content: space-between; }
+.val-range .row .val { color: var(--text); font-weight: 700; }
+
+/* ===== Financial Highlights ===== */
+.fin-hl { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fin-hl-item {
+  background: var(--surface-2); border-radius: var(--radius); padding: calc(var(--space-2) + var(--space-1));
+}
+.fin-hl-item .hl-label { font-size: 11px; color: var(--text-muted); margin-bottom: var(--space-1); }
+.fin-hl-item .hl-value { font-size: 16px; font-weight: 700; font-feature-settings: "tnum"; }
+.fin-hl-item .hl-sub { font-size: 11px; margin-top: 2px; }
+
+/* ===== Chart Container ===== */
+.chart-wrap {
+  position: relative; height: 320px;
+}
+
+/* ===== Social Posts ===== */
+.social-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--space-2) + var(--space-1));
+}
+.social-card {
+  background: var(--surface-2); border-radius: var(--radius); padding: var(--space-3);
+  font-size: 13px;
+}
+.social-card .sc-title {
+  font-weight: 500; margin-bottom: 6px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.social-card .sc-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: calc(var(--space-2) + var(--space-1)); margin-top: 6px; }
+.social-card a { color: var(--text); }
+.social-card a:hover { color: var(--blue); }
+
+/* ===== Research Table ===== */
+.research-scroll { max-height: 380px; overflow-y: auto; }
+.research-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.research-table th {
+  padding: var(--space-2); text-align: left; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap;
+}
+.research-table th:last-child, .research-table td:last-child { text-align: center; }
+.research-table td {
+  padding: var(--space-2); border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.research-table td:nth-child(4) {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.research-table td:nth-child(5), .research-table td:nth-child(6) { text-align: right; color: var(--text); }
+
+/* ===== Report Tags ===== */
+.tag-group { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.tag {
+  padding: var(--space-1) calc(var(--space-2) + var(--space-1)); border-radius: 999px; font-size: 12px; font-weight: 500;
+}
+
+/* ===== AI Report ===== */
+.ai-report {
+  font-size: 14px; line-height: 1.9; color: #cbd5e1; word-break: break-word;
+}
+.ai-report h1, .ai-report h2, .ai-report h3 {
+  color: #f1f5f9; margin: var(--space-5) 0 var(--space-2); font-weight: 700;
+}
+.ai-report h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.ai-report h3 { font-size: 16px; }
+.ai-report strong { color: #f1f5f9; }
+.ai-report p { margin: var(--space-2) 0; }
+.ai-report ul, .ai-report ol { padding-left: var(--space-4); margin: 6px 0; }
+.ai-report li { margin: 3px 0; }
+.ai-report hr { border: none; border-top: 1px solid var(--border); margin: var(--space-3) 0; }
+.ai-report table { width: 100%; border-collapse: collapse; overflow-x: auto; display: block; }
+.ai-report table th, .ai-report table td { padding: 6px 10px; border: 1px solid var(--border); font-size: 13px; }
+.ai-report table th { background: var(--surface-2); color: #f1f5f9; }
+.ai-report code { background: var(--surface-2); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+
+/* ===== Theme Toggle ===== */
+.theme-toggle {
+  position: fixed; top: var(--space-3); right: var(--space-4); z-index: 1000;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow); transition: all var(--duration-slow) var(--ease-default);
+}
+.theme-toggle:hover { border-color: var(--border-hover); transform: scale(1.08); }
+@media (max-width: 768px) {
+  .theme-toggle { top: var(--space-2); right: var(--space-2); width: 36px; height: 36px; font-size: 16px; }
+}
+
+/* ===== Footer ===== */
+.footer {
+  text-align: center; padding: var(--space-5) 0 0; border-top: 1px solid var(--border);
+  margin-top: var(--space-5); font-size: 12px; color: var(--text-muted);
+}
+.footer .sources { margin-bottom: var(--space-2); }
+.footer .disclaimer { max-width: 600px; margin: 0 auto; color: var(--text-muted); line-height: 1.7; }
+.footer .actions { margin-top: var(--space-3); display: flex; gap: calc(var(--space-2) + var(--space-1)); justify-content: center; }
+.footer .actions button {
+  padding: var(--space-2) var(--space-5); border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-secondary); font-size: 13px;
+  cursor: pointer; font-weight: 600; transition: border-color var(--duration-normal) var(--ease-default);
+}
+.footer .actions button:hover { border-color: var(--border-hover); color: var(--text); }
+.footer .version { margin-top: var(--space-2); }
+
+/* ===== Mobile Export Bar ===== */
+.export-bar { display: none; }
+@media (max-width: 768px) {
+  .export-bar {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: calc(var(--space-2) + var(--space-1)) var(--space-3); justify-content: center; gap: calc(var(--space-2) + var(--space-1)); z-index: 100;
+  }
+  .export-bar button {
+    padding: var(--space-2) var(--space-4); border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-secondary); font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: var(--space-1); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: var(--space-1); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== Text Utils ===== */
+.text-sm { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.muted { color: var(--text-muted); font-size: 12px; }
+.mono { font-feature-settings: "tnum"; }
+.text-up { color: var(--red); }
+.text-down { color: var(--green); }
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .header h1 { font-size: 22px; }
+  .quote-bar .price { font-size: 32px; }
+  .social-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .container { padding: var(--space-3) var(--space-3) 80px; }
+  .header { padding: var(--space-5) var(--space-3) var(--space-3); }
+  .header h1 { font-size: 20px; }
+  .quote-bar { gap: var(--space-2); flex-direction: column; align-items: center; }
+  .quote-bar .price { font-size: 28px; }
+  .quote-bar .change { font-size: 15px; }
+  .quote-meta { gap: var(--space-2); flex-direction: column; align-items: center; }
+  .card { padding: var(--space-4); }
+  .fin-hl { grid-template-columns: 1fr; }
+  .social-grid { grid-template-columns: 1fr; }
+  .research-table td:nth-child(4) { max-width: 140px; }
+  .chart-wrap { height: 220px; }
+  .ai-report { font-size: 13px; }
+  .ai-report h2 { font-size: 16px; }
+  .ai-report h3 { font-size: 14px; }
+  .ai-report table { overflow-x: auto; display: block; }
+}
+
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" title="切换亮色/暗色模式">☀️</button>
+
+<div class="container">
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <h1>贵州茅台</h1>
+  <div class="subtitle">600519 · SH · 报告生成: 2026-07-05 12:40:25</div>
+
+  <div class="quote-bar">
+    <span class="price down">1194.45</span>
+    <span class="change down">-8.55 (-0.71%)</span>
+  </div>
+
+  <div class="quote-meta">
+    <span>开 <strong>1205.24</strong></span>
+    <span>高 <strong>1210.14</strong></span>
+    <span>低 <strong>1185.0</strong></span>
+    <span>量 <strong>342.7万手</strong></span>
+    <span>换 <strong>0.27%</strong></span>
+    <span>PE <strong>18.05</strong></span>
+    <span class="muted">来源: 新浪</span>
+  </div>
+</header>
+
+<!-- ===== BENTO GRID ===== -->
+<div class="bento-grid">
+
+  <!-- 基本面 -->
+  <div class="card">
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M2 17h16v-2H2v2zM4 5h3v8H4V5zm4.5 0h3v8h-3V5zm4.5 0h3v8h-3V5z" opacity="0.8"/></svg>
+      <span class="title">基本面</span>
+      
+      <span class="badge badge-up">可信度高</span>
+    </div>
+    
+    
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:4px 8px;background:var(--surface-2);border-radius:4px;display:inline-block">数据来源: 2025-12-31</div>
+    
+    <div class="fin-hl">
+      <div class="fin-hl-item">
+        <div class="hl-label">营收</div>
+        <div class="hl-value">1720.54<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:var(--green)">同比 -1.20%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">净利润</div>
+        <div class="hl-value">853.10<span style="font-size:11px;font-weight:400;color:var(--text-muted)"> 亿</span></div>
+        <div class="hl-sub" style="color:var(--green)">同比 -4.50%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">ROE</div>
+        <div class="hl-value">33.59%</div>
+      </div>
+      <div class="fin-hl-item">
+        <div class="hl-label">EPS</div>
+        <div class="hl-value">65.66</div>
+      </div>
+    </div>
+    
+    <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;margin-top:4px;border-top:1px solid var(--border)">
+      <span style="color:var(--text-secondary)">经营现金流</span>
+      <span style="font-weight:700">615.22亿</span>
+    </div>
+    
+  </div>
+
+  <!-- 资金面 -->
+  <div class="card">
+    <div class="card-header">
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a2.5 2.5 0 00-2.5 2.5V6H5a1 1 0 000 2h2.5v2.5H6A1 1 0 006 13h1.5v2.5a1 1 0 002 0V13H10a1 1 0 000-2H9.5V8H15a1 1 0 000-2h-2.5V4.5A2.5 2.5 0 0010 2z" opacity="0.8"/></svg>
+      <span class="title">资金面</span>
+      
+      <span class="badge badge-warn">可信度中</span>
+    </div>
+    
+    
+    
+    
+    <table class="fin-table">
+      <tr><td>近5日主力净流入</td><td style="color:var(--green)">-0.18亿</td></tr>
+      <tr><td>3日净流入</td><td style="color:var(--red)">0.10亿</td></tr>
+      <tr><td>10日净流入</td><td style="color:var(--green)">-1.80亿</td></tr>
+      <tr><td>20日净流入</td><td style="color:var(--green)">-17.89亿</td></tr>
+      
+      <tr><td>北向持股市值</td><td style="color:var(--blue)">851.63亿</td></tr>
+      
+      
+    </table>
+    <div class="muted" style="margin-top:8px">来源: pysnowball(雪球)+eastmoney(北向持股)</div>
+    
+  </div>
+
+
+<!-- ===== VALUATION GAUGE ===== -->
+
+
+
+
+
+
+
+
+
+
+  
+  
+
+<div class="card">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13zm-.75-8.25h1.5v1.5h-1.5v-1.5zm0-3h1.5v1.5h-1.5v-1.5z" opacity="0.8"/><circle cx="10" cy="10" r="3" fill="currentColor" opacity="0.3"/></svg>
+    <span class="title">估值百分位</span>
+    <span class="badge badge-down">超跌 7.4%</span>
+  </div>
+  <div class="gauge-wrap">
+    <div class="gauge-ring">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle class="bg" cx="60" cy="60" r="52"/>
+        <circle class="fg" cx="60" cy="60" r="52" stroke="var(--green)"
+          stroke-dasharray="0 327"
+          data-target="23.0"
+          style="transition: stroke-dasharray 1s ease-out"/>
+      </svg>
+      <div class="inner">
+        <span class="pct" style="color:var(--green)">7.4%</span>
+        <span class="lbl">超跌</span>
+      </div>
+    </div>
+    <div class="val-range">
+      <div class="row"><span>现价</span><span class="val">1194.45</span></div>
+      <div class="row"><span>120日最高</span><span class="val" style="color:var(--red)">1519.05</span></div>
+      <div class="row"><span>120日最低</span><span class="val" style="color:var(--green)">1168.63</span></div>
+      <div class="row"><span>区间振幅</span><span class="val" style="color:var(--amber)">29.99%</span></div>
+    </div>
+  </div>
+</div>
+
+
+</div>
+
+<!-- ===== K-LINE CHART ===== -->
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3v14h14" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.5"/><rect x="6" y="8" width="2" height="6" rx="0.5" opacity="0.8"/><rect x="10" y="5" width="2" height="10" rx="0.5" opacity="0.8"/><rect x="14" y="7" width="2" height="6" rx="0.5" opacity="0.8"/></svg>
+    <span class="title">K线走势 (近180日)</span>
+    <span class="badge badge-warn">akshare(daily)</span>
+  </div>
+  <div class="chart-wrap" id="klineWrap">
+    <canvas id="klineChart"></canvas>
+  </div>
+</div>
+
+
+<!-- ===== SOCIAL HEATMAP ===== -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6c0 3.5 3 7 6 10 3-3 6-6.5 6-10a6 6 0 00-12 0v.5" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.8"/><circle cx="10" cy="8" r="2" fill="currentColor" opacity="0.8"/></svg>
+    <span class="title">全网热度</span>
+    <span class="badge badge-warn">共 80 条</span>
+  </div>
+  <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+    全平台共 <strong style="color:var(--text)">80</strong> 条相关讨论
+    
+  </div>
+  <div class="social-grid">
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>东方财富股吧</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737862457.html" target="_blank" rel="noopener noreferrer">贵州酒业《行动方案》终于落地！5年建成白酒消费场景矩阵</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737928791.html" target="_blank" rel="noopener noreferrer">600以下</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737928043.html" target="_blank" rel="noopener noreferrer">这茅子今年还能起来吗？风光一去不复返了</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737927026.html" target="_blank" rel="noopener noreferrer">超520亿元资金撤离9只科技股。狂野的高价的高科技的股票...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737925972.html" target="_blank" rel="noopener noreferrer">每天连一两个点都涨不上去，这算什么龙头？</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,000021,1737925622.html" target="_blank" rel="noopener noreferrer">R航宇微300053Alpha-700星载智能单机正式发...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737924193.html" target="_blank" rel="noopener noreferrer">现在人注重健康，喝酒抽烟的越来越少，烟厂、酒厂都是夕阳行...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737923994.html" target="_blank" rel="noopener noreferrer">破五不收回走，5穿20不放倍量走</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737923989.html" target="_blank" rel="noopener noreferrer">现在年轻人有几个喝白酒的？我们办公室共8个人，5个年轻人...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737923749.html" target="_blank" rel="noopener noreferrer">白酒不能反转的原因是第一权重茅台没有调整到位，参考201...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737922230.html" target="_blank" rel="noopener noreferrer">$贵州茅台(SH600519)$</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737920961.html" target="_blank" rel="noopener noreferrer">暴炒过的股，就是业绩好，也是一地鸡毛。贵州茅台股价那里来...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737920453.html" target="_blank" rel="noopener noreferrer">此股还能够买入？30年内没有主力来炒。股价一路下跌，而且...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737920030.html" target="_blank" rel="noopener noreferrer">总有愚昧的人，烟草、可口可乐、槟榔有害健康当误这些公司赚...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737920011.html" target="_blank" rel="noopener noreferrer">再过几年估计掉到800多元了</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737916313.html" target="_blank" rel="noopener noreferrer">相对可乐，茅台估值太低了</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737914871.html" target="_blank" rel="noopener noreferrer">茅台年底600左右</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737913878.html" target="_blank" rel="noopener noreferrer">味蕾经济、不就是酒精肝吗！到处都是坑</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737913511.html" target="_blank" rel="noopener noreferrer">235.55</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://guba.eastmoney.com/news,600519,1737912769.html" target="_blank" rel="noopener noreferrer">把那些看透却放不下的执念，统统晚上隔夜挂单卖掉。</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>巨潮资讯</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-22/1225379934.PDF" target="_blank" rel="noopener noreferrer">贵州茅台2025年年度权益分派实施公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366265.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于职工董事选举结果的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366264.PDF" target="_blank" rel="noopener noreferrer">贵州茅台2025年度股东会决议公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366263.PDF" target="_blank" rel="noopener noreferrer">北京市金杜律师事务所关于贵州茅台酒股份有限公司2025年...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366262.PDF" target="_blank" rel="noopener noreferrer">贵州茅台第五届董事会2026年度第一次会议决议公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366261.PDF" target="_blank" rel="noopener noreferrer">贵州茅台董事、高级管理人员考核和薪酬管理办法</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-12/1225366259.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于聘任董事会秘书的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-03/1225347653.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于调整2025年年度利润分配方案每股分红金额的...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-06-03/1225347482.PDF" target="_blank" rel="noopener noreferrer">贵州茅台2025年度股东会会议资料</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-28/1225333825.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于回购股份实施结果暨股份变动的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324469.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于召开2025年度股东会的通知</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324468.PDF" target="_blank" rel="noopener noreferrer">贵州茅台独立董事候选人声明与承诺（王鑫）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324467.PDF" target="_blank" rel="noopener noreferrer">贵州茅台独立董事候选人声明与承诺（郭田勇）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324466.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于聘任董事会秘书的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324465.PDF" target="_blank" rel="noopener noreferrer">贵州茅台独立董事候选人声明与承诺（盛雷鸣）</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324464.PDF" target="_blank" rel="noopener noreferrer">贵州茅台独立董事提名人声明与承诺</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324463.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于与关联方签订《商标许可协议》的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-22/1225324462.PDF" target="_blank" rel="noopener noreferrer">贵州茅台第四届董事会2026年度第八次会议决议公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-05-08/1225282650.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于回购股份实施进展的公告</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://static.cninfo.com.cn/finalpage/2026-04-29/1225228128.PDF" target="_blank" rel="noopener noreferrer">贵州茅台关于召开2025年度及2026年第一季度业绩说明...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>今日头条</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7602823186077581843/" target="_blank" rel="noopener noreferrer">贵州茅台涨近2%，股价重回1500元/股上方</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7650068597414445568/" target="_blank" rel="noopener noreferrer">贵州茅台陈华:综合研判，目前暂无拆股计划</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7657840478125163054/" target="_blank" rel="noopener noreferrer">14只白酒股下跌 贵州茅台重回1200元/股</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7646999553924809225/" target="_blank" rel="noopener noreferrer">贵州茅台跌破1300元/股整数关口</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7652923598126023183/" target="_blank" rel="noopener noreferrer">跌到1200的贵州茅台，为何没人敢买了?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7655507835689730560/" target="_blank" rel="noopener noreferrer">每10股派280.24元，贵州茅台今日分红</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7655518136589926955/" target="_blank" rel="noopener noreferrer">每10股派280.24元!贵州茅台今日分红350亿元</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7650055734289416767/" target="_blank" rel="noopener noreferrer">直击股东大会 | 贵州茅台董事长陈华:综合研判，茅台目前...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7656776184860000778/" target="_blank" rel="noopener noreferrer">17只白酒股上涨 贵州茅台1194.96元/股收盘</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7597764078819476020/" target="_blank" rel="noopener noreferrer">贵州茅台股价七连跌创阶段新低，飞天上线i茅台21天仍“难...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7602885911516496420/" target="_blank" rel="noopener noreferrer">贵州茅台重回1500元上方，有机构提出目标价1860元</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7657098280177877510/" target="_blank" rel="noopener noreferrer">15只白酒股下跌 贵州茅台1185.49元/股收盘</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7648333176938693135/" target="_blank" rel="noopener noreferrer">每周股票复盘:贵州茅台(600519)调整2025年度每...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7602460955758445110/" target="_blank" rel="noopener noreferrer">贵州茅台股价冲高回落!白酒是少有的“低估值叠加拐点将至”...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7649562796691653154/" target="_blank" rel="noopener noreferrer">8股目标价涨幅超30%，贵州茅台涨超60%| 券商评级观...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7629552413217489427/" target="_blank" rel="noopener noreferrer">上市以来首现营收净利双降!贵州茅台股价跳水，跌落股王宝座</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7655537855137104403/" target="_blank" rel="noopener noreferrer">每10股派280.24元，贵州茅台今日分红</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7649321102619066922/" target="_blank" rel="noopener noreferrer">19只白酒股下跌 贵州茅台1256元/股收盘</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7649748878761280063/" target="_blank" rel="noopener noreferrer">12只白酒股上涨 贵州茅台1275.88元/股收盘</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://www.toutiao.com/article/7654503322623279662/" target="_blank" rel="noopener noreferrer">15只白酒股下跌 贵州茅台1222.45元/股收盘</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+    <div class="social-card">
+      <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>微信公众号</span>
+        <span class="muted">20条</span>
+      </div>
+      
+      <div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oIW9v83WfQMFoXtODRIwk8_k1RtCBRvVEe0mc14-pofNEYnMvzh25xb-Kg9NkV0tklLay5FrRroFvYJkoVxG9b39ej0Qq3-FcQ_oPBSCMOZlh5vdWOJkM9wGX_iHL9MadA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">A股2007年至今始终在3000点,贵州茅台股价为何增长...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9cmzsaioA3LPm6T6YrxvYsNt-n8UnA2q0fU2yT4_K8usWbdrXffIeEEh4J4BxPjEy8CaVnB91Q8OuBLXwaTw1Tpy_RxYr0Tit4WlhAni6sLbMrrpO6Sfg7uqsr-vDqymr_dt6Zno_BD76vBkOYH3G5yBl4COK1iFWAqROHnOZyzSjotuuiAmOIg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台深夜涨价,股价开盘大涨</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oG0FU8StVh-nB25tHA3_iwjcs41XEqXn29kSEtE-uJ6FOClJ5EmOR7vOXCUiuHD3ZlY2hzR5StdFJyPUgCDDURU7CjUCAI9i7Av1SO8gKIDFHf07FlI3l-SAFV_3u-a3OQ..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">22年前的今天,贵州茅台股票上市</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9keaBd-WVD9PSsBfnXxlw8Jx7dD20-7HgVWU9LQOVQb10wrY3Gmv9E2tE073cssP_fPdphlwSIASJCgEsdIeariMp5pZQusd3-3DQNg20_LM7MHoHjEawCHWVt86agRTwDKhDes3OveTmu2e1M0FOmBSMJj02wAaPKH96HfE0odw89kyxDwoXvg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">海通策略:贵州茅台股价大幅调整或预示市场底即将到来</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9lJkBcZg1AUTgSHanVkSqhH9FTNY1wPqG3Sf2EchNNqtEtT8yjpMxZQC8QVoaV2WuEbiJNvbz2wsGSmrH9GKekF-U9_sBRmxhrIdWUBQD3MDFa1mgRhjMU3bAllDtens4lSENX4K7mi3TvspwLgkpLqwWxBQ7Tp8rWzpmET_wxjvYl_Q5RRZQjg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台股价大跌,公司:一切正常</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9GPuSJRbpluuRcSnTqzGWzpkI4cvMF2i0_IsozKQmH_thElriNs68OEdIzeGjVitzwnVNC45uznF8KM7A1aGigG6Fp2-ZUz1QRv1btRem0OzRAfaMbgOwLq6QpHuRqW0Zw3XQe-imUoRdyy2_DZHjMo-uDTzYD0Of2qQentPA_h1QL0Hr9Gyd3Q..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">持有贵州茅台,股价一直不涨该怎么办?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9Q2PaHm54420PcRq5Kkh0PuO8QrkhFYHXBmRuRilnlujrJIrTkXCMQGzDKuF8rZQq8O_XDGl7aeiP0W2lgbiSwEXZIMc3kxVHUAKj9nq0WR0HYwjdf6Q5owgRFBHqc2zToz_vvN6JyDqt0aklsSEddbWhLKCFlartr3pipJLegqV5LU3lqtPw9g..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台股价见底,它定会带优质蓝筹股消费股股价回暖</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9edtOcIWwvi60nB5L8Dha2JiUIpTQeiy4lWoxGHAs3GOU6fllyl6IwJRIU1BR-olqg6_oS16wwu9tE9n1Z2bIDwIrmqxa9xALmUegWOkqaaa9P9SUgVzD-yi_RlEr8JfoMKdOqOUOpHIpZ8wcZiISRroa439MOOUnlYMHVgVkUXZ5LU3lqtPw9g..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台的股票值得长期持有吗?茅台值得入手吗?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9AFenLBiwnwPo7MH-RA-PvuQwvINvEKMw3kpJSbWtkODGNGaHjiFTwc0R5T69nfAjdKZsqY9KmPeXl_HwThIUiscNlfrickFTTEgjC2E5aBKOYWuirSrQsAiR8YVECmUEP23aL-K2GjsF8fYiQLmyQ9RbLY7te3h6Ie1_1pVDrjRj3x9Nw6p-Fg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台股价大跌,为什么?</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAfa5ZWgFUPIu4-IgpTkBJJYlqXa8Fplpd9ARPBjldEzqQAwkNyJs6nRdnPFPWcAeVxGUywGgjH7BcZrbGj8JN9q5i8zh1KPIRKWDoGaPFEV6hElOgTEqOayXplAwJeXfIe7rmXGy9DQDMY9MP-NiJ0ab2zNcBvBJpQ0CvN8hdLPhN6Yq2uhyNHa1Vyczoy7wruZ6fzBGvJVf654z_tGSZTqA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654D9D7016F55C3E4E2B1305BBD28BCE589A1306A49E002" target="_blank" rel="noopener noreferrer">贵州茅台高管蒋焰被抓,周一股价预计震荡下行</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9Ci188JpH7T-iy9gAtG1BOpX4sMeqnthCK_-pusxDNNzUOOyPmAFM2osi4iH2jEFmi4U1Xbkji-tDK8-C1xWCj7JmbBWelMAQFaoFVX7hBecnAHB4hy4T_cJfevbyLufOWDqhz39NZje5V_CL2vf0jyke3bxTUt0SbPWziOITjCwtPujwwRB2Pw..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">贵州茅台350亿分红,普通人是否有机会</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9Q2PaHm54420PcRq5Kkh0PuO8QrkhFYHXBmRuRilnlujrJIrTkXCMQEckwzIONiTy3HSfFTDDKrTipstZ7Bt4R95wygSk0-JAVx6WRwq9Ao3qQ8U1hiaYqySxpz37_00v_rPhihf9UOGplFNeeh2QmOvMNfVw8GFg02bfx5ZQLQxQL0Hr9Gyd3Q..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">关注贵州茅台股价击破两年前低点,反复筑底</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd97FgIrDFEJcRZvDTAm-TZB98vGzqAPBiC9fZAvXuhBPCrae74Q_8kZ4cgBtdjo_ut2cQuYTcc4lzGy92Wbg-OHeXqK8QuzC5B8gG-vEoE0dgdpMhhYOsjNueYc7ciw6Pf64reaR_gXlQGwvryw-F0FLWGV2--tDBzG6iQXyU31seq3X8EKMKOIA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">贵州茅台酒股份有限公司副总经理、财务总监、董事会秘书蒋焰...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9n3e0fKV0ospiV32UQ-plpkS1MP3V4N4HHtc2ykW3yR-HcGu2eQ7iNarN7CbsPLQLO1PCfR94a3Eg9sxlFScn8DtFp3db3VoqntaIbb-7j2YvQmHaHyKTLAfXYgtuEA9pL8olSGjc5tGc50OZTZomyrO-G_-YoZlb4p3pgfC3wMfRtmyIGw2VAg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">贵州茅台和腾讯控股在向心坍缩过程中的趋势预测</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd92HVFlzyxjOp_JSH4rahzMi2wFJ3kKwEZTIZ1cDaetLL46FKJb-QXaQxyWED5Azo20OrnX3Ih9gML7XDMcrNYUIX_SKDmTu5CXlh7PshdzHW-i5BU_-jITVCZiOwIbXooFMNZGQov4EHoD4h2PkHIxYZBcdN1RMGSHZyIK6bx-UGrCDCayYmfpA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">贵州茅台股价大跌!回应来了→</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oAtlBC_4A01Mmjgi5UfFscXKYSm1aTRLcAsNoJLv_L6z6VS9Hn2qToYjs8uYVCsBvpxKjRQt68wS9nBlMK8as13k5Hgta9bYsKSI_dkrityy2r3BRJ3ft1Nf_71bqkOtiw..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">今日,贵州茅台股价创年内新高</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oHhs_Ll5DFrXDTGR7LgHOZkIHcuS2yMFINgbZatDHcIAqL6-bRztBfUQme7lGdxpzZcfiZpwLid3cShfgeQ3xUNhKNZUubxxMtydJJ-_ZBAvrT7jgZZwLKJhWLv6O878UA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">今日,贵州茅台股价上涨</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oGG6tPj4jAwNPiVzlazS02nhMGBqCA0Mdj43wMST80G4XKYkeoQ3H9q8zICC4a2iuYhHhLtP6acZZ1KbU7-vZlfGeXCx6paGRSW3cbRlwJiQMDXLQOKwWIdhlgeRt7bSzA..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">年初至今累涨近一倍!贵州茅台股价今日再创历史新高,酿酒板...</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oC-4lHa3-djKiDmmSJjBXZrfejqyOZSqsWArFe0hUM7jmabKd674gER1Ga65IHcMFGvKlTCWS1RAjlIGR8oNFG-shBifGZBqYPgmlVgHoCZUql_vyLRULJGjotuuiAmOIg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">不到2个月逾百亿元资金买入,贵州茅台股价反弹幅度超25%</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+        <div style="margin-bottom:5px;font-size:12px;line-height:1.4">
+          <a href="https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS-Ce7l9fToAf5D00X6hDpkU-IgpTkBJJYlqXa8Fplpd9qrCTzh93vVYNbMIV3jy0gi2zkns6n4GPBaveLCfdIt9t0KNgcSi8oKUEg311JJ2W43KwrNG0ETx3PWizUAtxU2mzSjYNK98n0Ra6UjOl14LClNS-560qnkyO3mdU25tjT7b1jkFyc_ukIYd-49HxT16H1FtMuwCjTbyOKq2dl0V5Nu7CnoSqqg..&amp;type=2&amp;query=%E8%B4%B5%E5%B7%9E%E8%8C%85%E5%8F%B0 %E8%82%A1%E7%A5%A8&amp;token=1654E9C5016F55C3E4E2B1305BBD28BCE589A1306A49E005" target="_blank" rel="noopener noreferrer">贵州茅台股价再度逼近1200,华创维持目标价1250元</a>
+          
+          <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px">
+            
+            
+          </div>
+        </div>
+        
+      </div>
+      
+    </div>
+    
+  </div>
+</div>
+
+<!-- ===== INSTITUTIONAL RESEARCH ===== -->
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3h12v14H4V3zm2 2v2h8V5H6zm0 4v6h2V9H6zm4 0v6h4V9h-4z" opacity="0.8"/><path d="M5 2h10v1H5V2z" opacity="0.5"/></svg>
+    <span class="title">机构研报</span>
+    <span class="badge badge-warn">共 71 份</span>
+  </div>
+  <div class="tag-group">
+    <span class="tag" style="background:rgba(239,68,68,0.12);color:var(--red)">买入 55</span>
+    <span class="tag" style="background:rgba(245,158,11,0.12);color:var(--amber)">增持 11</span>
+    <span class="tag" style="background:rgba(100,116,139,0.12);color:var(--text-muted)">中性 5</span>
+    
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测EPS 74.83</span>
+    
+    
+    <span class="tag" style="background:var(--surface-2);color:var(--text-secondary)">预测PE 19.18</span>
+    
+  </div>
+  <div class="research-scroll">
+    <table class="research-table">
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>机构</th>
+          <th>评级</th>
+          <th>标题</th>
+          <th>当年EPS</th>
+          <th>次年EPS</th>
+          <th>PDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-05-25</td>
+          <td style="color:var(--text-secondary)">诚通证券</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202605251822844635_1.pdf" target="_blank" rel="noopener noreferrer" title="2025年年报及2026年一季报点评：顺势出清舒缓压力巩固优势稳健前行">2025年年报及2026年一季报点评：顺势出清舒缓压力巩固优势稳健前行</a>
+            
+          </td>
+          <td>66.68</td>
+          <td>69.43</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202605251822844635_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-05-05</td>
+          <td style="color:var(--text-secondary)">华鑫证券</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202605051821970230_1.pdf" target="_blank" rel="noopener noreferrer" title="公司事件点评报告：i茅台持续发力，改革效果初显">公司事件点评报告：i茅台持续发力，改革效果初显</a>
+            
+          </td>
+          <td>68.71</td>
+          <td>73.01</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202605051821970230_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-04-29</td>
+          <td style="color:var(--text-secondary)">万联证券</td>
+          <td>
+            
+            <span style="color:var(--amber);font-weight:500">增持</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202604291821727471_1.pdf" target="_blank" rel="noopener noreferrer" title="点评报告：业绩稳健增长，直销收入首次超越代理渠道">点评报告：业绩稳健增长，直销收入首次超越代理渠道</a>
+            
+          </td>
+          <td>68.83</td>
+          <td>74.75</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202604291821727471_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-04-28</td>
+          <td style="color:var(--text-secondary)">开源证券</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202604281821686501_1.pdf" target="_blank" rel="noopener noreferrer" title="公司信息更新报告：大单品放量价稳，触底信号明确">公司信息更新报告：大单品放量价稳，触底信号明确</a>
+            
+          </td>
+          <td>68.02</td>
+          <td>71.6</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202604281821686501_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+        <tr>
+          <td style="color:var(--text-muted)">2026-04-28</td>
+          <td style="color:var(--text-secondary)">山西证券</td>
+          <td>
+            
+            <span style="color:var(--red);font-weight:500">买入</span>
+          </td>
+          <td>
+            
+            <a href="https://pdf.dfcfw.com/pdf/H3_AP202604281821665969_1.pdf" target="_blank" rel="noopener noreferrer" title="渠道重构落地，改革初现成效">渠道重构落地，改革初现成效</a>
+            
+          </td>
+          <td>68.19</td>
+          <td>71.7</td>
+          <td><a href="https://pdf.dfcfw.com/pdf/H3_AP202604281821665969_1.pdf" target="_blank" rel="noopener noreferrer" style="color:var(--blue)">PDF</a></td>
+        </tr>
+        
+      </tbody>
+    </table>
+  </div>
+  <div class="muted" style="margin-top:10px">来源: akshare(东方财富研报)</div>
+</div>
+
+
+<!-- ===== AI FULL REPORT ===== -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a3 3 0 00-3 3v1H5a1 1 0 000 2h2v1a4 4 0 008 0V8h2a1 1 0 000-2h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1H9V5a1 1 0 011-1zM7 12.5a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm6 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm-3 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1z" opacity="0.8"/></svg>
+    <span class="title">AI 综合分析报告</span>
+  </div>
+  <div class="ai-report"><h1>贵州茅台（600519）深度分析报告</h1>
+<h2>一、投资要点</h2>
+<p>贵州茅台当前股价1194.45元，PE 18.05倍，处于近五年估值中低位。2025年全年实现营收1720.54亿元（同比-1.2%），归母净利润853.1亿元（同比-4.5%），出现上市以来首次营收利润双降。但我们认为，茅台强品牌、高ROE、充沛现金流的底层逻辑未变，当前估值已部分反映短期压力，需重点跟踪渠道改革与产能释放节奏。</p>
+<h2>二、三大看空观点与触发条件</h2>
+<table>
+<thead>
+<tr>
+<th>看空观点</th>
+<th>核心理由</th>
+<th>触发条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① 量价天花板已现</strong></td>
+<td>茅台酒2025年销量约4.2万吨，逼近4.6万吨理论上限；飞天批价从2700元回落至2300元区间，终端需求疲软</td>
+<td>若飞天批价跌破2000元且持续3个月以上</td>
+</tr>
+<tr>
+<td><strong>② 利润含金量下降</strong></td>
+<td>经营现金流615亿元/净利润853亿元=0.72，低于1.0的优质线，说明利润变现金额偏弱</td>
+<td>若该比值连续两年低于0.7</td>
+</tr>
+<tr>
+<td><strong>③ 直销提价空间收窄</strong></td>
+<td>i茅台2025年贡献营收约250亿元，直销占比虽提至45%，但批零价差从1000元收窄至400元，提价动力减弱</td>
+<td>若批零价差收窄至200元以下</td>
+</tr>
+</tbody>
+</table>
+<h2>三、核心财务分析</h2>
+<h3>1. 三张核心表格</h3>
+<p><strong>表1：财务时序表（单位：亿元）</strong></p>
+<table>
+<thead>
+<tr>
+<th>年份</th>
+<th>营收</th>
+<th>净利润</th>
+<th>ROE(%)</th>
+<th>经营现金流</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2023</td>
+<td>1505.6</td>
+<td>747.3</td>
+<td>34.2</td>
+<td>665.9</td>
+</tr>
+<tr>
+<td>2024</td>
+<td>1741.4</td>
+<td>893.0</td>
+<td>34.8</td>
+<td>698.0</td>
+</tr>
+<tr>
+<td>2025</td>
+<td>1720.5</td>
+<td>853.1</td>
+<td>33.6</td>
+<td>615.2</td>
+</tr>
+</tbody>
+</table>
+<p><em>数据来源：公司年报（2023-2025）</em></p>
+<p><strong>表2：同行竞品表</strong></p>
+<table>
+<thead>
+<tr>
+<th>公司</th>
+<th>PE(TTM)</th>
+<th>营收增速(%)</th>
+<th>净利率(%)</th>
+<th>ROE(%)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>贵州茅台</td>
+<td>18.1</td>
+<td>-1.2</td>
+<td>49.6</td>
+<td>33.6</td>
+</tr>
+<tr>
+<td>五粮液</td>
+<td>14.5</td>
+<td>+3.0</td>
+<td>36.8</td>
+<td>24.3</td>
+</tr>
+<tr>
+<td>泸州老窖</td>
+<td>16.8</td>
+<td>+5.2</td>
+<td>41.2</td>
+<td>28.1</td>
+</tr>
+<tr>
+<td>山西汾酒</td>
+<td>20.3</td>
+<td>+8.5</td>
+<td>33.5</td>
+<td>30.2</td>
+</tr>
+</tbody>
+</table>
+<p><em>数据来源：各公司2025年年报</em></p>
+<p><strong>表3：估值三档表</strong></p>
+<table>
+<thead>
+<tr>
+<th>估值情景</th>
+<th>假设PE</th>
+<th>对应股价(元)</th>
+<th>上涨/下跌空间</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>悲观</td>
+<td>15x</td>
+<td>985</td>
+<td>-17.5%</td>
+</tr>
+<tr>
+<td>中性</td>
+<td>18x</td>
+<td>1182</td>
+<td>-1.0%</td>
+</tr>
+<tr>
+<td>乐观</td>
+<td>22x</td>
+<td>1445</td>
+<td>+21.0%</td>
+</tr>
+</tbody>
+</table>
+<p><em>基于2025年EPS 65.66元测算</em></p>
+<h3>2. ROE拆解（33.59%）</h3>
+<ul>
+<li>净利率：49.6%（高定价权+低有息负债）</li>
+<li>资产周转率：0.52次（轻资产模式）</li>
+<li>权益乘数：1.30（低杠杆）</li>
+</ul>
+<p>ROE超30%的核心驱动力是近50%的净利率，债务极少。行业下行期净利率面临压力，但茅台品牌溢价足以支撑30%以上ROE。</p>
+<h3>3. 经营现金流质量</h3>
+<p>经营现金流615亿元 / 净利润853亿元 = 0.72，低于1.0。说明利润中含部分应收账款或渠道压货，需关注经销商回款情况。但茅台预收款（合同负债）超100亿元，坏账风险极低。</p>
+<h2>四、业务前瞻</h2>
+<p><strong>量：</strong> 茅台酒2025年基酒产量约5.6万吨，预计2029年可售量将达4.8万吨，释放近15%增量空间；系列酒产能同步扩充，2030年冲击6万吨。</p>
+<p><strong>价：</strong> i茅台直销占比已达45%，批零价差从千元收窄至400元，提价双刃剑效果减弱。未来更可能通过“提出厂价+加大直销”组合提升均价。</p>
+<p><strong>结构：</strong> 茅台酒收入占比约84%，系列酒占比16%。系列酒增速更快（2025年+12%），但毛利率低20个百分点，结构优化有限。</p>
+<h2>五、估值与投资建议</h2>
+<p>基于三档估值表，当前1194元接近中性估值1182元，处于合理区间下沿。考虑到：<br>
+- 悲观情景下985元（下行17.5%）<br>
+- 乐观情景下1445元（上行21.0%）</p>
+<p>建议评级：<strong>持有</strong></p>
+<p><strong>目标价格区间：1200-1450元</strong>（对应18-22倍PE）<br>
+<strong>催化剂：</strong> i茅台提价、分红率提升、宏观消费刺激政策出台</p>
+<p><strong>若触发以下条件，立即转为卖出：</strong> 飞天批价跌破2000元、经营现金流/净利润比值低于0.6。</p>
+<hr>
+<p><em>本报告由 AI 自动生成，仅供参考，不构成投资建议。市场有风险，入市需谨慎。</em><em>本报告由 AI 自动生成，仅供参考，不构成投资建议。市场有风险，入市需谨慎。</em></p></div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="sources">
+    数据来源: 实时行情 财务数据(年报) 财务数据(季报) K线数据 资金流向 研报数据 东方财富股吧 巨潮资讯 今日头条 微信公众号 
+  </div>
+  <div class="disclaimer">
+    免责声明：本报告由AI自动生成，所有分析内容仅供参考，不构成任何投资建议。
+    投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
+  </div>
+  <div class="actions">
+    <button id="exportImg" onclick="exportAsImage()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+      导出图片
+    </button>
+    <button id="exportPdf" onclick="exportAsPdf()">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+      导出PDF
+    </button>
+  </div>
+  <div class="version">aimoon v0.4.2 · 2026-07-05 12:40:25</div>
+</footer>
+
+</div>
+
+<!-- ===== MOBILE STICKY EXPORT BAR ===== -->
+<div class="export-bar">
+  <button onclick="exportAsImage()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg>
+    导出图片
+  </button>
+  <button onclick="exportAsPdf()">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:4px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg>
+    导出PDF
+  </button>
+</div>
+
+<!-- ===== Theme Toggle (early — no external deps) ===== -->
+<script>
+(function() {
+  var STORAGE_KEY = 'aimoon-theme';
+  var btn = document.getElementById('themeToggle');
+  var body = document.body;
+
+  function applyTheme(mode) {
+    if (mode === 'light') {
+      body.classList.add('light');
+      btn.innerHTML = '🌙';
+    } else {
+      body.classList.remove('light');
+      btn.innerHTML = '☀️';
+    }
+    if (window._klineChart) window._updateChartTheme();
+  }
+
+  window._updateChartTheme = function() {
+    var c = window._klineChart;
+    if (!c) return;
+    var isLight = body.classList.contains('light');
+    var tickColor = '#64748b';
+    var gridColor = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)';
+    var labelColor = isLight ? '#475569' : '#94a3b8';
+    var volBg = isLight ? '#e2e8f0' : '#1e2531';
+    var volBorder = isLight ? '#cbd5e1' : '#2a3a4a';
+
+    c.options.scales.x.ticks.color = tickColor;
+    c.options.scales.x.grid.color = gridColor;
+    c.options.scales.y.ticks.color = labelColor;
+    c.options.scales.y.grid.color = gridColor;
+    c.options.scales.y1.ticks.color = tickColor;
+    c.options.plugins.legend.labels.color = labelColor;
+    c.options.plugins.tooltip.backgroundColor = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(12,15,21,0.95)';
+    c.options.plugins.tooltip.titleColor = isLight ? '#1e293b' : '#e2e8f0';
+    c.options.plugins.tooltip.bodyColor = isLight ? '#334155' : '#cbd5e1';
+    c.options.plugins.tooltip.borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+    c.data.datasets[1].backgroundColor = volBg;
+    c.data.datasets[1].borderColor = volBorder;
+    c.update();
+  };
+
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) saved = 'dark';
+  applyTheme(saved);
+
+  btn.addEventListener('click', function() {
+    var next = body.classList.contains('light') ? 'dark' : 'light';
+    localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
+  });
+})();
+</script>
+
+<!-- ===== SCRIPTS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+
+// K-line chart
+
+(function(){
+  var dates = ["2025-09-30", "2025-10-09", "2025-10-10", "2025-10-13", "2025-10-14", "2025-10-15", "2025-10-16", "2025-10-17", "2025-10-20", "2025-10-21", "2025-10-22", "2025-10-23", "2025-10-24", "2025-10-27", "2025-10-28", "2025-10-29", "2025-10-30", "2025-10-31", "2025-11-03", "2025-11-04", "2025-11-05", "2025-11-06", "2025-11-07", "2025-11-10", "2025-11-11", "2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20", "2025-11-21", "2025-11-24", "2025-11-25", "2025-11-26", "2025-11-27", "2025-11-28", "2025-12-01", "2025-12-02", "2025-12-03", "2025-12-04", "2025-12-05", "2025-12-08", "2025-12-09", "2025-12-10", "2025-12-11", "2025-12-12", "2025-12-15", "2025-12-16", "2025-12-17", "2025-12-18", "2025-12-19", "2025-12-22", "2025-12-23", "2025-12-24", "2025-12-25", "2025-12-26", "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-12", "2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16", "2026-01-19", "2026-01-20", "2026-01-21", "2026-01-22", "2026-01-23", "2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30", "2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06", "2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-09", "2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27", "2026-03-30", "2026-03-31", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28", "2026-04-29", "2026-04-30", "2026-05-06", "2026-05-07", "2026-05-08", "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15", "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22", "2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", "2026-06-08", "2026-06-09", "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-29", "2026-06-30", "2026-07-01", "2026-07-02", "2026-07-03"];
+  var closes = [1386.99, 1380.06, 1373.55, 1363.18, 1393.74, 1404.29, 1426.29, 1397.56, 1400.38, 1404.54, 1401.12, 1410.03, 1392.76, 1383.55, 1387.96, 1375.38, 1370.42, 1373.56, 1378.35, 1372.59, 1364.02, 1378.48, 1376.75, 1404.58, 1401.4, 1407.31, 1412.34, 1399.1, 1412.93, 1417.74, 1412.94, 1409.2, 1408.71, 1394.68, 1387.62, 1391.95, 1390.17, 1393.24, 1390.84, 1379.34, 1372.69, 1367.77, 1373.56, 1362.24, 1345.71, 1347.42, 1356.25, 1364.57, 1369.71, 1365.87, 1376.53, 1374.51, 1377.4, 1375.7, 1375.31, 1368.51, 1381.47, 1381.43, 1369.59, 1357.59, 1345.34, 1393.03, 1394.99, 1390.45, 1379.65, 1386.29, 1390.32, 1378.38, 1365.69, 1356.78, 1350.05, 1344.19, 1341.79, 1319.82, 1309.08, 1306.09, 1310.97, 1311.96, 1293.09, 1404.48, 1368.61, 1394.01, 1440.82, 1489.74, 1519.05, 1479.98, 1489.7, 1470.01, 1469.55, 1452.23, 1450.96, 1432.89, 1457.17, 1432.31, 1421.38, 1406.81, 1393.22, 1368.78, 1366.69, 1369.59, 1364.7, 1369.47, 1367.63, 1359.82, 1380.96, 1426.42, 1450.67, 1434.84, 1419.28, 1411.59, 1375.51, 1374.79, 1377.66, 1368.78, 1383.28, 1387.17, 1416.48, 1425.7, 1426.13, 1426.24, 1406.73, 1431.15, 1426.72, 1420.34, 1409.94, 1413.45, 1433.57, 1429.02, 1374.7, 1378.27, 1379.36, 1376.91, 1386.19, 1424.77, 1370.76, 1372.52, 1368.77, 1352.77, 1343.21, 1339.35, 1341.25, 1329.86, 1323.23, 1313.01, 1311.14, 1302.13, 1292.41, 1293.68, 1284.6, 1280.69, 1260.37, 1256.15, 1243.94, 1272.87, 1246.48, 1295.34, 1279.32, 1277.0, 1252.27, 1238.68, 1243.43, 1233.78, 1226.96, 1246.38, 1249.43, 1262.04, 1241.71, 1226.64, 1211.33, 1186.91, 1212.71, 1194.19, 1179.76, 1184.08, 1168.63, 1194.96, 1185.49, 1193.01, 1203.0, 1194.45];
+  var highs = [1403.1, 1382.56, 1383.1, 1366.68, 1406.21, 1405.25, 1426.33, 1429.26, 1411.49, 1411.91, 1407.87, 1410.82, 1420.5, 1395.15, 1393.91, 1389.45, 1379.92, 1379.3, 1390.84, 1379.1, 1374.5, 1384.55, 1382.95, 1405.91, 1404.46, 1420.0, 1415.41, 1420.57, 1414.85, 1427.41, 1421.13, 1421.48, 1421.58, 1412.93, 1400.45, 1396.11, 1392.76, 1398.04, 1404.55, 1394.61, 1379.29, 1375.95, 1376.52, 1379.96, 1364.91, 1347.42, 1356.25, 1368.75, 1383.15, 1372.38, 1383.1, 1382.08, 1379.79, 1381.44, 1380.26, 1373.84, 1386.66, 1386.33, 1381.43, 1369.49, 1361.77, 1398.77, 1403.75, 1401.82, 1390.45, 1395.57, 1397.91, 1396.47, 1389.37, 1370.4, 1365.19, 1355.41, 1349.64, 1342.62, 1330.28, 1316.83, 1323.67, 1322.4, 1315.57, 1411.59, 1401.82, 1424.86, 1442.67, 1497.82, 1528.82, 1531.75, 1507.21, 1489.71, 1479.0, 1468.07, 1472.94, 1489.16, 1474.76, 1455.05, 1442.08, 1423.31, 1419.28, 1390.1, 1380.29, 1374.96, 1372.42, 1376.9, 1373.48, 1371.49, 1384.84, 1432.11, 1463.43, 1461.9, 1438.94, 1428.69, 1401.82, 1384.81, 1385.09, 1381.21, 1393.03, 1397.91, 1445.71, 1436.0, 1431.01, 1435.97, 1436.01, 1435.11, 1431.15, 1425.96, 1413.06, 1415.11, 1436.78, 1443.25, 1388.15, 1381.25, 1387.07, 1386.19, 1386.88, 1425.15, 1387.17, 1376.8, 1377.16, 1368.77, 1347.12, 1355.91, 1350.8, 1341.15, 1332.05, 1327.19, 1337.41, 1308.32, 1311.64, 1299.24, 1302.17, 1292.92, 1281.58, 1274.62, 1260.07, 1288.5, 1273.85, 1298.27, 1296.32, 1295.69, 1273.85, 1259.19, 1253.34, 1248.45, 1233.8, 1252.36, 1253.22, 1265.06, 1262.81, 1238.57, 1230.64, 1210.23, 1223.83, 1234.78, 1213.16, 1198.63, 1199.0, 1215.0, 1195.67, 1196.8, 1215.52, 1210.14];
+  var lows = [1383.16, 1363.95, 1371.15, 1359.26, 1373.54, 1388.04, 1401.29, 1396.63, 1397.45, 1398.04, 1398.52, 1390.07, 1392.13, 1379.3, 1384.21, 1373.59, 1365.68, 1364.05, 1364.04, 1367.58, 1363.96, 1373.54, 1374.62, 1378.33, 1389.88, 1401.61, 1400.45, 1398.81, 1388.72, 1411.01, 1411.93, 1407.2, 1398.52, 1393.85, 1387.48, 1386.6, 1382.23, 1386.04, 1385.08, 1378.37, 1371.63, 1362.39, 1363.47, 1362.02, 1344.78, 1328.58, 1346.22, 1357.77, 1369.3, 1359.14, 1361.72, 1369.81, 1368.62, 1374.06, 1364.89, 1367.63, 1368.98, 1377.4, 1368.61, 1353.96, 1345.33, 1352.98, 1383.78, 1387.36, 1375.58, 1383.27, 1384.34, 1376.41, 1363.9, 1356.48, 1348.09, 1343.21, 1340.33, 1318.79, 1306.56, 1301.66, 1294.48, 1307.06, 1291.44, 1298.33, 1368.61, 1378.98, 1409.67, 1439.92, 1479.97, 1471.06, 1478.5, 1461.9, 1461.41, 1439.3, 1436.58, 1429.76, 1433.94, 1430.81, 1421.38, 1403.44, 1389.25, 1359.9, 1362.75, 1355.91, 1351.22, 1365.68, 1365.7, 1358.85, 1359.82, 1387.17, 1427.41, 1429.32, 1412.57, 1405.73, 1367.66, 1367.81, 1368.62, 1367.92, 1364.37, 1370.09, 1414.92, 1419.29, 1418.53, 1421.36, 1401.87, 1418.56, 1414.03, 1407.78, 1399.87, 1401.82, 1408.66, 1426.24, 1367.5, 1367.63, 1377.4, 1372.5, 1372.61, 1380.43, 1369.78, 1367.74, 1367.9, 1348.09, 1328.61, 1338.33, 1338.33, 1329.53, 1319.28, 1307.06, 1304.31, 1296.43, 1289.1, 1287.53, 1283.62, 1280.69, 1260.29, 1247.48, 1240.65, 1221.2, 1241.61, 1240.64, 1271.22, 1270.92, 1246.5, 1237.4, 1238.43, 1230.87, 1223.59, 1221.3, 1237.62, 1235.76, 1240.73, 1225.98, 1209.92, 1183.22, 1177.14, 1188.86, 1179.59, 1172.26, 1168.1, 1151.01, 1176.0, 1166.33, 1190.51, 1185.0];
+  var volumes = [3936362.0, 5491812.0, 3600144.0, 4606880.0, 6667233.0, 4278540.0, 4573015.0, 3808589.0, 2594988.0, 2544267.0, 1819492.0, 2932235.0, 3822583.0, 3710239.0, 2712433.0, 3393711.0, 4745610.0, 3569377.0, 3454766.0, 2656572.0, 3447527.0, 3834782.0, 1886139.0, 4945154.0, 2669156.0, 3299210.0, 3117923.0, 2747306.0, 3446221.0, 3420478.0, 2204537.0, 2400232.0, 4260720.0, 3360744.0, 2844069.0, 2030616.0, 2228689.0, 2321121.0, 2733342.0, 2504726.0, 2357279.0, 2907539.0, 2540166.0, 3360280.0, 4263443.0, 3313347.0, 2238501.0, 3715919.0, 3335879.0, 2396367.0, 3138249.0, 1782995.0, 2650868.0, 2042565.0, 2450681.0, 2518669.0, 2338621.0, 1780299.0, 2630810.0, 3379194.0, 3476563.0, 7094942.0, 3958618.0, 2968380.0, 2913454.0, 2984774.0, 3608266.0, 3916866.0, 5175797.0, 4090714.0, 5512068.0, 4228640.0, 3648443.0, 6451625.0, 5901089.0, 6194890.0, 8016606.0, 4841596.0, 7621801.0, 18953440.0, 9447974.0, 8572427.0, 8632066.0, 10912293.0, 9162274.0, 7896538.0, 5116846.0, 3957596.0, 3092846.0, 4624582.0, 4167901.0, 4191253.0, 3688067.0, 3295801.0, 3216016.0, 3545386.0, 4589086.0, 4801443.0, 3050524.0, 2915415.0, 3744162.0, 2462592.0, 2445673.0, 2758646.0, 3360783.0, 6008635.0, 4945361.0, 3555100.0, 3031859.0, 2613234.0, 4725589.0, 2856179.0, 2609346.0, 2309289.0, 3008711.0, 2868459.0, 6169066.0, 2912514.0, 2106437.0, 2019373.0, 2415218.0, 3383610.0, 2070476.0, 2886556.0, 2521364.0, 2423261.0, 3455348.0, 2451284.0, 9682499.0, 3645139.0, 2175427.0, 2691593.0, 3770109.0, 5545531.0, 7279774.0, 3400442.0, 3481313.0, 5275267.0, 4780604.0, 4046147.0, 3336853.0, 5713510.0, 5083743.0, 5696787.0, 5524434.0, 5818365.0, 4966097.0, 4325464.0, 4748733.0, 3886838.0, 4915714.0, 4635276.0, 4593162.0, 8272791.0, 4588998.0, 7647805.0, 4384460.0, 3636185.0, 5247652.0, 3350617.0, 3130397.0, 3082836.0, 2786012.0, 3924414.0, 2535198.0, 5049478.0, 4158556.0, 3496974.0, 4480330.0, 5747173.0, 5825131.0, 5800405.0, 4533528.0, 4844649.0, 5006647.0, 6687812.0, 3960779.0, 4247381.0, 5087015.0, 3426755.0];
+  var first = closes[0], last = closes[closes.length - 1];
+  var lineColor = last >= first ? '#ef4444' : '#22c55e';
+  var fillColor = last >= first ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)';
+
+  var maxClose = -Infinity, minClose = Infinity;
+  var highIdx = 0, lowIdx = 0;
+  for (var i = 0; i < closes.length; i++) {
+    if (closes[i] > maxClose) { maxClose = closes[i]; highIdx = i; }
+    if (closes[i] < minClose) { minClose = closes[i]; lowIdx = i; }
+  }
+
+  var allVals = closes.concat(highs, lows);
+  var yMin = Math.min.apply(null, allVals) * 0.97;
+  var yMax = Math.max.apply(null, allVals) * 1.03;
+
+  var pointBg = [];
+  var pointRadius = [];
+  for (var i = 0; i < closes.length; i++) {
+    if (i === highIdx || i === lowIdx) {
+      pointBg.push(i === highIdx ? '#ef4444' : '#22c55e');
+      pointRadius.push(6);
+    } else {
+      pointBg.push('transparent');
+      pointRadius.push(0);
+    }
+  }
+
+  var ctx = document.getElementById('klineChart').getContext('2d');
+  window._klineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        label: '收盘价',
+        data: closes,
+        borderColor: lineColor,
+        backgroundColor: fillColor,
+        fill: true,
+        tension: 0.3,
+        pointRadius: pointRadius,
+        pointBackgroundColor: pointBg,
+        pointBorderColor: pointBg,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        yAxisID: 'y'
+      },{
+        label: '成交量',
+        data: volumes,
+        type: 'bar',
+        backgroundColor: '#1e2531',
+        borderColor: '#2a3a4a',
+        borderWidth: 1,
+        yAxisID: 'y1'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } },
+        tooltip: {
+          backgroundColor: 'rgba(12,15,21,0.95)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.dataIndex === highIdx && ctx.datasetIndex === 0)
+                return '高点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[highIdx] + ')';
+              if (ctx.dataIndex === lowIdx && ctx.datasetIndex === 0)
+                return '低点: ' + ctx.parsed.y.toFixed(2) + ' (' + dates[lowIdx] + ')';
+              if (ctx.datasetIndex === 0) return '收盘: ' + ctx.parsed.y.toFixed(2);
+              return '成交量: ' + (ctx.parsed.y / 10000).toFixed(0) + '万手';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 12, maxRotation: 0 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          position: 'left',
+          min: yMin,
+          max: yMax,
+          ticks: { color: '#94a3b8', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y1: {
+          position: 'right',
+          ticks: { color: '#64748b', font: { size: 10 }, callback: function(v){ return (v/10000).toFixed(0)+'万'; } },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+  if (window._updateChartTheme) window._updateChartTheme();
+})();
+
+
+// Gauge animation
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[data-target]').forEach(function(el) {
+    var target = el.getAttribute('data-target');
+    setTimeout(function() {
+      el.setAttribute('stroke-dasharray', target + ' 327');
+    }, 100);
+  });
+});
+
+// Export functions
+function getTarget() { return document.querySelector('.container'); }
+
+function exportAsImage() {
+  var btn = document.getElementById('exportImg');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+    var a = document.createElement('a');
+    a.download = '贵州茅台_600519_report.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false; });
+}
+
+function exportAsPdf() {
+  var btn = document.getElementById('exportPdf');
+  btn.textContent = '⏳ 生成中...'; btn.disabled = true;
+  var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
+  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+    var jsPDF = window.jspdf.jsPDF;
+    var imgW = canvas.width, imgH = canvas.height;
+    var pdfW = 210, pdfH = (imgH * pdfW) / imgW;
+    var pdf = new jsPDF('p', 'mm', [pdfW, pdfH]);
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+    pdf.save('贵州茅台_600519_report.pdf');
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false;
+  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false; });
+}
+</script>
+
+</body>
