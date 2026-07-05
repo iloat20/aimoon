@@ -1,4 +1,4 @@
-"""Pipeline v2 phase-level tests (Tasks 1-4). Per-task TDD."""
+"""Pipeline v2 phase-level tests (Tasks 1-4 + 13). Per-task TDD."""
 
 import pytest
 
@@ -68,7 +68,45 @@ def test_pipeline_specs_have_required_fields():
         assert spec.timeout_sec > 0
 
 
+# ---- Task 13 ----
+
+
+class _FakeSettings:
+    deepseek_model = "deepseek-v4-flash"
+    deepseek_temperature = 0.3
+    deepseek_max_tokens = 1024
+
+
+class _FakeAnalyzer:
+    """Minimal analyzer shim satisfying PipelineOrchestrator.AnalyzerRuntime."""
+
+    def __init__(self) -> None:
+        self._settings = _FakeSettings()
+        self._provided_settings = None
+
+    def _build_data_dict(self, info, reports=None, financial_md_path=None):
+        return {"symbol": info.symbol, "name": info.name, "_fake": True}
+
+
+def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
+    """Plain-text response, no tool calls -> every phase finishes in 1 turn."""
+    return {"role": "assistant", "content": f"[fake output for {len(messages)} messages]"}
+
+
+@pytest.fixture
+def _fake_analyzer(monkeypatch):
+    monkeypatch.setattr(PipelineOrchestrator, "_llm_chat", _fake_llm_chat)
+    return _FakeAnalyzer()
+
+
 @pytest.mark.asyncio
-async def test_orchestrator_runs_all_phases_placeholder():
-    ctx = await PipelineOrchestrator(object()).run(StockAnalysis(symbol="000001"))
+async def test_orchestrator_runs_all_phases_placeholder(_fake_analyzer):
+    """All 5 phases complete with a mocked LLM (no network)."""
+    ctx = await PipelineOrchestrator(_fake_analyzer).run(StockAnalysis(symbol="000001"))
     assert isinstance(ctx, dict)
+    assert set(ctx["phase_results"].keys()) == {
+        "plan", "collect", "analysis", "self_check", "compile"
+    }
+    # SELF_CHECK / COMPILE are wired in Task 14 / 15; partial until then.
+    assert "self_check" in ctx["partial_phases"]
+    assert "compile" in ctx["partial_phases"]
