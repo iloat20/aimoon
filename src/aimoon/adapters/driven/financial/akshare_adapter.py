@@ -307,52 +307,89 @@ class AkshareFinancialAdapter:
             return {}
 
     async def fetch_history(self, symbol: str, years: int = 3) -> list[FinancialData]:
-        """拉取近 N 年年报(profit_sheet),按报告期降序返回。
+        """拉取近 N 年年报,按报告期降序返回。
 
-        任何异常均兜底返回 [],保证 pipiline v2 不因历史采集失败中断。
+        并行拉取 profit_sheet / balance_sheet / cash_flow_sheet 三张表,
+        按 (symbol, 年报日期) 内连接对齐,一次性补全收入、净利润、ROE、权益、OCF。
+
+        任何异常均兜底返回 [],保证 pipeline v2 不因历史采集失败中断。
         """
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
+        ak_symbol = f"{prefix}{symbol}"
+        loop = asyncio.get_running_loop()
+        p_task = loop.run_in_executor(None, ak.stock_profit_sheet_by_report_em, ak_symbol)
+        b_task = loop.run_in_executor(None, ak.stock_balance_sheet_by_report_em, ak_symbol)
+        c_task = loop.run_in_executor(None, ak.stock_cash_flow_sheet_by_report_em, ak_symbol)
         try:
-            df = await asyncio.to_thread(ak.stock_profit_sheet_by_report_em, f"{prefix}{symbol}")
+            p_df, b_df, c_df = await asyncio.gather(p_task, b_task, c_task)
         except Exception as e:
-            logger.debug("[akshare] fetch_history failed: %s", e)
+            logger.debug("[akshare] fetch_history failed for %s: %s", symbol, e)
             return []
+        return self._merge_statements(symbol, years, p_df, b_df, c_df)
+
+    @staticmethod
+    def _annual(df: pd.DataFrame | None) -> pd.DataFrame:
         if df is None or df.empty:
-            return []
+            return pd.DataFrame()
         if "REPORT_TYPE" in df.columns:
             df = df[df["REPORT_TYPE"] == "年报"]
         if "REPORT_DATE" in df.columns:
-            df = df.sort_values("REPORT_DATE", ascending=False)
-        return self._parse_top_n(df, symbol, years)
+            df = df.sort_values("REPORT_DATE", ascending=False).drop_duplicates(
+                subset=["REPORT_DATE"], keep="first"
+            )
+        return df
 
-    def _parse_top_n(self, df: pd.DataFrame, symbol: str, n: int) -> list[FinancialData]:
+    @staticmethod
+    def _yr(date_val) -> str:
+        if date_val is None or pd.isna(date_val):
+            return ""
+        return str(date_val)[:10]
+
+    def _merge_statements(
+        self, symbol: str, years: int,
+        p_df: pd.DataFrame | None, b_df: pd.DataFrame | None, c_df: pd.DataFrame | None,
+    ) -> list[FinancialData]:
+        p_df = self._annual(p_df)
+        b_df = self._annual(b_df)
+        c_df = self._annual(c_df)
         out: list[FinancialData] = []
-        for _, row in df.head(n).iterrows():
-            fd = FinancialData(symbol=symbol, source="akshare(东方财富)")
-            rd = row.get("REPORT_DATE")
-            if rd is not None:
-                fd.report_period = str(rd)[:10]
-            def _set(field: str, col: str, *, transform=float) -> None:
-                v = row.get(col)
-                if pd.notna(v):
-                    setattr(fd, field, transform(v))
-            def _ok_mul(v, cond):
-                return float(v) if cond else 0
+        for _, pr in p_df.head(years).iterrows():
+            y = self._yr(pr.get("REPORT_DATE"))
+            fd = FinancialData(symbol=symbol, report_period=y, source="akshare(东方财富)")
 
-            _set("revenue", "TOTAL_OPERATE_INCOME",
-                 transform=lambda v: _ok_mul(v, float(v) > 0))
-            _set("revenue_yoy", "TOTAL_OPERATE_INCOME_YOY",
-                 transform=lambda v: _ok_mul(v, float(v) != 0))
-            _set("net_profit", "NETPROFIT",
-                 transform=lambda v: _ok_mul(v, float(v) != 0))
-            _set("net_profit_yoy", "NETPROFIT_YOY")
-            _set("eps", "BASIC_EPS", transform=lambda v: float(v) if float(v) > 0 else 0)
-            _set("total_assets", "TOTAL_ASSETS")
-            _set("total_liabilities", "TOTAL_LIABILITIES")
-            _set("operating_cf", "NETCASH_OPERATE")
-            if fd.total_assets > 0:
-                fd.equity = fd.total_assets - fd.total_liabilities
-            if fd.net_profit != 0 and fd.equity > 0:
-                fd.roe = round(fd.net_profit / fd.equity * 100, 2)
+            rev = pr.get("TOTAL_OPERATE_INCOME")
+            if pd.notna(rev) and float(rev) > 0:
+                fd.revenue = float(rev)
+            rey = pr.get("TOTAL_OPERATE_INCOME_YOY")
+            if pd.notna(rey) and float(rey) != 0:
+                fd.revenue_yoy = float(rey)
+            np_ = pr.get("NETPROFIT")
+            if pd.notna(np_) and float(np_) != 0:
+                fd.net_profit = float(np_)
+            npy = pr.get("NETPROFIT_YOY")
+            if pd.notna(npy) and float(npy) != 0:
+                fd.net_profit_yoy = float(npy)
+            eps = pr.get("BASIC_EPS")
+            if pd.notna(eps) and float(eps) > 0:
+                fd.eps = float(eps)
+
+            b_match = b_df[b_df["REPORT_DATE"].astype(str).str[:10] == y]
+            if not b_match.empty:
+                ta = b_match.iloc[0].get("TOTAL_ASSETS")
+                tl = b_match.iloc[0].get("TOTAL_LIABILITIES")
+                if pd.notna(ta):
+                    fd.total_assets = float(ta)
+                if pd.notna(tl):
+                    fd.total_liabilities = float(tl)
+                if fd.total_assets > 0:
+                    fd.equity = fd.total_assets - fd.total_liabilities
+                if fd.net_profit != 0 and fd.equity > 0:
+                    fd.roe = round(fd.net_profit / fd.equity * 100, 2)
+
+            c_match = c_df[c_df["REPORT_DATE"].astype(str).str[:10] == y]
+            if not c_match.empty:
+                ocf = c_match.iloc[0].get("NETCASH_OPERATE")
+                if pd.notna(ocf):
+                    fd.operating_cf = float(ocf)
             out.append(fd)
         return out
