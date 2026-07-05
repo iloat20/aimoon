@@ -95,7 +95,7 @@ def main() -> None:
     print(f"{'=' * 60}\n")
 
     try:
-        use_v2 = bool(args.use_v2) and not bool(args.legacy)
+        use_v2 = not bool(args.legacy)
         orchestrator = PipelineOrchestrator(
             output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2
         )
@@ -129,7 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  aimoon 000001             分析平安银行（真实数据+AI）
+  aimoon 000001             分析平安银行（真实数据+AI v2 默认）
+  aimoon 600519 --legacy    使用旧的一段式 AI 分析
   aimoon 600519 --mock      使用全模拟数据（无需API Key）
   aimoon 600519 --test      测试模式：采集真实数据但跳过AI分析
   aimoon 000858 -o ./reports  指定输出目录
@@ -144,9 +145,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-o", "--output", help="HTML报告输出目录")
     parser.add_argument("--version", action="version", version=f"aimoon {__version__}")
     parser.add_argument(
-        "--use-v2", action="store_true", help="启用 AI pipeline v2 五阶段分析"
-    )
-    parser.add_argument(
-        "--legacy", action="store_true", help="强制走旧链路(忽略 --use-v2)"
+        "--legacy", action="store_true", help="强制走旧链路(AI 一段式)"
     )
     return parser

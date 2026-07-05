@@ -30,7 +30,7 @@ class PipelineOrchestrator:
     """Coordinates the full pipeline by assembling adapters and calling application services."""
 
     def __init__(
-        self, output_dir: str | None = None, mock_mode: bool | None = None, use_v2: bool = False
+        self, output_dir: str | None = None, mock_mode: bool | None = None, use_v2: bool = True
     ) -> None:
         self._settings = get_settings()
         self._output_dir = output_dir
