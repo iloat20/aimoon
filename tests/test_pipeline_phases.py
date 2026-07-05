@@ -107,6 +107,27 @@ async def test_orchestrator_runs_all_phases_placeholder(_fake_analyzer):
     assert set(ctx["phase_results"].keys()) == {
         "plan", "collect", "analysis", "self_check", "compile"
     }
-    # SELF_CHECK / COMPILE are wired in Task 14 / 15; partial until then.
-    assert "self_check" in ctx["partial_phases"]
+    # SELF_CHECK wired in Task 14; COMPILE in Task 15 -> partial until then.
     assert "compile" in ctx["partial_phases"]
+
+
+def test_parse_self_check_json_strips_fences():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    text = (
+        '```json\n{"citations_ok": true, "tables_ok": true, "trigger_ok": true, '
+        '"advice_ok": true, "norepeat_ok": false, "fixes_needed": ["x"]}\n```'
+    )
+    parsed, err = _parse_self_check_json(text)
+    assert err is None
+    assert parsed is not None
+    assert parsed["norepeat_ok"] is False
+    assert parsed["fixes_needed"] == ["x"]
+
+
+def test_parse_self_check_json_invalid_returns_error():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    parsed, err = _parse_self_check_json("not json at all")
+    assert parsed is None
+    assert err is not None

@@ -13,6 +13,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -148,7 +149,9 @@ class PipelineOrchestrator:
             return await self._phase_collect(si, stock_md, prior)
         if phase == Phase.ANALYSIS:
             return await self._phase_analysis(si, stock_md, prior)
-        # SELF_CHECK / COMPILE filled in Task 14 / 15; placeholder for now.
+        if phase == Phase.SELF_CHECK:
+            return await self._phase_self_check(stock_md, prior)
+        # COMPILE filled in Task 15; placeholder for now.
         return {"output": "", "tool_results": {}, "partial": True, "note": "not_implemented"}
 
     async def _phase_plan(
@@ -241,6 +244,115 @@ class PipelineOrchestrator:
         text, search_results = await self._web_search_loop(messages, max_rounds=1)
         tool_results.update(search_results)
         return {"output": text, "tool_results": tool_results, "partial": partial}
+
+    async def _phase_self_check(
+        self,
+        stock_md: str,
+        prior: dict[str, object],
+    ) -> dict[str, object]:
+        """SELF_CHECK: 5 项 JSON 校验闭环。
+
+        把 ANALYSIS 草稿 + 强制校验清单喂给模型,要求返回结构化 JSON
+        {citations_ok, tables_ok, trigger_ok, advice_ok, norepeat_ok, fixes_needed[]}。
+        JSON 中任一项 false → 把 fixes_needed 注入 ANALYSIS 重跑一段(至多 1 次循环);
+        解析失败 → 重试一次(带错误提示) → 再失败降级 __partial__。
+        """
+        analysis_output = _phase_output_text(prior.get("analysis"))
+        schema_hint = (
+            "基于下方草稿与强制校验清单,仅输出 JSON Schema:\n"
+            '{"citations_ok": bool, "tables_ok": bool, "trigger_ok": bool, '
+            '"advice_ok": bool, "norepeat_ok": bool, "fixes_needed": [str]}\n'
+            "每项 false 必须列出 fixes_needed。"
+        )
+        system = phase_system_prompt(Phase.SELF_CHECK, stock_md, prior)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"# 分析草稿\n\n{analysis_output}"},
+            {"role": "user", "content": schema_hint},
+        ]
+        check, result = await self._run_self_check(messages)
+        if check is None:
+            return result  # already degraded to __partial__
+        # Gate: any false -> feed fixes back into ANALYSIS once, then re-check loosely.
+        fixes_raw = check.get("fixes_needed")
+        fixes = (
+            [str(f) for f in fixes_raw if isinstance(f, str)]
+            if isinstance(fixes_raw, list)
+            else []
+        )
+        gates_pass = bool(
+            check.get("citations_ok")
+            and check.get("tables_ok")
+            and check.get("trigger_ok")
+            and check.get("advice_ok")
+            and check.get("norepeat_ok")
+        )
+        if not gates_pass and fixes:
+            await self._reanalysis_with_fixes(stock_md, prior, fixes)
+        return result
+
+    async def _run_self_check(
+        self, messages: list[dict]
+    ) -> tuple[dict[str, object] | None, dict[str, object]]:
+        """请求并解析一次 SELF_CHECK JSON,解析失败重试一次。
+
+        返回 (parsed_check | None, phase_result)。None 表示校验不可用(已降级)。
+        """
+        partial_result: dict[str, object] = {
+            "output": "",
+            "tool_results": {},
+            "partial": True,
+            "checks": {},
+        }
+        parse_err: str | None = None
+        for attempt in range(2):
+            msgs = list(messages)
+            if parse_err is not None:
+                msgs.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"上次输出不是合法 JSON,解析错误: {parse_err}。"
+                            "请严格输出仅 JSON,不要 fences,不要解释。"
+                        ),
+                    }
+                )
+            text = await self._phase_self_check_request(msgs)
+            parsed, err = _parse_self_check_json(text)
+            if parsed is not None:
+                partial_result["partial"] = False
+                partial_result["checks"] = parsed
+                partial_result["output"] = text
+                return parsed, partial_result
+            parse_err = err
+        return None, partial_result
+
+    async def _phase_self_check_request(self, messages: list[dict]) -> str:
+        """一次非流式 LLM 调用,只返文本(禁用工具避免模型再发车)。"""
+        message = await self._llm_chat(messages, tools=None, tool_choice="none")
+        return (message.get("content") or "").strip()
+
+    async def _reanalysis_with_fixes(
+        self, stock_md: str, prior: dict[str, object], fixes: list[str]
+    ) -> str:
+        """把 fixes_needed 注入 ANALYSIS prompt 重跑一轮,返回新草稿文本(失败降级)。"""
+        fix_note = (
+            "以下校验未通过,请直接修改草稿以解决这些点,仅输出修改后的完整 Markdown 草稿:\n"
+            + "\n".join(f"- {f}" for f in fixes)
+        )
+        analysis_output = _phase_output_text(prior.get("analysis"))
+        system = phase_system_prompt(Phase.ANALYSIS, stock_md, prior)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"# 当前草稿\n\n{analysis_output}"},
+            {"role": "user", "content": fix_note},
+        ]
+        try:
+            text, _ = await self._web_search_loop(messages, max_rounds=1)
+            return text or analysis_output
+        except Exception as e:  # broad tolerance: keep original draft on failure
+            logger.warning("[pipeline] reanalysis_with_fixes 失败 %s: %s", type(e).__name__, e)
+            return analysis_output
 
     # ---- LLM helpers ------------------------------------------------------
 
@@ -366,6 +478,13 @@ def _is_partial(tool_value: object) -> bool:
     return isinstance(tool_value, dict) and "__partial__" in tool_value
 
 
+def _phase_output_text(phase_result: object) -> str:
+    """从 prior 的阶段结果中安全提取 output 文本。"""
+    if isinstance(phase_result, dict) and isinstance(phase_result.get("output"), str):
+        return phase_result["output"]
+    return ""
+
+
 async def _run_safe(fn, *args) -> dict[str, object]:
     """运行单个工具,任何异常都降级为 ``{"__partial__": <reason>}``。"""
     try:
@@ -418,6 +537,33 @@ def _phase_output(phase_result: object) -> dict[str, object]:
         return {}
     tr = phase_result.get("tool_results")
     return tr if isinstance(tr, dict) else {}
+
+
+_SELF_CHECK_KEYS = ("citations_ok", "tables_ok", "trigger_ok", "advice_ok", "norepeat_ok")
+
+
+def _parse_self_check_json(text: str) -> tuple[dict[str, object] | None, str | None]:
+    """解析 SELF_CHECK 模型输出为结构化 JSON。
+
+    自动剥离 ``` fences;字段缺失按 false 处理。返回 (parsed, error_msg)。
+    """
+    if not text:
+        return None, "empty"
+    stripped = text.strip()
+    stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+    stripped = re.sub(r"\s*```$", "", stripped)
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError as e:
+        return None, str(e)
+    if not isinstance(data, dict):
+        return None, "not_a_object"
+    parsed: dict[str, object] = {
+        k: bool(data.get(k, False)) for k in _SELF_CHECK_KEYS
+    }
+    fixes = data.get("fixes_needed", [])
+    parsed["fixes_needed"] = fixes if isinstance(fixes, list) else []
+    return parsed, None
 
 
 def _nested(data: dict[str, object] | None, *keys: str) -> Any:
