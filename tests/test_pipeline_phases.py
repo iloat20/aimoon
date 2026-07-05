@@ -36,3 +36,17 @@ async def test_fetch_history_returns_up_to_n_years():
 @pytest.mark.asyncio
 async def test_fetch_history_bad_symbol_returns_empty():
     assert await AkshareFinancialAdapter().fetch_history("999999", years=3) == []
+
+
+# ---- Task 3 ----
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_collect_all_populates_history_financial():
+    from aimoon.adapters.driven.collectors.composite_repo import CompositeStockAnalysisRepository
+
+    repo = CompositeStockAnalysisRepository(financial_collector=AkshareFinancialAdapter())
+    agg = await repo.collect_all("600519")
+    assert isinstance(agg.history_financial, list) and len(agg.history_financial) >= 1
+    assert agg.financial.report_period  # 旧字段仍在

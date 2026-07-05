@@ -8,6 +8,7 @@ CompositeStockAnalysisRepository 组合多个数据采集器，
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 import httpx
@@ -29,6 +30,8 @@ from .kline import KlineCollector
 from .quote import QuoteCollector
 from .research_report import ResearchReportCollector
 from .social_orchestrator import SocialMediaOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
 class CompositeStockAnalysisRepository(StockAnalysisRepository):
@@ -87,6 +90,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             self._kline_collector.fetch(symbol),
             self._capital_flow_collector.fetch(symbol),
             self._research_collector.fetch(symbol),
+            self._collect_history_financial(symbol),
             return_exceptions=True,
         )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -146,6 +150,18 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             fail="   研报: 获取失败。",
             elapsed_ms=elapsed_ms,
         )
+        history_raw = results[6]
+        if isinstance(history_raw, Exception):
+            logger.debug("[history] 历史财务采集失败: %s", history_raw)
+            print("   历史财务: 获取失败")
+            history = []
+        elif isinstance(history_raw, list) and (
+            not history_raw or isinstance(history_raw[0], FinancialData)
+        ):
+            history = history_raw
+            print(f"   历史财务: {len(history)} 年年报")
+        else:
+            history = []
 
         all_posts, social_results = await self._social_collector.collect(symbol, quote.name or name)
         self._collect_results.extend(social_results)
@@ -161,6 +177,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             capital_flow=capital_flow,
             social_posts=all_posts,
             research=research,
+            history_financial=history if isinstance(history, list) else [],
         )
 
     async def get_collect_results(self) -> list[CollectResult]:
@@ -217,6 +234,13 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         if self._financial_collector is not None:
             return await self._financial_collector.fetch_quarterly(symbol)
         return QuarterlyFinancialData(symbol=symbol)
+
+    async def _collect_history_financial(self, symbol: str) -> list[FinancialData]:
+        if self._financial_collector is not None and hasattr(
+            self._financial_collector, "fetch_history"
+        ):
+            return await self._financial_collector.fetch_history(symbol)
+        return []
 
     def _unwrap(
         self,
