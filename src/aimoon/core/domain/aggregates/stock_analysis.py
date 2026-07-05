@@ -35,6 +35,7 @@ class StockAnalysis(BaseModel):
     annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
     semi_annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
     quarterly_report: FinancialReportData = Field(default_factory=FinancialReportData)
+    history_financial: list[FinancialData] = Field(default_factory=list)  # 近 3 年报
     collected_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)  # noqa: UP017
     )
