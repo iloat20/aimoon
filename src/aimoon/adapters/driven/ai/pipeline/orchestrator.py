@@ -27,7 +27,7 @@ from .prompts import phase_system_prompt
 
 logger = logging.getLogger(__name__)
 
-MAX_TOTAL_SEC = 300  # 总硬上限 5 分钟
+MAX_TOTAL_SEC = 360  # 总硬上限 6 分钟(COMPILE 长稿放宽)
 
 
 class AnalyzerRuntime(Protocol):
@@ -460,6 +460,10 @@ class PipelineOrchestrator:
             },
             json=body,
         )
+        if resp.status_code >= 400:
+            logger.error(
+                "[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500]
+            )
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]
@@ -552,15 +556,22 @@ async def _run_peer_compare(
 
 
 def _tool_results_to_messages(tool_results: dict[str, object]) -> list[dict]:
-    """把 {name: result} 转成 role=tool 注入消息列表。"""
+    """把 {name: result} 转成注入消息列表。
+
+    注意:并行工具由 orchestrator 直接运行,模型从未发起这些调用。
+    因此不能用 ``role=tool`` + ``tool_call_id`` 注入(OpenAI/DeepSeek 协议要求
+    ``role=tool`` 必须紧跟一条含匹配 ``tool_calls`` 的 assistant 消息,
+    否则返回 400)。改用 ``role=user`` 把结果作为上下文喂给模型阅读。
+    """
     messages: list[dict] = []
     for name, value in tool_results.items():
         messages.append(
             {
-                "role": "tool",
-                "tool_call_id": f"srv_{name}",
-                "name": name,
-                "content": json.dumps(value, ensure_ascii=False, default=str),
+                "role": "user",
+                "content": (
+                    f"[并行工具结果: {name}]\n"
+                    f"{json.dumps(value, ensure_ascii=False, default=str)}"
+                ),
             }
         )
     return messages

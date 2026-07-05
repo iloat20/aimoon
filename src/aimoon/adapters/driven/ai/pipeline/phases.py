@@ -68,7 +68,7 @@ def get_pipeline_phases() -> list[PhaseSpec]:
         PhaseSpec(
             Phase.COMPILE,
             _load(Phase.COMPILE),
-            timeout_sec=60,
+            timeout_sec=200,
             required_outputs=["长 Markdown"],
         ),
     ]
