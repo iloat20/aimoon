@@ -345,6 +345,22 @@ class AkshareFinancialAdapter:
             return ""
         return str(date_val)[:10]
 
+    @staticmethod
+    def _first_positive(row: pd.Series, cols: list[str]) -> tuple[float | None, str | None]:
+        """按优先级找第一个 >0 的字段值,返回 (value, column_name)。
+        找不到返回 (None, None)。
+        """
+        for c in cols:
+            if c not in row.index:
+                continue
+            v = row.get(c)
+            try:
+                if pd.notna(v) and float(v) > 0:
+                    return float(v), c
+            except (TypeError, ValueError):
+                continue
+        return None, None
+
     def _merge_statements(
         self, symbol: str, years: int,
         p_df: pd.DataFrame | None, b_df: pd.DataFrame | None, c_df: pd.DataFrame | None,
@@ -357,10 +373,25 @@ class AkshareFinancialAdapter:
             y = self._yr(pr.get("REPORT_DATE"))
             fd = FinancialData(symbol=symbol, report_period=y, source="akshare(东方财富)")
 
-            rev = pr.get("TOTAL_OPERATE_INCOME")
-            if pd.notna(rev) and float(rev) > 0:
+            # 收入字段按行业 fallback:
+            #   通用行业: TOTAL_OPERATE_INCOME
+            #   金融行业(保险/银行/证券): OPERATE_INCOME → INSURANCE_INCOME → BANK_INTEREST_INCOME
+            rev, rev_src = self._first_positive(
+                pr,
+                [
+                    "TOTAL_OPERATE_INCOME",
+                    "OPERATE_INCOME",
+                    "INSURANCE_INCOME",
+                    "EARNED_PREMIUM",
+                    "BANK_INTEREST_INCOME",
+                    "FEE_AND_COMMISSION_INCOME",
+                ],
+            )
+            if rev is not None:
                 fd.revenue = float(rev)
-            rey = pr.get("TOTAL_OPERATE_INCOME_YOY")
+            rey = pr.get(f"{rev_src}_YOY") if rev_src else None
+            if rey is None:
+                rey = pr.get("TOTAL_OPERATE_INCOME_YOY")
             if pd.notna(rey) and float(rey) != 0:
                 fd.revenue_yoy = float(rey)
             np_ = pr.get("NETPROFIT")
