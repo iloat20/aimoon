@@ -113,6 +113,54 @@ class TestDeepSeekAIAnalyzer:
         assert result.report_text == report.report_text
 
 
+# ---- Task 11: use_pipeline_v2 routing ----
+
+
+def _make_si() -> object:
+    from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+
+    return StockAnalysis(symbol="600519", name="贵州茅台")
+
+
+@pytest.mark.asyncio
+async def test_analyze_routes_to_legacy_when_flag_false():
+    from unittest.mock import AsyncMock, patch
+
+    from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
+    from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
+
+    leg = AnalysisReport(
+        symbol="600519", name="贵州茅台", summary="leg", report_text="leg", investment_advice="x"
+    )
+    with patch.object(DeepSeekAIAnalyzer, "_legacy_analyze", new_callable=AsyncMock) as m:
+        m.return_value = leg
+        az = DeepSeekAIAnalyzer(mock=True)
+        out = await az.analyze(_make_si(), use_pipeline_v2=False)
+        m.assert_called_once()
+        assert out.report_text == "leg"
+
+
+@pytest.mark.asyncio
+async def test_analyze_routes_to_pipeline_when_flag_true():
+    from unittest.mock import AsyncMock, patch
+
+    from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
+    from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
+
+    v2 = AnalysisReport(
+        symbol="600519", name="贵州茅台", summary="v2", report_text="v2", investment_advice="x"
+    )
+    with (
+        patch.object(DeepSeekAIAnalyzer, "_legacy_analyze", new_callable=AsyncMock),
+        patch.object(DeepSeekAIAnalyzer, "_pipeline_analyze", new_callable=AsyncMock) as m2,
+    ):
+        m2.return_value = v2
+        az = DeepSeekAIAnalyzer(mock=True)
+        out = await az.analyze(_make_si(), use_pipeline_v2=True)
+        m2.assert_called_once()
+        assert out.report_text == "v2"
+
+
 class TestReportGenerator:
     """Test HTML report generation."""
 

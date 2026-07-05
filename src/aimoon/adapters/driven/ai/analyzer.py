@@ -84,6 +84,23 @@ def _strip_xml_tool_calls(text: str) -> str:
     return text.strip()
 
 
+def _build_fallback_report(stock_info: StockAnalysis) -> str:
+    """Generate a degraded Markdown summary when the v2 pipeline produces no text.
+
+    Never raises: returns a short, always-valid Markdown string assembled from
+    whatever domain data is available.
+    """
+    lines = [f"# {stock_info.name or stock_info.symbol} 分析（降级）"]
+    quote = stock_info.quote
+    if quote and quote.price:
+        lines.append(f"- 最新价: {quote.price} | 涨跌: {quote.change_pct}%")
+    fin = stock_info.financial
+    if fin and fin.report_period:
+        lines.append(f"- 报告期: {fin.report_period}")
+    lines.append("\n> 本次分析未能生成完整报告，以下为已采集基础数据汇总。")
+    return "\n".join(lines)
+
+
 def _deduplicate_tail(text: str) -> str:
     """Remove repeated blocks at the end of the response.
 
@@ -149,8 +166,25 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         stock_info: StockAnalysis,
         reports: dict | None = None,
         financial_md_path: Path | None = None,
+        *,
+        use_pipeline_v2: bool = False,
     ) -> AnalysisReport:
-        """AI analysis entry point - receives domain entity, returns AnalysisReport."""
+        """AI analysis entry point - receives domain entity, returns AnalysisReport.
+
+        When ``use_pipeline_v2`` is True, run the 5-phase pipeline orchestrator;
+        otherwise preserve the existing single-shot behavior (``_legacy_analyze``).
+        Old callers (without the kwarg) work identically — DEFAULT OFF.
+        """
+        if use_pipeline_v2:
+            return await self._pipeline_analyze(stock_info, reports, financial_md_path)
+        return await self._legacy_analyze(stock_info, reports, financial_md_path)
+
+    async def _legacy_analyze(
+        self,
+        stock_info: StockAnalysis,
+        reports: dict | None = None,
+        financial_md_path: Path | None = None,
+    ) -> AnalysisReport:
         if self._mock:
             from ..collectors.mock import mock_analysis_report
 
@@ -205,6 +239,59 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             result, stock_info.quote.price if stock_info.quote else None
         )
         return result
+
+    def _build_report(self, stock_info: StockAnalysis, md: str) -> AnalysisReport:
+        """Assemble a finalized ``AnalysisReport`` from raw Markdown output.
+
+        Reuses the same summary-cleanup + support/resistance sanity path as the
+        legacy analyzer so v2 output is subject to the same post-processing.
+        """
+        short = md[:200]
+        short = re.sub(r"\*\*(.*?)\*\*", r"\1", short)
+        short = re.sub(r"##?\s*", "", short)
+        short = re.sub(r"\* ", "• ", short)
+        if len(md) > 200:
+            short += "..."
+        result = AnalysisReport(
+            symbol=stock_info.symbol,
+            name=stock_info.name,
+            summary=short,
+            report_text=md,
+            investment_advice="本报告由DeepSeek AI自动生成，仅供参考，不构成投资建议。",
+        )
+        return self._sanitize_support_resistance(
+            result, stock_info.quote.price if stock_info.quote else None
+        )
+
+    async def _pipeline_analyze(
+        self,
+        stock_info: StockAnalysis,
+        reports: dict | None = None,
+        financial_md_path: Path | None = None,
+    ) -> AnalysisReport:
+        """5-phase pipeline v2 analysis entry (Task 12+).
+
+        Receives the same inputs as ``_legacy_analyze`` but forwards them to
+        ``PipelineOrchestrator``, which runs PLAN → COLLECT → ANALYSIS →
+        SELF_CHECK → COMPILE and returns ``final_markdown``. The L1 disk cache
+        (``cache.py``) is reused; on orchestrator failure a degraded fallback
+        report is produced so the pipeline never aborts.
+        """
+        from .pipeline.orchestrator import PipelineOrchestrator
+
+        ctx: dict = {}
+        try:
+            ctx = await PipelineOrchestrator(self).run(
+                stock_info, reports=reports, financial_md_path=financial_md_path
+            )
+        except Exception as e:
+            logging.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
+        text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
+        if not text:
+            text = _build_fallback_report(stock_info)
+        from .cache import set_analysis_cache
+        set_analysis_cache(stock_info.symbol, text)
+        return self._build_report(stock_info, text)
 
     async def _call_deepseek(self, stock_code: str, stock_name: str, collected_data: dict) -> str:
         """Call DeepSeek API with streaming + tool calling."""
