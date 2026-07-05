@@ -305,3 +305,54 @@ class AkshareFinancialAdapter:
         except Exception as e:
             logger.debug("[akshare] capital_flow failed for %s: %s", symbol, e)
             return {}
+
+    async def fetch_history(self, symbol: str, years: int = 3) -> list[FinancialData]:
+        """拉取近 N 年年报(profit_sheet),按报告期降序返回。
+
+        任何异常均兜底返回 [],保证 pipiline v2 不因历史采集失败中断。
+        """
+        prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
+        try:
+            df = await asyncio.to_thread(ak.stock_profit_sheet_by_report_em, f"{prefix}{symbol}")
+        except Exception as e:
+            logger.debug("[akshare] fetch_history failed: %s", e)
+            return []
+        if df is None or df.empty:
+            return []
+        if "REPORT_TYPE" in df.columns:
+            df = df[df["REPORT_TYPE"] == "年报"]
+        if "REPORT_DATE" in df.columns:
+            df = df.sort_values("REPORT_DATE", ascending=False)
+        return self._parse_top_n(df, symbol, years)
+
+    def _parse_top_n(self, df: pd.DataFrame, symbol: str, n: int) -> list[FinancialData]:
+        out: list[FinancialData] = []
+        for _, row in df.head(n).iterrows():
+            fd = FinancialData(symbol=symbol, source="akshare(东方财富)")
+            rd = row.get("REPORT_DATE")
+            if rd is not None:
+                fd.report_period = str(rd)[:10]
+            def _set(field: str, col: str, *, transform=float) -> None:
+                v = row.get(col)
+                if pd.notna(v):
+                    setattr(fd, field, transform(v))
+            def _ok_mul(v, cond):
+                return float(v) if cond else 0
+
+            _set("revenue", "TOTAL_OPERATE_INCOME",
+                 transform=lambda v: _ok_mul(v, float(v) > 0))
+            _set("revenue_yoy", "TOTAL_OPERATE_INCOME_YOY",
+                 transform=lambda v: _ok_mul(v, float(v) != 0))
+            _set("net_profit", "NETPROFIT",
+                 transform=lambda v: _ok_mul(v, float(v) != 0))
+            _set("net_profit_yoy", "NETPROFIT_YOY")
+            _set("eps", "BASIC_EPS", transform=lambda v: float(v) if float(v) > 0 else 0)
+            _set("total_assets", "TOTAL_ASSETS")
+            _set("total_liabilities", "TOTAL_LIABILITIES")
+            _set("operating_cf", "NETCASH_OPERATE")
+            if fd.total_assets > 0:
+                fd.equity = fd.total_assets - fd.total_liabilities
+            if fd.net_profit != 0 and fd.equity > 0:
+                fd.roe = round(fd.net_profit / fd.equity * 100, 2)
+            out.append(fd)
+        return out

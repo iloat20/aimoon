@@ -106,6 +106,7 @@ disable = [
 addopts = "--basetemp=.pytest-tmp"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = ["ignore::UserWarning:py_mini_racer"]
+markers = ["integration: network-dependent integration tests (akshare, live pipeline)"]
 
 [dependency-groups]
 dev = [
