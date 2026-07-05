@@ -29,10 +29,13 @@ from aimoon.core.application.services import collect_and_analyze
 class PipelineOrchestrator:
     """Coordinates the full pipeline by assembling adapters and calling application services."""
 
-    def __init__(self, output_dir: str | None = None, mock_mode: bool | None = None) -> None:
+    def __init__(
+        self, output_dir: str | None = None, mock_mode: bool | None = None, use_v2: bool = False
+    ) -> None:
         self._settings = get_settings()
         self._output_dir = output_dir
         self._mock_mode = mock_mode if mock_mode is not None else self._settings.mock_mode
+        self._use_v2 = use_v2
 
     async def run(self, symbol: str, name: str, *, skip_ai: bool = False) -> Path:
         """Run full pipeline with real data collection."""
@@ -57,6 +60,7 @@ class PipelineOrchestrator:
                     report_generator=report_generator,
                     output_dir=self._output_dir,
                     skip_ai=skip_ai,
+                    use_pipeline_v2=self._use_v2,
                 )
             finally:
                 # Close Playwright browser to prevent Python 3.13 cleanup warning

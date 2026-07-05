@@ -52,25 +52,7 @@ def main() -> None:
     # Suppress harmless Python 3.13 asyncio slow-task warnings
     warnings.filterwarnings("ignore", category=Warning, module="asyncio")
     _suppress_asyncio_pipe_warning()
-    parser = argparse.ArgumentParser(
-        description="aimoon - A股AI分析工具",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  aimoon 000001             分析平安银行（真实数据+AI）
-  aimoon 600519 --mock      使用全模拟数据（无需API Key）
-  aimoon 600519 --test      测试模式：采集真实数据但跳过AI分析
-  aimoon 000858 -o ./reports  指定输出目录
-        """,
-    )
-    parser.add_argument("symbol", nargs="*", help="A股股票代码，如 000001, 600519")
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--mock", action="store_true", help="使用模拟数据模式（无需真实API）")
-    mode_group.add_argument(
-        "--test", action="store_true", help="测试模式：采集真实数据但跳过AI分析"
-    )
-    parser.add_argument("-o", "--output", help="HTML报告输出目录")
-    parser.add_argument("--version", action="version", version=f"aimoon {__version__}")
+    parser = build_parser()
 
     args = parser.parse_args()
     raw_args: list[str] = args.symbol or []
@@ -113,7 +95,10 @@ def main() -> None:
     print(f"{'=' * 60}\n")
 
     try:
-        orchestrator = PipelineOrchestrator(output_dir=args.output, mock_mode=mock_mode)
+        use_v2 = bool(args.use_v2) and not bool(args.legacy)
+        orchestrator = PipelineOrchestrator(
+            output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2
+        )
         if mock_mode:
             out = asyncio.run(orchestrator.run_mock(parsed_symbol, name))
         else:
@@ -135,3 +120,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Construct the aimoon CLI argument parser (extracted for testing)."""
+    parser = argparse.ArgumentParser(
+        description="aimoon - A股AI分析工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  aimoon 000001             分析平安银行（真实数据+AI）
+  aimoon 600519 --mock      使用全模拟数据（无需API Key）
+  aimoon 600519 --test      测试模式：采集真实数据但跳过AI分析
+  aimoon 000858 -o ./reports  指定输出目录
+        """,
+    )
+    parser.add_argument("symbol", nargs="*", help="A股股票代码，如 000001, 600519")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--mock", action="store_true", help="使用模拟数据模式（无需真实API）")
+    mode_group.add_argument(
+        "--test", action="store_true", help="测试模式：采集真实数据但跳过AI分析"
+    )
+    parser.add_argument("-o", "--output", help="HTML报告输出目录")
+    parser.add_argument("--version", action="version", version=f"aimoon {__version__}")
+    parser.add_argument(
+        "--use-v2", action="store_true", help="启用 AI pipeline v2 五阶段分析"
+    )
+    parser.add_argument(
+        "--legacy", action="store_true", help="强制走旧链路(忽略 --use-v2)"
+    )
+    return parser

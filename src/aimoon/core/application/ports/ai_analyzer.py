@@ -21,6 +21,8 @@ class AIAnalyzer(ABC):
         stock_info: StockAnalysis,
         reports: dict | None = None,
         financial_md_path: Path | None = None,
+        *,
+        use_pipeline_v2: bool = False,
     ) -> AnalysisReport:
         """对股票信息进行 AI 分析。
 

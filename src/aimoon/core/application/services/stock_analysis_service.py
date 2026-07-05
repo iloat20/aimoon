@@ -27,6 +27,8 @@ async def collect_and_analyze(
     report_generator: ReportGenerator,
     output_dir: str | None = None,
     skip_ai: bool = False,
+    *,
+    use_pipeline_v2: bool = False,
 ) -> Path:
     """完整流水线：采集 → 验证 → AI分析 → 生成报告。
 
@@ -39,6 +41,7 @@ async def collect_and_analyze(
         report_generator: 报告生成器
         output_dir: 输出目录，可选
         skip_ai: 是否跳过AI分析
+        use_pipeline_v2: 启用 AI pipeline v2 五阶段分析
 
     Returns:
         生成的报告文件路径
@@ -56,7 +59,9 @@ async def collect_and_analyze(
         analysis = _fallback_analysis(stock_analysis)
     else:
         logging.info("AI分析中...")
-        analysis = await _run_ai_analysis(stock_analysis, ai_analyzer)
+        analysis = await _run_ai_analysis(
+            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2
+        )
 
     analysis = analysis.model_copy(
         update={
@@ -84,6 +89,7 @@ async def analyze_stock(
     data_validator: DataValidator,
     *,
     skip_ai: bool = False,
+    use_pipeline_v2: bool = False,
 ) -> AnalysisReport:
     """仅分析：验证 → AI分析。
 
@@ -106,7 +112,9 @@ async def analyze_stock(
         analysis = _fallback_analysis(stock_analysis)
     else:
         logging.info("AI分析中...")
-        analysis = await _run_ai_analysis(stock_analysis, ai_analyzer)
+        analysis = await _run_ai_analysis(
+            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2
+        )
 
     analysis = analysis.model_copy(
         update={
@@ -143,11 +151,11 @@ def _validate_data(
 
 
 async def _run_ai_analysis(
-    stock_analysis: StockAnalysis, ai_analyzer: AIAnalyzer
+    stock_analysis: StockAnalysis, ai_analyzer: AIAnalyzer, *, use_pipeline_v2: bool = False
 ) -> AnalysisReport:
     """执行AI分析，失败时返回降级结果。"""
     try:
-        analysis = await ai_analyzer.analyze(stock_analysis)
+        analysis = await ai_analyzer.analyze(stock_analysis, use_pipeline_v2=use_pipeline_v2)
     except Exception as e:
         logging.warning("[ai_analyze_stock] %s: %s", type(e).__name__, e)
         analysis = _fallback_analysis(stock_analysis)
