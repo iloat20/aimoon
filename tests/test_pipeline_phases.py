@@ -102,33 +102,26 @@ class _FakeAnalyzer:
 def _fake_analyzer(monkeypatch):
     fake = _FakeAnalyzer()
 
-    async def _fake_llm_chat(self, messages, *, tools=None, tool_choice="auto"):
-        return {
-            "role": "assistant",
-            "content": (
-                "# 分析草稿\n\n(fake draft)\n\n"
-                "```json\n"
-                '{"citations_ok": true, "tables_ok": true, "trigger_ok": true, '
-                '"advice_ok": true, "norepeat_ok": true, "justified_ok": true, '
-                '"fixes_needed": []}\n'
-                "```"
-            ),
-        }
+    async def _fake_call_llm(self, messages, *, max_tokens=None, thinking_budget=500):
+        return {"role":"assistant","content":(
+            "# 分析草稿\n\n(fake)\n\n"
+            "```json\n"
+            '{"citations_ok":true,"tables_ok":true,"trigger_ok":true,'
+            '"advice_ok":true,"financial_depth_ok":true,"business_depth_ok":true,'
+            '"norepeat_ok":true,"justified_ok":true,"fixes_needed":[]}\n'
+            "```"
+        )}
 
-    def _fake_run_safe(fn, *args):
-        async def _inner():
-            return {"_fake": True, "tool": getattr(fn, "__name__", str(fn))}
-        return _inner()
+    async def _fake_stream_llm(self, messages, *, max_tokens=None, thinking_budget=800):
+        return "[compiled fake markdown]"
 
-    def _fake_peer_compare(si, search_fn):
-        async def _inner():
-            return {"_fake": True, "tool": "peer_compare"}
-        return _inner()
+    def _fake_peer_compare_module(si, search_fn):
+        return {"_fake": True, "tool": "peer_compare"}
 
-    monkeypatch.setattr(PipelineOrchestrator, "_llm_chat", _fake_llm_chat)
+    monkeypatch.setattr(PipelineOrchestrator, "_call_llm_with_stream", _fake_call_llm)
+    monkeypatch.setattr(PipelineOrchestrator, "_stream_llm", _fake_stream_llm)
     import aimoon.adapters.driven.ai.pipeline.orchestrator as _orch_mod
-    monkeypatch.setattr(_orch_mod, "_run_safe", _fake_run_safe)
-    monkeypatch.setattr(_orch_mod, "_run_peer_compare", _fake_peer_compare)
+    monkeypatch.setattr(_orch_mod, "_run_peer_compare", _fake_peer_compare_module)
     return fake
 
 

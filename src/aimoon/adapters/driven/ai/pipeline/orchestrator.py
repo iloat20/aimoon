@@ -167,8 +167,13 @@ class PipelineOrchestrator:
         ]
 
         # 3. LLM 一轮产出完整 Markdown 草稿(禁用 tool_choice 避免搜索循环)
-        draft, _ = await self._web_search_loop(messages, max_rounds=1)
-        if not draft.strip():
+        try:
+            message = await self._call_llm_with_stream(messages, thinking_budget=500)
+            draft = (message.get("content") or "").strip()
+        except Exception as e:
+            logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
+            draft = ""
+        if not draft:
             logger.warning("[pipeline] ANALYSIS 输出为空,标记降级")
             return {"output": "", "tool_results": tool_results,
                     "partial": True, "checks": {}, "empty_analysis": True}
@@ -241,7 +246,8 @@ class PipelineOrchestrator:
             {"role": "user", "content": "# 修改要求\n\n" + fix_note},
         ]
         try:
-            text, _ = await self._web_search_loop(messages, max_rounds=1)
+            message = await self._call_llm_with_stream(messages, thinking_budget=500)
+            text = (message.get("content") or "").strip()
             return text or ""
         except Exception as e:
             logger.warning("[pipeline] reanalysis 失败 %s: %s", type(e).__name__, e)
@@ -268,10 +274,65 @@ class PipelineOrchestrator:
         stripped = _strip_xml(text) if text else ""
         return {"output": stripped or text, "tool_results": {}, "partial": False}
 
-    # ---- LLM helpers ------------------------------------------------------
+    async def _call_llm_with_stream(self, messages: list[dict], *,
+                                     max_tokens: int | None = None,
+                                     thinking_budget: int = 500) -> dict:
+        """单次 LLM 调用 wrapper,带 thinking budget + 300s timeout。"""
+        import httpx as _httpx
+        analyzer = self.analyzer
+        settings = analyzer._provided_settings or analyzer._settings
+        body: dict[str, object] = {
+            "model": settings.deepseek_model, "messages": messages,
+            "temperature": settings.deepseek_temperature,
+            "max_tokens": max_tokens or min(settings.deepseek_max_tokens, 4096),
+            "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
+        }
+        async with _httpx.AsyncClient(timeout=300.0) as http:
+            resp = await http.post(analyzer.api_url,
+                                   headers={"Authorization": f"Bearer {analyzer.api_key}",
+                                            "Content-Type": "application/json"},
+                                   json=body)
+        if resp.status_code >= 400:
+            logger.error("[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500])
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]
 
-    async def _web_search_loop(self, messages: list[dict],
-                                max_rounds: int) -> tuple[str, dict[str, object]]:
+    async def _stream_llm(self, messages: list[dict], *,
+                          max_tokens: int | None = None,
+                          thinking_budget: int = 800) -> str:
+        """流式 LLM 调用,适用于 COMPILE 期(终稿输出需要流式累积)。"""
+        import httpx as _httpx
+        analyzer = self.analyzer
+        settings = analyzer._provided_settings or analyzer._settings
+        body: dict[str, object] = {
+            "model": settings.deepseek_model, "messages": messages,
+            "temperature": settings.deepseek_temperature,
+            "max_tokens": max_tokens or min(settings.deepseek_max_tokens, 4096),
+            "stream": True,
+            "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
+        }
+        full_text: list[str] = []
+        async with _httpx.AsyncClient(timeout=300.0) as http:
+            async with http.stream("POST", analyzer.api_url,
+                                   headers={"Authorization": f"Bearer {analyzer.api_key}",
+                                            "Content-Type": "application/json"},
+                                   json=body) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload)
+                        delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                        content = delta.get("content")
+                        if content:
+                            full_text.append(content)
+                    except json.JSONDecodeError:
+                        continue
+        return "".join(full_text)
         """单次文本输出,禁用 tool_choice 避免搜索循环。
 
         当 ANALYSIS / COMPILE prompt 已经有充足的硬数据注入时,让模型自由调
@@ -290,37 +351,11 @@ class PipelineOrchestrator:
     async def _llm_chat(self, messages: list[dict], *,
                         tools: list[dict] | None = None,
                         tool_choice: str = "auto",
-                        max_tokens: int | None = None) -> dict:
-        analyzer = self.analyzer
-        settings = analyzer._provided_settings or analyzer._settings
-        body: dict[str, object] = {
-            "model": settings.deepseek_model,
-            "messages": messages,
-            "temperature": settings.deepseek_temperature,
-            "max_tokens": max_tokens or min(settings.deepseek_max_tokens, 4096),
-        }
-        if tools:
-            body["tools"] = tools
-            body["tool_choice"] = tool_choice
-        # 使用独立 HTTP client(300s timeout):LLM 长响应时 analyzer._http(180s)会 timeout
-        import httpx as _httpx
-        async with _httpx.AsyncClient(timeout=300.0) as http:
-            resp = await http.post(
-                analyzer.api_url,
-                headers={
-                    "Authorization": f"Bearer {analyzer.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
-        if resp.status_code >= 400:
-            logger.error("[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500])
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]
-
-    # ---- context rendering ------------------------------------------------
-
+                        max_tokens: int | None = None,
+                        thinking_budget: int = 500) -> dict:
+        """单次文本输出 LLM 调用(非流式),带独立 HTTP client(300s timeout)。"""
+        return await self._call_llm_with_stream(messages, max_tokens=max_tokens,
+                                                 thinking_budget=thinking_budget)
     def _render_stock_context(self, si: StockAnalysis, reports: dict | None,
                               financial_md_path: Path | None) -> str:
         data = self.analyzer._build_data_dict(si, reports, financial_md_path)
