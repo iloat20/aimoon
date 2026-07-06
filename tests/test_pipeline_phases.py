@@ -133,24 +133,3 @@ async def test_orchestrator_runs_two_phases(_fake_analyzer):
     # ANALYSIS + COMPILE 两阶段都登记在 phase_results 里
     assert "analysis" in ctx["phase_results"]
     assert "compile" in ctx["phase_results"]
-
-
-def test_parse_self_check_json_strips_fences():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
-
-    text = (
-        '```json\n{"citations_ok": true, "tables_ok": true, "trigger_ok": true, '
-        '"advice_ok": true, "norepeat_ok": false, "fixes_needed": ["x"]}\n```'
-    )
-    parsed, fixes = _parse_self_check_json(text)
-    assert parsed is not None
-    assert parsed["norepeat_ok"] is False
-    assert fixes == ["x"]
-
-
-def test_parse_self_check_json_invalid_returns_error():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
-
-    parsed, err = _parse_self_check_json("not json at all")
-    assert parsed is None
-    assert err is not None

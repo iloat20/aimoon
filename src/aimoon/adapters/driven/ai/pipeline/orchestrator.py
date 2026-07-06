@@ -21,8 +21,13 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
 from .phases import Phase, phase_system_prompt
-from .tool_cache import get_cached_tool_results, set_cached_tool_results
+from .table_renderer import (
+    render_financial_temporal,
+    render_peer_comparison,
+    render_valuation_targets,
+)
 from .timing import logphase
+from .tool_cache import get_cached_tool_results, set_cached_tool_results
 
 logger = logging.getLogger(__name__)
 
@@ -35,27 +40,26 @@ _TB_ANALYSIS = 500
 _TB_ANALYSIS_RETRY = 700
 _TB_SELF_CHECK = 200
 _TB_COMPILE = 300
-_TB_SINGLE_CALL = 250  # 结构模板化输出,thinking 低也节省 token 费用
+_TB_SINGLE_CALL = 200  # 模板化输出 3000-4500 字,无需深度推理;省 token 费用
 _TB_SINGLE_CALL_RETRY = 400  # 重试时适度放宽
 
-# single-call 模式: 追加在 ANALYSIS system 末尾,要求模型在报告末尾内联自检 JSON
-# (省去独立 self-check + COMPILE 两次 LLM 调用,合并为一次产出)。
-_SELF_CHECK_INLINE_SUFFIX = (
-    "\n\n## 自检(JSON,必须放在整篇报告最后)\n"
-    "完成上面所有章节后,在文档**最末尾**(第三张表之后)追加一块自检 JSON。"
-    "只追加这一处 JSON,不要在报告中其他地方再输出 JSON。严格输出以下 JSON Schema"
-    "(不要 fences,不要其他内容):\n"
-    '{"citations_ok": bool, "tables_ok": bool, "trigger_ok": bool, '
-    '"advice_ok": bool, "financial_depth_ok": bool, "business_depth_ok": bool, '
-    '"norepeat_ok": bool, "justified_ok": bool, "fixes_needed": [str]}\n'
-    "每一项 true=通过,false=未通过;false 时 fixes_needed 必须列出具体修复点(中文,≤40 字/条)。"
-)
+# 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
+# 替换 system 模板占位符 `{{ sections }}` 的同时,作为 sections_list 注入
+# 到 user message,让模型直接按自检 JSON 前的自然章节顺序输出。
+# 标题之外的细节要求(1000 字/三张表/FCFE 三档…)交给工具数据 + 三要素规则驱动,
+# 不再写入 prompt,以压缩输入 token。
+_REPORT_SECTIONS = [
+    ("一", "业务画像与护城河"),
+    ("二", "财务健康诊断"),
+    ("三", "交叉验证"),
+    ("四", "风险量化与看空逻辑"),
+    ("五", "估值建模"),
+    ("六", "逆向视角"),
+    ("七", "投资建议"),
+    ("八", "附录"),
+]
+_SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
 
-# 运行时硬门控(prompt 级约束 financial/business_depth 不参与判定 → 少误杀)
-_REQUIRED_GATES = (
-    "citations_ok", "tables_ok", "trigger_ok", "advice_ok",
-    "norepeat_ok", "justified_ok",
-)
 
 
 class AnalyzerRuntime(Protocol):
@@ -225,136 +229,85 @@ class PipelineOrchestrator:
             if not partial:
                 set_cached_tool_results(si, tool_results)
 
-        # 2. 拼装注入 tool_result 的 messages(role=user 上下文)
-        tool_ctx = {**prior, "tools_output": tool_results}
-        system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
-        # single-call 模式: 在 system 末尾追加自检 JSON 内联约束(合并两次 LLM 调用)
+        # 2. 渲染核心表格(Python 模板,0 LLM token)+ 工具摘要(非表格部分)
+        tables_md = "\n\n".join(
+            [
+                render_financial_temporal(fin),
+                render_peer_comparison(peer),
+                render_valuation_targets(val),
+            ]
+        )
+        summary = _extract_tool_summary(
+            {
+                "technicals": tech,
+                "financial_temporal": fin,
+                "peer_compare": peer,
+                "risk_quant": risk,
+                "valuation": val,
+                "business_moat": moat,
+            }
+        )
+
+        # 3. Hybrid user message: snapshot + 已渲染表格 + 工具摘要(无完整 JSON)
+        #    模型只需做分析对比,不需要重新生成表格数字(否则会与 tables_md 重复)。
+        tool_ctx = {**prior, "tables_md": tables_md, "summary": summary}
+        system = phase_system_prompt(
+            Phase.ANALYSIS, stock_md, tool_ctx
+        ).replace("{{ sections }}", _SECTIONS_MD)
         if use_single_call:
             system = system + _SELF_CHECK_INLINE_SUFFIX
-        injected = _tool_results_to_messages(tool_results)
+        # user message 不再注入完整 tool JSON(这是旧架构的主要浪费)。
+        user_content = (
+            f"{stock_md}\n\n"
+            f"# 已渲染表格\n{tables_md}\n\n"
+            f"# 工具摘要\n{summary}\n\n"
+            f"# 输出章节结构(按此顺序,不可省略)\n{_SECTIONS_MD}"
+        )
         messages = [
             {"role": "system", "content": system},
-            {"role": "user", "content": stock_md},
-            *injected,
+            {"role": "user", "content": user_content},
         ]
 
-        # 3. LLM 产出完整 Markdown 草稿(禁用 tool_choice 避免搜索循环)
-        #    空输出重试至多 2 次,重试时提高 thinking_budget 让模型想更久 + 避限流
-        draft = ""
-        for _attempt in range(3):
-            try:
-                if use_single_call:
-                    tb = _TB_SINGLE_CALL_RETRY if _attempt > 0 else _TB_SINGLE_CALL
-                else:
-                    tb = _TB_ANALYSIS_RETRY if _attempt > 0 else _TB_ANALYSIS
-                message = await self._call_llm_with_stream(
-                    messages, max_tokens=16384 if use_single_call else None,
-                    thinking_budget=tb)
-                draft = (message.get("content") or "").strip()
-            except Exception as e:
-                logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
-                draft = ""
+        # 短期跨 run 缓存
+        from ..cache import get_cached_report, set_cached_report
+        from .tool_cache import _fingerprint
+        rsp_cache_key_fp = _fingerprint(si)
+        cached_report = get_cached_report(si.symbol, rsp_cache_key_fp) or ""
+
+        # LLM 产出 Markdown(空输出重试至多 2 次)
+        draft = cached_report
+        if not draft:
+            for _attempt in range(3):
+                try:
+                    if use_single_call:
+                        tb = _TB_SINGLE_CALL_RETRY if _attempt > 0 else _TB_SINGLE_CALL
+                    else:
+                        tb = _TB_ANALYSIS_RETRY if _attempt > 0 else _TB_ANALYSIS
+                    message = await self._call_llm_with_stream(
+                        messages, max_tokens=16384 if use_single_call else None,
+                        thinking_budget=tb)
+                    draft = (message.get("content") or "").strip()
+                except Exception as e:
+                    logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
+                    draft = ""
+                if draft:
+                    break
+                if _attempt < 2:
+                    await asyncio.sleep(1)
             if draft:
-                break
-            if _attempt < 2:
-                await asyncio.sleep(1)
+                set_cached_report(si.symbol, rsp_cache_key_fp, draft)
+        if draft:
+            logger.info("[pipeline] ANALYSIS draft len=%d%s", len(draft),
+                        " (response cache HIT)" if cached_report else "")
         if not draft:
             logger.warning("[pipeline] ANALYSIS 输出为空(重试 %d 次后),标记降级", 3)
             return {"output": "", "tool_results": tool_results,
                     "partial": True, "checks": {}, "empty_analysis": True}
 
-        # single-call: 解析内联在草稿末尾的自检 JSON,省去独立 self-check + COMPILE 两次调用
-        if use_single_call:
-            draft, inline_checks, _fixes = _split_inline_self_check(draft)
-            return {
-                "output": draft,
-                "tool_results": tool_results,
-                "partial": partial or not all(bool(v) for v in inline_checks.values()),
-                "checks": inline_checks,
-            }
-
-        # 4. 自检(可选)
-        #    --fast / use_fast:跳过自检,直接把初稿传 COMPILE(prompt 已约束质控)
-        if use_fast:
-            return {"output": draft, "tool_results": tool_results,
-                    "partial": partial, "checks": {}}
-
-        check_json = await self._run_self_check(draft)
-        checks, fixes = _parse_self_check_json(check_json)
-        if checks is None:
-            # 自检 JSON 解析失败(不是 draft 为空,上面已处理),把 draft 传出但 partial
-            return {"output": draft, "tool_results": tool_results,
-                    "partial": True, "checks": {}}
-
-        # 5. 修复循环:仅在校验未通过 + 初稿不够长 → 重跑(至多 1 次重跑)
-        #    阈值:全部 6 项 runtime 门控通过即视为通过;且长初稿(>3000 字)直接采纳
-        gates_pass = all(checks.get(g) for g in _REQUIRED_GATES)
-        if not gates_pass and fixes and len(draft) <= 3000:
-            draft = await self._reanalysis_with_fixes(stock_md, prior, tool_results, fixes)
-            check_json2 = await self._run_self_check(draft)
-            checks2, fixes2 = _parse_self_check_json(check_json2)
-            if checks2 is not None:
-                checks, fixes = checks2, fixes2
-
         return {"output": draft, "tool_results": tool_results,
-                "partial": partial, "checks": checks}
+                "partial": partial, "checks": {}}
 
-    async def _run_self_check(self, draft: str) -> str:
-        """单独一次 LLM 调用,仅输出自检 JSON。"""
-        system = (
-            "你是报告质检员。基于下方草稿与强制校验清单,仅输出合法 JSON。\n"
-            "强制校验 8 项(后两项为 prompt 级软约束;前 6 项为运行时硬门控):\n"
-            "- citations_ok: 每个关键数字都标注来源(训练数据/公司年报/搜索结果)\n"
-            "- tables_ok: 三张核心表格(近年财务时序 ≥5 行/同行竞品 ≥5 家/估值三档含概率)格式合规\n"
-            "- trigger_ok: 每一条看空都含明确触发条件(可量化阈值)+估值冲击%\n"
-            "- advice_ok: 投资建议明确(买/持/卖+价格区间+催化剂+止损)\n"
-            "- norepeat_ok: 全文无连续超过 20 字的重复段落\n"
-            "- justified_ok: 任何定性判断必须有具体数字支撑\n"
-            "- financial_depth_ok: 5 年 CAGR+ROE 杜邦+OCF/利润比(prompt 级软约束)\n"
-            "- business_depth_ok: 产品结构+护城河+竞争格局(prompt 级软约束)\n"
-            "严格输出以下 JSON Schema(不要 fences,不要其他内容):\n"
-            '{"citations_ok": bool, "tables_ok": bool, "trigger_ok": bool, '
-            '"advice_ok": bool, "financial_depth_ok": bool, "business_depth_ok": bool, '
-            '"norepeat_ok": bool, "justified_ok": bool, "fixes_needed": [str]}\n'
-            "某项为 false 时,fixes_needed 必须列出具体修复点(中文,≤40 字/每条)。"
-        )
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"# 分析草稿\n\n{draft[:8000]}"},
-        ]
-        try:
-            message = await self._llm_chat(
-                messages, tools=None, tool_choice="none",
-                thinking_budget=_TB_SELF_CHECK, max_tokens=512)
-            return (message.get("content") or "").strip()
-        except Exception as e:
-            logger.error("[pipeline] _run_self_check 失败 %s: %s", type(e).__name__, e)
-            return ""
 
-    async def _reanalysis_with_fixes(self, stock_md: str, prior: dict,
-                                     tool_results: dict, fixes: list[str]) -> str:
-        fix_note = (
-            "以下自检未通过,请直接修改草稿以解决这些点,"
-            "仅输出修改后的完整 Markdown 草稿(不要输出 JSON):\n"
-            + "\n".join(f"- {f}" for f in fixes)
-        )
-        tool_ctx = {**prior, "tools_output": tool_results}
-        system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
-        injected = _tool_results_to_messages(tool_results)
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": stock_md},
-            *injected,
-            {"role": "user", "content": "# 修改要求\n\n" + fix_note},
-        ]
-        try:
-            message = await self._call_llm_with_stream(
-                messages, thinking_budget=_TB_ANALYSIS)
-            text = (message.get("content") or "").strip()
-            return text or ""
-        except Exception as e:
-            logger.warning("[pipeline] reanalysis 失败 %s: %s", type(e).__name__, e)
-            return ""
 
     # ---- Phase 2: COMPILE ------------------------------------------------
 
@@ -471,12 +424,9 @@ class PipelineOrchestrator:
                 f"- 最新价: {quote.get('price')} | "
                 f"涨跌: {quote.get('change_pct')}% | PE: {quote.get('pe')}"
             )
-        fin = data.get("financial") or {}
-        if fin.get("period"):
-            lines.append(f"- 报告期: {fin.get('period')}")
-            for k in ("rev", "rev_yoy", "np", "np_yoy", "roe", "eps", "ocf"):
-                if fin.get(k) not in (None, 0, ""):
-                    lines.append(f"  - {k}: {fin[k]}")
+        # 注意:报告期/营收/净利/ROE 等财务字段不再在此重复列出 —— 工具结果
+        # `financial_temporal` 已注入同字段,这里只保留跨维度事实(K 线/资金/行业)
+        # 与 snapshot 独有的舆情,避免 input token 重复。
         cf = data.get("capital_flow") or {}
         if cf.get("main_net_5d"):
             lines.append(f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f} 亿元")
@@ -488,7 +438,14 @@ class PipelineOrchestrator:
             )
         if data.get("industry"):
             lines.append(f"- 行业: {data['industry']}")
-        # 历史财务时序(展示最近 N 年核心指标,作为 LLM 上下文的一部分)
+        # 舆情雪球/头条近 N 条标题摘要(跨维度事实,不在工具结果里)
+        posts = getattr(si, "social_posts", None)
+        if posts:
+            sample = "；".join(
+                (p.title or p.content or "")[:30] for p in posts[:3]
+            )
+            if sample:
+                lines.append(f"- 舆情摘要: {sample}")
         if getattr(si, "history_financial", None):
             lines.append("- 历史财务时序(近 N 年报):")
             for f in si.history_financial[:5]:
@@ -618,11 +575,6 @@ def _compact_tool_output(name: str, value: Any) -> str:
     return out
 
 
-def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
-    """从文本末尾解析自检 JSON(支持 ```json fence 或裸 JSON)。"""
-    import re
-    if not text:
-        return None, []
     # 1. 优先匹配 ```json fence
     m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
     if m:
@@ -657,37 +609,42 @@ def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
     return None, []
 
 
+def _extract_tool_summary(results: dict) -> str:
+    """Generate a short (~200 chars) text summary of non-tabular tool outputs.
+
+    Helps the LLM produce analysis without needing the full tool JSON.
+    """
+    parts: list[str] = []
+    t = results.get("technicals") or {}
+    if isinstance(t, dict):
+        trend = t.get("trend") or ""
+        rsi = t.get("rsi14")
+        main = t.get("main_net_5d")
+        if trend:
+            parts.append(f"趋势={trend}")
+        if rsi is not None:
+            parts.append(f"RSI={rsi:.1f}" if isinstance(rsi, (int, float)) else f"RSI={rsi}")
+        if main is not None:
+            parts.append(f"主力5日={main / 1e8:.2f}亿" if isinstance(main, (int, float)) else f"主={main}")
+    r = results.get("risk_quant") or {}
+    if isinstance(r, dict) and isinstance(r.get("bears"), list):
+        nb = len(r["bears"])
+        if nb:
+            parts.append(f"看空={nb}条")
+    m = results.get("business_moat") or {}
+    if isinstance(m, dict):
+        moat = m.get("moat_sources") or []
+        if isinstance(moat, list) and moat:
+            parts.append(f"护城河={','.join(str(x) for x in moat[:3])}")
+        ocf_q = m.get("ocf_quality")
+        if ocf_q:
+            parts.append(f"OCF质量={ocf_q}")
+    return ", ".join(parts) if parts else "N/A"
+
+
 def _phase_output_text(phase_result: object) -> str:
     r = phase_result if isinstance(phase_result, dict) else {}
     out = r.get("output")
     return out if isinstance(out, str) else ""
 
 
-def _split_inline_self_check(text: str) -> tuple[str, dict, list[str]]:
-    """从 single-call 初稿末尾剥离内联自检 JSON。
-
-    返回 ``(body, checks, fixes)``:
-    - ``body`` 是剥离 JSON 块后的纯报告文本(未解析到 JSON 时返回原文)。
-    - ``checks`` 是解析后的 dict(至少含 ``citations_ok`` 等八项 key),
-      解析失败返回空 dict。
-    - ``fixes_needed`` 列表。
-    """
-    import re
-    if not text:
-        return "", {}, []
-    # 找文档末尾的 JSON fence 或裸 {...} 块(self-check JSON 必须放在最后)
-    fence = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    candidates = fence[:] if fence else []
-    # 也收集最后一个裸 {...} 候选
-    last_brace = text.rfind("}")
-    first_brace = text.rfind("{", 0, last_brace) if last_brace > 0 else -1
-    if first_brace >= 0:
-        candidates.append(text[first_brace:last_brace + 1])
-    for cand in reversed(candidates):
-        parsed, fixes = _parse_self_check_json(cand.strip())
-        if parsed is not None:
-            body = text[: text.rfind(cand)].rstrip()
-            # 去掉末尾可能残留的 "```json" / "```" fence 行
-            body = re.sub(r"```json\s*$", "", body.rstrip(), flags=re.MULTILINE).rstrip()
-            return body, parsed, fixes
-    return text, {}, []
