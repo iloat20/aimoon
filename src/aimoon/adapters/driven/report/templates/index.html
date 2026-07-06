@@ -108,9 +108,10 @@
   </div>
 
 
-<!-- ===== VALUATION GAUGE ===== -->
+<!-- ===== 股价估值百分位(基于已有 K 线) ===== -->
 {% if kline.bars %}
-{% set prices = kline.bars | map(attribute='close') | list %}
+{% set bars = kline.bars[-180:] if kline.bars | length > 180 else kline.bars %}
+{% set prices = bars | map(attribute='close') | list %}
 {% set hi = prices | max %}
 {% set lo = prices | min %}
 {% set cur = quote.price %}
@@ -118,6 +119,7 @@
 {% set pct = pct if pct > 0 else 0 %}
 {% set pct = pct if pct < 100 else 100 %}
 {% set pct_int = pct | int %}
+{% set window = bars | length %}
 {% if pct < 20 %}
   {% set gauge_color = 'var(--green)' %}
   {% set gauge_label = '超跌' %}
@@ -137,7 +139,7 @@
 <div class="card">
   <div class="card-header">
     <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13zm-.75-8.25h1.5v1.5h-1.5v-1.5zm0-3h1.5v1.5h-1.5v-1.5z" opacity="0.8"/><circle cx="10" cy="10" r="3" fill="currentColor" opacity="0.3"/></svg>
-    <span class="title">估值百分位</span>
+    <span class="title">股价估值百分位</span>
     <span class="badge {% if pct < 30 %}badge-down{% elif pct > 70 %}badge-up{% else %}badge-warn{% endif %}">{{ gauge_label }} {{ pct }}%</span>
   </div>
   <div class="gauge-wrap">
@@ -156,9 +158,9 @@
     </div>
     <div class="val-range">
       <div class="row"><span>现价</span><span class="val">{{ cur }}</span></div>
-      <div class="row"><span>120日最高</span><span class="val" style="color:var(--red)">{{ hi }}</span></div>
-      <div class="row"><span>120日最低</span><span class="val" style="color:var(--green)">{{ lo }}</span></div>
-      <div class="row"><span>区间振幅</span><span class="val" style="color:var(--amber)">{{ "%.2f"|format((hi - lo) / lo * 100) if lo > 0 else 0 }}%</span></div>
+      <div class="row"><span>{{ window }}日最高</span><span class="val" style="color:var(--red)">{{ hi }}</span></div>
+      <div class="row"><span>{{ window }}日最低</span><span class="val" style="color:var(--green)">{{ lo }}</span></div>
+      <div class="row"><span>区间振幅</span><span class="val" style="color:var(--amber)">{{ "%.1f"|format((hi - lo) / lo * 100) if lo > 0 else 0 }}%</span></div>
     </div>
   </div>
 </div>
