@@ -21,6 +21,7 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
 from .phases import Phase, phase_system_prompt
+from .tool_cache import get_cached_tool_results, set_cached_tool_results
 from .timing import logphase
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ _TB_ANALYSIS = 500
 _TB_ANALYSIS_RETRY = 700
 _TB_SELF_CHECK = 200
 _TB_COMPILE = 300
-_TB_SINGLE_CALL = 300
-_TB_SINGLE_CALL_RETRY = 500
+_TB_SINGLE_CALL = 250  # 结构模板化输出,thinking 低也节省 token 费用
+_TB_SINGLE_CALL_RETRY = 400  # 重试时适度放宽
 
 # single-call 模式: 追加在 ANALYSIS system 末尾,要求模型在报告末尾内联自检 JSON
 # (省去独立 self-check + COMPILE 两次 LLM 调用,合并为一次产出)。
@@ -182,32 +183,47 @@ class PipelineOrchestrator:
         """
         from ..web_search_tool import execute_web_search
 
-        # 1. 并行跑 4 个纯工具(async-safe coroutines)
-        tech_coro = _run_safe(TOOL_RUNNERS["technicals"], getattr(si, "kline", None),
-                               getattr(si, "capital_flow", None))
-        fin_coro = _run_safe(TOOL_RUNNERS["financial_temporal"],
-                              getattr(si, "history_financial", None))
-        moat_coro = _run_safe(
-            TOOL_RUNNERS["business_moat"],
-            getattr(si, "financial", None),
-            getattr(si, "research", None),
-            getattr(si, "social_posts", None),
-            getattr(si, "history_financial", None),
-        )
-        peer_raw = _run_peer_compare(si, execute_web_search)
-        if inspect.iscoroutine(peer_raw):
-            peer = await peer_raw
+        # 工具结果缓存:同 stock hash 命中时跳过 6 个纯工具重算(省 0.4s 无足轻重,
+        # 但避免 pandas 重复计算,更重要的是为后续可能的 LLM 缓存提供稳定输入 hash)
+        cached_tools = get_cached_tool_results(si)
+        if cached_tools is not None:
+            tech = cached_tools.get("technicals", {})
+            fin = cached_tools.get("financial_temporal", {})
+            peer = cached_tools.get("peer_compare", {})
+            risk = cached_tools.get("risk_quant", {})
+            val = cached_tools.get("valuation", {})
+            moat = cached_tools.get("business_moat", {})
+            partial = any(_is_partial(v) for v in [tech, fin, peer, risk, val, moat])
         else:
-            peer = peer_raw
-        tech, fin, moat = await asyncio.gather(tech_coro, fin_coro, moat_coro)
-        risk = await _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote)
-        val = await _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote)
+            # 1. 并行跑 4 个纯工具(async-safe coroutines)
+            tech_coro = _run_safe(TOOL_RUNNERS["technicals"], getattr(si, "kline", None),
+                                   getattr(si, "capital_flow", None))
+            fin_coro = _run_safe(TOOL_RUNNERS["financial_temporal"],
+                                  getattr(si, "history_financial", None))
+            moat_coro = _run_safe(
+                TOOL_RUNNERS["business_moat"],
+                getattr(si, "financial", None),
+                getattr(si, "research", None),
+                getattr(si, "social_posts", None),
+                getattr(si, "history_financial", None),
+            )
+            peer_raw = _run_peer_compare(si, execute_web_search)
+            if inspect.iscoroutine(peer_raw):
+                peer = await peer_raw
+            else:
+                peer = peer_raw
+            tech, fin, moat = await asyncio.gather(tech_coro, fin_coro, moat_coro)
+            risk = await _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote)
+            val = await _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote)
 
-        tool_results: dict[str, object] = {
-            "technicals": tech, "financial_temporal": fin, "peer_compare": peer,
-            "risk_quant": risk, "valuation": val, "business_moat": moat,
-        }
-        partial = any(_is_partial(v) for v in tool_results.values())
+            tool_results = {
+                "technicals": tech, "financial_temporal": fin, "peer_compare": peer,
+                "risk_quant": risk, "valuation": val, "business_moat": moat,
+            }
+            partial = any(_is_partial(v) for v in tool_results.values())
+            # Cache tool results for rapid re-runs (same upstream data hash)
+            if not partial:
+                set_cached_tool_results(si, tool_results)
 
         # 2. 拼装注入 tool_result 的 messages(role=user 上下文)
         tool_ctx = {**prior, "tools_output": tool_results}
@@ -527,14 +543,79 @@ def _strip_xml_tool_calls_local(text: str) -> str:
 
 
 def _tool_results_to_messages(tool_results: dict) -> list[dict]:
+    """把 {name: result} 转成注入消息列表。
+
+    每个工具输出提取关键字段,压缩到 ~300 字符内,避免完整 JSON 膨胀 input tokens。
+    这是节省 API 成本的关键路径之一(input token 单价是 output 的 1/4,但累计量大)。
+    """
     messages = []
     for name, value in tool_results.items():
-        payload = json.dumps(value, ensure_ascii=False, default=str)
+        payload = _compact_tool_output(name, value)
         messages.append({
             "role": "user",
-            "content": f"[并行工具结果: {name}]\n{payload}",
+            "content": f"[{name}]\n{payload}",
         })
     return messages
+
+
+def _compact_tool_output(name: str, value: Any) -> str:
+    """提取 tool output 的关键数字,返回 100-300 字符的摘要字符串。
+
+    模型只需要关键数字 + 对比结果,不需要完整链式结构(unique key + 完整 dict)。
+    """
+    import json as _json
+
+    if not isinstance(value, dict):
+        s = str(value)
+        return s[:300] if len(s) > 300 else s
+
+    # 通用:只保留数值 + 短字符串字段,丢弃长数组/重复结构
+    compact: dict[str, Any] = {}
+    for k, v in value.items():
+        if isinstance(v, (int, float, bool)):
+            compact[k] = v
+        elif isinstance(v, str) and len(v) <= 30:
+            compact[k] = v
+        elif isinstance(v, dict) and len(str(v)) <= 100:
+            compact[k] = v
+        elif isinstance(v, list) and len(v) <= 3:
+            compact[k] = v
+        # 长数组/大 dict 丢弃 — 模型已经从其他字段读到关键数字
+
+    # 特殊:某些 tool 的关键字段单独保留
+    if name == "technicals":
+        for key in ("trend", "ma5", "ma20", "ma60", "macd", "rsi14", "bollinger",
+                     "main_net_5d", "volume_ratio_5"):
+            if key in value and key not in compact:
+                compact[key] = value[key]
+    elif name == "financial_temporal":
+        for key in ("revenue_cagr", "net_profit_cagr", "roe_trend"):
+            if key in value and key not in compact:
+                compact[key] = value[key]
+    elif name == "peer_compare":
+        # 只保留前 3 家 peer 的关键字段
+        if "peers" in value and isinstance(value["peers"], list):
+            compact["top_peers"] = [
+                {k: p[k] for k in ("name", "pe", "pb", "roe") if k in p}
+                for p in value["peers"][:3]
+            ]
+    elif name == "risk_quant":
+        if "bears" in value:
+            # 只保留触发条件 + 冲击%,丢弃 recommendation 等软文字
+            compact["bears"] = [
+                {k: b[k] for k in ("theme", "trigger_condition", "impact_pct") if k in b}
+                for b in value["bears"][:3]
+            ]
+    elif name == "valuation":
+        if "fcfe_targets" in value:
+            compact["targets"] = value["fcfe_targets"]
+        if "fcfe_assumptions" in value:
+            compact["assumptions"] = value["fcfe_assumptions"]
+
+    out = _json.dumps(compact, ensure_ascii=False, default=str)
+    if len(out) > 500:
+        out = out[:497] + "..."
+    return out
 
 
 def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:

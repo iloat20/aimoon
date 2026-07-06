@@ -96,9 +96,12 @@ def main() -> None:
 
     try:
         use_v2 = not bool(args.legacy)
+        # 默认 single-call;--two-phase 显式切回老双阶段
+        use_two_phase = bool(args.two_phase)
+        use_single_call = not use_two_phase
         orchestrator = PipelineOrchestrator(
             output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2,
-            use_fast=bool(args.fast), use_single_call=bool(args.single_call),
+            use_fast=bool(args.fast), use_single_call=use_single_call,
             use_ultra_fast=bool(args.ultra_fast),
         )
         if mock_mode:
@@ -131,34 +134,42 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  aimoon 000001             分析平安银行（真实数据+AI v2 默认）
-  aimoon 600519 --legacy    使用旧的一段式 AI 分析
+  aimoon 000001             分析平安银行(v2 单调用模式,默认)
+  aimoon 600519 --two-phase 使用 v2 双阶段模式(逐步推理)
+  aimoon 600519 --fast      v2 快速模式(跳过自检)
+  aimoon 600519 --ultra-fast v2 极限快(初稿即终稿)
+  aimoon 000001 --legacy    使用旧的一段式 AI 分析
   aimoon 600519 --mock      使用全模拟数据（无需API Key）
   aimoon 600519 --test      测试模式：采集真实数据但跳过AI分析
   aimoon 000858 -o ./reports  指定输出目录
         """,
     )
+
     parser.add_argument("symbol", nargs="*", help="A股股票代码，如 000001, 600519")
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--mock", action="store_true", help="使用模拟数据模式（无需真实API）")
-    mode_group.add_argument(
-        "--test", action="store_true", help="测试模式：采集真实数据但跳过AI分析"
-    )
     parser.add_argument("-o", "--output", help="HTML报告输出目录")
     parser.add_argument("--version", action="version", version=f"aimoon {__version__}")
-    parser.add_argument(
-        "--legacy", action="store_true", help="强制走旧链路(AI 一段式)"
+    # 主模式互斥组:legacy(旧) vs two-phase(v2 双阶段)
+    mode_exclusive = parser.add_mutually_exclusive_group()
+    mode_exclusive.add_argument(
+        "--legacy", action="store_true", help="使用旧的一段式 AI 分析(快速但结构较松散)"
     )
+    mode_exclusive.add_argument(
+        "--two-phase", action="store_true",
+        help="[v2] 老双阶段模式(ANALYSIS→self-check→COMPILE,逐步推理更充分但更慢)"
+    )
+    # v2 子模式(互斥于 legacy)
+    parser.add_argument("--mock", action="store_true", help="使用模拟数据模式（无需真实API）")
+    parser.add_argument("--test", action="store_true", help="测试模式：采集真实数据但跳过AI分析")
     parser.add_argument(
         "--fast", action="store_true",
-        help="v2 pipeline 快速模式:跳过 ANALYSIS 自检 + 修复循环,直接输出初稿编译终稿"
+        help="[v2] 快速模式:跳过自检 + 修复循环,直接编译终稿"
     )
     parser.add_argument(
         "--ultra-fast", action="store_true",
-        help="极限快模式(实验):跳过自检 + COMPILE,ANALYSIS 初稿直接作为终稿输出"
+        help="[v2] 极限快模式:跳过自检 + COMPILE,ANALYSIS 初稿即终稿"
     )
     parser.add_argument(
         "--single-call", action="store_true",
-        help="实验性 single-call 模式(合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用)"
+        help="[v2] 单调用模式(默认):合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用"
     )
     return parser
