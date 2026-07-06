@@ -250,8 +250,6 @@ class PipelineOrchestrator:
         system = phase_system_prompt(
             Phase.ANALYSIS, stock_md, tool_ctx
         ).replace("{{ sections }}", _SECTIONS_MD)
-        if use_single_call:
-            system = system + _SELF_CHECK_INLINE_SUFFIX
         # user message 不再注入完整 tool JSON(这是旧架构的主要浪费)。
         user_content = (
             f"{stock_md}\n\n"
