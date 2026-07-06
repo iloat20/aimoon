@@ -20,7 +20,7 @@ from typing import Any, Protocol
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
-from .phases import Phase, phase_system_prompt
+from .phases import Phase, phase_system_prompt, _SECTIONS_MD
 from .table_renderer import (
     render_financial_temporal,
     render_peer_comparison,
@@ -42,19 +42,7 @@ _EFFORT_TWO_PHASE = "high"  # 旧双阶段模式(重试时仍用 high)
 # 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
 # 替换 system 模板占位符 `{{ sections }}` 的同时,作为 sections_list 注入
 # 到 user message,让模型直接按自检 JSON 前的自然章节顺序输出。
-# 标题之外的细节要求(1000 字/三张表/FCFE 三档…)交给工具数据 + 三要素规则驱动,
-# 不再写入 prompt,以压缩输入 token。
-_REPORT_SECTIONS = [
-    ("一", "业务画像与护城河"),
-    ("二", "财务健康诊断"),
-    ("三", "交叉验证"),
-    ("四", "风险量化与看空逻辑"),
-    ("五", "估值建模"),
-    ("六", "逆向视角"),
-    ("七", "投资建议"),
-    ("八", "附录"),
-]
-_SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
+# 报告章节结构(已迁移至 phases.py 的 _SECTIONS_MD,此处保留导入)
 
 
 
@@ -246,10 +234,8 @@ class PipelineOrchestrator:
 
         # 3. Hybrid user message: snapshot + 已渲染表格 + 工具摘要(无完整 JSON)
         #    模型只需做分析对比,不需要重新生成表格数字(否则会与 tables_md 重复)。
-        tool_ctx = {**prior, "tables_md": tables_md, "summary": summary}
-        system = phase_system_prompt(
-            Phase.ANALYSIS, stock_md, tool_ctx
-        ).replace("{{ sections }}", _SECTIONS_MD)
+        tool_ctx: dict[str, object] = {**prior, "tables_md": tables_md, "summary": summary}
+        system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
         # user message 不再注入完整 tool JSON(这是旧架构的主要浪费)。
         user_content = (
             f"{stock_md}\n\n"

@@ -10,8 +10,22 @@ from pathlib import Path
 class Phase(StrEnum):
     """Pipeline v2 两阶段."""
 
-    ANALYSIS = "analysis"   # 规划+采集+分析+自检
+    ANALYSIS = "analysis"   # 规划+采集+分析
     COMPILE = "compile"     # 终稿
+
+
+# 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
+_REPORT_SECTIONS = [
+    ("一", "业务画像与护城河"),
+    ("二", "财务健康诊断"),
+    ("三", "交叉验证"),
+    ("四", "风险量化与看空逻辑"),
+    ("五", "估值建模"),
+    ("六", "逆向视角"),
+    ("七", "投资建议"),
+    ("八", "附录"),
+]
+_SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -54,25 +68,28 @@ def get_pipeline_phases() -> list[PhaseSpec]:
 
 
 def phase_system_prompt(phase: Phase, stock_md: str, prior: dict) -> str:
-    import json
     template = _load(phase)
-    tools_serialized = ""
-    if phase == Phase.ANALYSIS and "tools_output" in prior:
-        tools_serialized = json.dumps(prior["tools_output"], ensure_ascii=False, default=str)
-    compiled = (
-        template
-        .replace("{{ stock_info }}", stock_md)
-        .replace("{{ tools_output }}", tools_serialized)
-        .replace("{{ tools }}", tools_serialized)
-        .replace(
-            "{{ prior }}",
-            json.dumps(prior, ensure_ascii=False, default=str)
-            if isinstance(prior, dict) else str(prior),
-        )
-        .replace("{{ draft }}", str(prior.get("analysis_draft", "") or ""))
-        .replace(
-            "{{ self_check_fixes }}",
-            json.dumps(prior.get("self_check_fixes", []), ensure_ascii=False),
-        )
-    )
+    # 仅当模板含对应占位符时才注入,避免向 hybrid prompt 注入冗余 JSON
+    replacements: list[tuple[str, str]] = []
+    if "{{ stock_info }}" in template:
+        replacements.append(("{{ stock_info }}", stock_md))
+    if "{{ tools_output }}" in template and "tools_output" in prior:
+        import json
+        replacements.append(("{{ tools_output }}", json.dumps(prior["tools_output"], ensure_ascii=False, default=str)))
+    if "{{ tools }}" in template and "tools_output" in prior:
+        import json
+        replacements.append(("{{ tools }}", json.dumps(prior["tools_output"], ensure_ascii=False, default=str)))
+    if "{{ prior }}" in template:
+        import json
+        replacements.append(("{{ prior }}", json.dumps(prior, ensure_ascii=False, default=str) if isinstance(prior, dict) else str(prior)))
+    if "{{ draft }}" in template:
+        replacements.append(("{{ draft }}", str(prior.get("analysis_draft", "") or "")))
+    if "{{ self_check_fixes }}" in template:
+        import json
+        replacements.append(("{{ self_check_fixes }}", json.dumps(prior.get("self_check_fixes", []), ensure_ascii=False)))
+    if "{{ sections }}" in template:
+        replacements.append(("{{ sections }}", _SECTIONS_MD))
+    compiled = template
+    for k, v in replacements:
+        compiled = compiled.replace(k, v)
     return compiled
