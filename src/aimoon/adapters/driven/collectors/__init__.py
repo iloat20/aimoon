@@ -33,7 +33,6 @@ from .mock_repo import MockStockAnalysisRepository
 from .quote import QuoteCollector
 from .research_report import ResearchReportCollector
 from .social_orchestrator import SocialMediaOrchestrator
-from .toutiao import ToutiaoCollector
 from .wechat import WechatCollector
 
 __all__ = [
@@ -49,7 +48,6 @@ __all__ = [
     "QuoteCollector",
     "ResearchReportCollector",
     "SocialMediaOrchestrator",
-    "ToutiaoCollector",
     "WechatCollector",
     "mock_analysis_report",
     "mock_financial",

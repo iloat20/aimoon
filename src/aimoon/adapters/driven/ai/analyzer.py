@@ -580,7 +580,6 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         for key, label in [
             ("xueqiu", "雪球"),
             ("eastmoney", "东方财富股吧"),
-            ("toutiao", "今日头条"),
             ("wechat", "微信公众号"),
         ]:
             text = data.get(key, "")

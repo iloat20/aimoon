@@ -39,7 +39,7 @@ class MockStockAnalysisRepository(StockAnalysisRepository):
         if name:
             stock_analysis.name = name
 
-        platforms = ["雪球", "东方财富股吧", "今日头条", "微信公众号"]
+        platforms = ["雪球", "东方财富股吧", "微信公众号"]
         self._collect_results = [
             CollectResult(
                 platform=p,
