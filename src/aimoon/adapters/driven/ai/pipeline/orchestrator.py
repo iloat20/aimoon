@@ -232,15 +232,25 @@ class PipelineOrchestrator:
             }
         )
 
-        # 3. Hybrid user message: snapshot + 已渲染表格 + 工具摘要(无完整 JSON)
+        # 3. Hybrid user message: snapshot + 已渲染表格 + 工具摘要 + 舆情 + 研报
         #    模型只需做分析对比,不需要重新生成表格数字(否则会与 tables_md 重复)。
         tool_ctx: dict[str, object] = {**prior, "tables_md": tables_md, "summary": summary}
         system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
+        # 舆情摘要(取每条 post 的 title,最多 15 条)
+        social_summary = "\n".join(
+            f"- {p.title[:60]}" for p in si.social_posts[:15]
+        )
+        # 研报摘要(取标题+评级,最多 5 篇)
+        research_summary = "\n".join(
+            f"- {r.title[:50]} [{r.rating}]" for r in (si.research.reports or [])[:5]
+        )
         # user message 不再注入完整 tool JSON(这是旧架构的主要浪费)。
         user_content = (
             f"{stock_md}\n\n"
             f"# 已渲染表格\n{tables_md}\n\n"
             f"# 工具摘要\n{summary}\n\n"
+            f"# 已采集社交媒体舆情(共 {len(si.social_posts)} 条)\n{social_summary}\n\n"
+            f"# 已采集机构研报(共 {si.research.total_count} 篇)\n{research_summary}\n\n"
             f"# 输出章节结构(按此顺序,不可省略)\n{_SECTIONS_MD}"
         )
         messages = [
