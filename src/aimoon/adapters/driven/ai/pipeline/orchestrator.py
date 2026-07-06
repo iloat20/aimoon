@@ -33,15 +33,11 @@ logger = logging.getLogger(__name__)
 
 MAX_TOTAL_SEC = 540  # 9 min (240 ANALYSIS + 300 COMPILE + buffer)
 
-# Thinking budget 配置(命中 DeepSeek thinking-enabled 模式)。
-# 经验值: ANALYSIS 深度推理用 500; 自检仅解析 JSON 用 200 足够;
-# COMPILE 是模板重组、创造性低,用 300; 单 call 给 300(一次出长文,省思考时间换延迟)。
-_TB_ANALYSIS = 500
-_TB_ANALYSIS_RETRY = 700
-_TB_SELF_CHECK = 200
-_TB_COMPILE = 300
-_TB_SINGLE_CALL = 200  # 模板化输出 3000-4500 字,无需深度推理;省 token 费用
-_TB_SINGLE_CALL_RETRY = 400  # 重试时适度放宽
+# DeepSeek 思考强度(reasoning_effort)。
+# 官方支持: low/medium→映射为 high, high, xhigh→映射为 max。
+# 默认 max(最深思考);重试时保持 max(不降级,避免思考不充分)。
+_EFFORT_SINGLE = "max"
+_EFFORT_TWO_PHASE = "high"  # 旧双阶段模式(重试时仍用 high)
 
 # 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
 # 替换 system 模板占位符 `{{ sections }}` 的同时,作为 sections_list 注入
@@ -279,13 +275,11 @@ class PipelineOrchestrator:
         if not draft:
             for _attempt in range(3):
                 try:
-                    if use_single_call:
-                        tb = _TB_SINGLE_CALL_RETRY if _attempt > 0 else _TB_SINGLE_CALL
-                    else:
-                        tb = _TB_ANALYSIS_RETRY if _attempt > 0 else _TB_ANALYSIS
+                    effort = _EFFORT_SINGLE if use_single_call else _EFFORT_TWO_PHASE
                     message = await self._call_llm_with_stream(
                         messages, max_tokens=16384 if use_single_call else None,
-                        thinking_budget=tb)
+                        reasoning_effort=effort)
+                    draft = (message.get("content") or "").strip()
                     draft = (message.get("content") or "").strip()
                 except Exception as e:
                     logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
@@ -322,7 +316,7 @@ class PipelineOrchestrator:
         ]
         try:
             message = await self._call_llm_with_stream(
-                messages, thinking_budget=_TB_COMPILE)
+                messages, reasoning_effort="max")
             text = (message.get("content") or "").strip() if isinstance(message, dict) else ""
         except Exception as e:
             logger.warning("[pipeline] COMPILE 非流式调用失败 %s: %s", type(e).__name__, e)
@@ -332,19 +326,21 @@ class PipelineOrchestrator:
 
     async def _call_llm_with_stream(self, messages: list[dict], *,
                                      max_tokens: int | None = None,
-                                     thinking_budget: int = 500) -> dict:
-        """单次 LLM 调用 wrapper,带 thinking budget + 300s timeout。"""
+                                     reasoning_effort: str = "max") -> dict:
+        """单次 LLM 调用 wrapper,带 DeepSeek 思考模式 + 300s timeout。
+
+        使用 reasoning_effort 控制思考强度(max = 最深思考)。
+        思考模式下 temperature/top_p 等参数无效,不传。
+        """
         import httpx as _httpx
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
         body: dict[str, object] = {
             "model": settings.deepseek_model, "messages": messages,
-            "temperature": settings.deepseek_temperature,
-            # 默认使用配置上限(不再硬卡 4096,避免长报告被截断 — 见 #5 覆盖度修复)
             "max_tokens": max_tokens or settings.deepseek_max_tokens,
-            "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
+            "reasoning_effort": reasoning_effort,
         }
-        with logphase(f"llm(tb={thinking_budget}, mt={body['max_tokens']})"):
+        with logphase(f"llm(effort={reasoning_effort}, mt={body['max_tokens']})"):
             async with _httpx.AsyncClient(timeout=300.0) as http:
                 resp = await http.post(analyzer.api_url,
                                        headers={"Authorization": f"Bearer {analyzer.api_key}",
@@ -357,17 +353,16 @@ class PipelineOrchestrator:
 
     async def _stream_llm(self, messages: list[dict], *,
                           max_tokens: int | None = None,
-                          thinking_budget: int = 800) -> str:
+                          reasoning_effort: str = "max") -> str:
         """流式 LLM 调用,适用于 COMPILE 期(终稿输出需要流式累积)。"""
         import httpx as _httpx
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
         body: dict[str, object] = {
             "model": settings.deepseek_model, "messages": messages,
-            "temperature": settings.deepseek_temperature,
             "max_tokens": max_tokens or min(settings.deepseek_max_tokens, 4096),
             "stream": True,
-            "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
+            "reasoning_effort": reasoning_effort,
         }
         full_text: list[str] = []
         async with _httpx.AsyncClient(timeout=300.0) as http:
@@ -413,7 +408,7 @@ class PipelineOrchestrator:
                         thinking_budget: int = 500) -> dict:
         """单次文本输出 LLM 调用(非流式),带独立 HTTP client(300s timeout)。"""
         return await self._call_llm_with_stream(messages, max_tokens=max_tokens,
-                                                 thinking_budget=thinking_budget)
+                                                 reasoning_effort="max")
     def _render_stock_context(self, si: StockAnalysis, reports: dict | None,
                               financial_md_path: Path | None) -> str:
         data = self.analyzer._build_data_dict(si, reports, financial_md_path)

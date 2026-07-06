@@ -102,17 +102,10 @@ class _FakeAnalyzer:
 def _fake_analyzer(monkeypatch):
     fake = _FakeAnalyzer()
 
-    async def _fake_call_llm(self, messages, *, max_tokens=None, thinking_budget=500):
-        return {"role":"assistant","content":(
-            "# 分析草稿\n\n(fake)\n\n"
-            "```json\n"
-            '{"citations_ok":true,"tables_ok":true,"trigger_ok":true,'
-            '"advice_ok":true,"financial_depth_ok":true,"business_depth_ok":true,'
-            '"norepeat_ok":true,"justified_ok":true,"fixes_needed":[]}\n'
-            "```"
-        )}
+    async def _fake_call_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
+        return {"role":"assistant","content":"# 分析草稿\n\n(fake draft content)"}
 
-    async def _fake_stream_llm(self, messages, *, max_tokens=None, thinking_budget=800):
+    async def _fake_stream_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
         return "[compiled fake markdown]"
 
     def _fake_peer_compare_module(si, search_fn):
