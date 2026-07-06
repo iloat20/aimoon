@@ -169,6 +169,8 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         *,
         use_pipeline_v2: bool = False,
         use_fast: bool = False,
+        use_single_call: bool = False,
+        use_ultra_fast: bool = False,
     ) -> AnalysisReport:
         """AI analysis entry point - receives domain entity, returns AnalysisReport.
 
@@ -176,10 +178,13 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         (ANALYSIS + COMPILE); otherwise preserve the existing single-shot behavior
         (``_legacy_analyze``). Old callers (without the kwarg) work identically —
         DEFAULT OFF. ``use_fast`` skips ANALYSIS self-check for a faster run.
+        ``use_single_call`` / ``use_ultra_fast`` are experimental low-latency modes.
         """
         if use_pipeline_v2:
             return await self._pipeline_analyze(
-                stock_info, reports, financial_md_path, use_fast=use_fast)
+                stock_info, reports, financial_md_path, use_fast=use_fast,
+                use_single_call=use_single_call, use_ultra_fast=use_ultra_fast,
+            )
         return await self._legacy_analyze(stock_info, reports, financial_md_path)
 
     async def _legacy_analyze(
@@ -273,6 +278,8 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         financial_md_path: Path | None = None,
         *,
         use_fast: bool = False,
+        use_single_call: bool = False,
+        use_ultra_fast: bool = False,
     ) -> AnalysisReport:
         """Two-phase pipeline v2 analysis entry (Plan B in brainstorming).
 
@@ -287,7 +294,8 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         try:
             ctx = await PipelineOrchestrator(self).run(
                 stock_info, reports=reports, financial_md_path=financial_md_path,
-                use_fast=use_fast,
+                use_fast=use_fast, use_single_call=use_single_call,
+                use_ultra_fast=use_ultra_fast,
             )
         except Exception as e:
             logging.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)

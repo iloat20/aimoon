@@ -98,7 +98,8 @@ def main() -> None:
         use_v2 = not bool(args.legacy)
         orchestrator = PipelineOrchestrator(
             output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2,
-            use_fast=bool(args.fast),
+            use_fast=bool(args.fast), use_single_call=bool(args.single_call),
+            use_ultra_fast=bool(args.ultra_fast),
         )
         if mock_mode:
             out = asyncio.run(orchestrator.run_mock(parsed_symbol, name))
@@ -151,5 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fast", action="store_true",
         help="v2 pipeline 快速模式:跳过 ANALYSIS 自检 + 修复循环,直接输出初稿编译终稿"
+    )
+    parser.add_argument(
+        "--ultra-fast", action="store_true",
+        help="极限快模式(实验):跳过自检 + COMPILE,ANALYSIS 初稿直接作为终稿输出"
+    )
+    parser.add_argument(
+        "--single-call", action="store_true",
+        help="实验性 single-call 模式(合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用)"
     )
     return parser

@@ -31,13 +31,15 @@ class PipelineOrchestrator:
 
     def __init__(
         self, output_dir: str | None = None, mock_mode: bool | None = None, use_v2: bool = True,
-        use_fast: bool = False,
+        use_fast: bool = False, use_single_call: bool = False, use_ultra_fast: bool = False,
     ) -> None:
         self._settings = get_settings()
         self._output_dir = output_dir
         self._mock_mode = mock_mode if mock_mode is not None else self._settings.mock_mode
         self._use_v2 = use_v2
         self._use_fast = use_fast
+        self._use_single_call = use_single_call
+        self._use_ultra_fast = use_ultra_fast
 
     async def run(self, symbol: str, name: str, *, skip_ai: bool = False) -> Path:
         """Run full pipeline with real data collection."""
@@ -64,6 +66,8 @@ class PipelineOrchestrator:
                     skip_ai=skip_ai,
                     use_pipeline_v2=self._use_v2,
                     use_fast=self._use_fast,
+                    use_single_call=self._use_single_call,
+                    use_ultra_fast=self._use_ultra_fast,
                 )
             finally:
                 # Close Playwright browser to prevent Python 3.13 cleanup warning

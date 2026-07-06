@@ -30,6 +30,8 @@ async def collect_and_analyze(
     *,
     use_pipeline_v2: bool = False,
     use_fast: bool = False,
+    use_single_call: bool = False,
+    use_ultra_fast: bool = False,
 ) -> Path:
     """完整流水线：采集 → 验证 → AI分析 → 生成报告。
 
@@ -44,6 +46,8 @@ async def collect_and_analyze(
         skip_ai: 是否跳过AI分析
         use_pipeline_v2: 启用 AI pipeline v2 五阶段分析
         use_fast: v2 pipeline 跳过 ANALYSIS 自检(更快输出)
+        use_single_call: 实验性 single-call 模式(合并 ANALYSIS+self-check+COMPILE)
+        use_ultra_fast: 极限快模式(跳过自检+COMPILE,初稿即终稿)
 
     Returns:
         生成的报告文件路径
@@ -63,7 +67,8 @@ async def collect_and_analyze(
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(
             stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2,
-            use_fast=use_fast,
+            use_fast=use_fast, use_single_call=use_single_call,
+            use_ultra_fast=use_ultra_fast,
         )
 
     analysis = analysis.model_copy(
@@ -94,6 +99,8 @@ async def analyze_stock(
     skip_ai: bool = False,
     use_pipeline_v2: bool = False,
     use_fast: bool = False,
+    use_single_call: bool = False,
+    use_ultra_fast: bool = False,
 ) -> AnalysisReport:
     """仅分析：验证 → AI分析。
 
@@ -120,7 +127,8 @@ async def analyze_stock(
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(
             stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2,
-            use_fast=use_fast,
+            use_fast=use_fast, use_single_call=use_single_call,
+            use_ultra_fast=use_ultra_fast,
         )
 
     analysis = analysis.model_copy(
@@ -160,11 +168,13 @@ def _validate_data(
 async def _run_ai_analysis(
     stock_analysis: StockAnalysis, ai_analyzer: AIAnalyzer, *,
     use_pipeline_v2: bool = False, use_fast: bool = False,
+    use_single_call: bool = False, use_ultra_fast: bool = False,
 ) -> AnalysisReport:
     """执行AI分析，失败时返回降级结果。"""
     try:
         analysis = await ai_analyzer.analyze(
             stock_analysis, use_pipeline_v2=use_pipeline_v2, use_fast=use_fast,
+            use_single_call=use_single_call, use_ultra_fast=use_ultra_fast,
         )
     except Exception as e:
         logging.warning("[ai_analyze_stock] %s: %s", type(e).__name__, e)

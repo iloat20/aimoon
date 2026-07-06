@@ -21,10 +21,34 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
 from .phases import Phase, phase_system_prompt
+from .timing import logphase
 
 logger = logging.getLogger(__name__)
 
 MAX_TOTAL_SEC = 540  # 9 min (240 ANALYSIS + 300 COMPILE + buffer)
+
+# Thinking budget 配置(命中 DeepSeek thinking-enabled 模式)。
+# 经验值: ANALYSIS 深度推理用 500; 自检仅解析 JSON 用 200 足够;
+# COMPILE 是模板重组、创造性低,用 300; 单 call 给 300(一次出长文,省思考时间换延迟)。
+_TB_ANALYSIS = 500
+_TB_ANALYSIS_RETRY = 700
+_TB_SELF_CHECK = 200
+_TB_COMPILE = 300
+_TB_SINGLE_CALL = 300
+_TB_SINGLE_CALL_RETRY = 500
+
+# single-call 模式: 追加在 ANALYSIS system 末尾,要求模型在报告末尾内联自检 JSON
+# (省去独立 self-check + COMPILE 两次 LLM 调用,合并为一次产出)。
+_SELF_CHECK_INLINE_SUFFIX = (
+    "\n\n## 自检(JSON,必须放在整篇报告最后)\n"
+    "完成上面所有章节后,在文档**最末尾**(第三张表之后)追加一块自检 JSON。"
+    "只追加这一处 JSON,不要在报告中其他地方再输出 JSON。严格输出以下 JSON Schema"
+    "(不要 fences,不要其他内容):\n"
+    '{"citations_ok": bool, "tables_ok": bool, "trigger_ok": bool, '
+    '"advice_ok": bool, "financial_depth_ok": bool, "business_depth_ok": bool, '
+    '"norepeat_ok": bool, "justified_ok": bool, "fixes_needed": [str]}\n'
+    "每一项 true=通过,false=未通过;false 时 fixes_needed 必须列出具体修复点(中文,≤40 字/条)。"
+)
 
 # 运行时硬门控(prompt 级约束 financial/business_depth 不参与判定 → 少误杀)
 _REQUIRED_GATES = (
@@ -67,21 +91,27 @@ class PipelineOrchestrator:
 
     async def run(self, si: StockAnalysis, *, reports: dict | None = None,
                   financial_md_path: Path | None = None,
-                  use_fast: bool = False) -> dict[str, object]:
+                  use_fast: bool = False,
+                  use_single_call: bool = False,
+                  use_ultra_fast: bool = False) -> dict[str, object]:
         ctx = PipelineContext()
         stock_md = self._render_stock_context(si, reports, financial_md_path)
         prior: dict[str, object] = {}
 
-        # Phase 1: ANALYSIS — 并行工具 + LLM + 自检
+        skip_self_check = use_fast or use_ultra_fast or use_single_call
+        skip_compile = use_single_call or use_ultra_fast
+
+        # Phase 1: ANALYSIS — 并行工具 + LLM + (可选) 自检
         try:
             analysis_result = await asyncio.wait_for(
                 self._phase_analysis(
-                    si, stock_md, prior, reports, financial_md_path, use_fast=use_fast,
+                    si, stock_md, prior, reports, financial_md_path,
+                    use_fast=skip_self_check, use_single_call=use_single_call,
                 ),
-                timeout=240,
+                timeout=210,
             )
         except TimeoutError:
-            logger.warning("[pipeline] ANALYSIS 超时 240s, 降级")
+            logger.warning("[pipeline] ANALYSIS 超时 210s, 降级")
             analysis_result = _partial("timeout")
         except Exception as e:  # broad tolerance: never abort the pipeline
             import traceback as tb_mod
@@ -92,7 +122,6 @@ class PipelineOrchestrator:
             analysis_result = _partial(f"{type(e).__name__}")
 
         ctx.phase_results[Phase.ANALYSIS.value] = analysis_result
-        # 空 ANALYSIS 直接降级 legacy(不用 forward 给后续)
         if analysis_result.get("empty_analysis"):
             ctx.partial_phases.append(Phase.ANALYSIS.value)
             prior["analysis_draft"] = ""
@@ -100,7 +129,6 @@ class PipelineOrchestrator:
             return ctx.to_dict()
         if analysis_result.get("partial"):
             ctx.partial_phases.append(Phase.ANALYSIS.value)
-            # partial 但 output 非空时仍把 output 传给 compile(降级而非丢弃)
             prior["analysis_draft"] = analysis_result.get("output", "")
             prior["self_check_fixes"] = analysis_result.get("checks", {}).get("fixes_needed", [])
             prior["tools_output"] = analysis_result.get("tool_results", {})
@@ -108,6 +136,15 @@ class PipelineOrchestrator:
             prior["analysis_draft"] = analysis_result.get("output", "")
             prior["self_check_fixes"] = analysis_result.get("checks", {}).get("fixes_needed", [])
             prior["tools_output"] = analysis_result.get("tool_results", {})
+
+        # single-call / ultra-fast: 直接把 ANALYSIS 初稿当终稿输出,跳过 COMPILE
+        if skip_compile and prior["analysis_draft"]:
+            ctx.final_markdown = _strip_xml_tool_calls_local(str(prior["analysis_draft"]))
+            ctx.phase_results[Phase.COMPILE.value] = {
+                "output": ctx.final_markdown, "tool_results": {},
+                "partial": False, "skipped": True,
+            }
+            return ctx.to_dict()
 
         # Phase 2: COMPILE — 终稿生成(写长文)
         if prior["analysis_draft"]:
@@ -136,7 +173,13 @@ class PipelineOrchestrator:
 
     async def _phase_analysis(self, si: StockAnalysis, stock_md: str, prior: dict,
                               reports: dict | None, financial_md_path: Path | None,
-                              *, use_fast: bool = False) -> dict:
+                              *, use_fast: bool = False,
+                              use_single_call: bool = False) -> dict:
+        """Phase 1: 并行工具 + LLM 初稿 + (可选) 自检。
+
+        ``use_single_call`` 合并两次 LLM 调用为一次:要求模型在初稿末尾内联自检 JSON,
+        既省掉独立 self-check 调用,也跳过后续 COMPILE 阶段。
+        """
         from ..web_search_tool import execute_web_search
 
         # 1. 并行跑 4 个纯工具(async-safe coroutines)
@@ -169,6 +212,9 @@ class PipelineOrchestrator:
         # 2. 拼装注入 tool_result 的 messages(role=user 上下文)
         tool_ctx = {**prior, "tools_output": tool_results}
         system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
+        # single-call 模式: 在 system 末尾追加自检 JSON 内联约束(合并两次 LLM 调用)
+        if use_single_call:
+            system = system + _SELF_CHECK_INLINE_SUFFIX
         injected = _tool_results_to_messages(tool_results)
         messages = [
             {"role": "system", "content": system},
@@ -181,8 +227,13 @@ class PipelineOrchestrator:
         draft = ""
         for _attempt in range(3):
             try:
+                if use_single_call:
+                    tb = _TB_SINGLE_CALL_RETRY if _attempt > 0 else _TB_SINGLE_CALL
+                else:
+                    tb = _TB_ANALYSIS_RETRY if _attempt > 0 else _TB_ANALYSIS
                 message = await self._call_llm_with_stream(
-                    messages, thinking_budget=800 if _attempt > 0 else 500)
+                    messages, max_tokens=16384 if use_single_call else None,
+                    thinking_budget=tb)
                 draft = (message.get("content") or "").strip()
             except Exception as e:
                 logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
@@ -195,6 +246,16 @@ class PipelineOrchestrator:
             logger.warning("[pipeline] ANALYSIS 输出为空(重试 %d 次后),标记降级", 3)
             return {"output": "", "tool_results": tool_results,
                     "partial": True, "checks": {}, "empty_analysis": True}
+
+        # single-call: 解析内联在草稿末尾的自检 JSON,省去独立 self-check + COMPILE 两次调用
+        if use_single_call:
+            draft, inline_checks, _fixes = _split_inline_self_check(draft)
+            return {
+                "output": draft,
+                "tool_results": tool_results,
+                "partial": partial or not all(bool(v) for v in inline_checks.values()),
+                "checks": inline_checks,
+            }
 
         # 4. 自检(可选)
         #    --fast / use_fast:跳过自检,直接把初稿传 COMPILE(prompt 已约束质控)
@@ -246,7 +307,9 @@ class PipelineOrchestrator:
             {"role": "user", "content": f"# 分析草稿\n\n{draft[:8000]}"},
         ]
         try:
-            message = await self._llm_chat(messages, tools=None, tool_choice="none")
+            message = await self._llm_chat(
+                messages, tools=None, tool_choice="none",
+                thinking_budget=_TB_SELF_CHECK, max_tokens=512)
             return (message.get("content") or "").strip()
         except Exception as e:
             logger.error("[pipeline] _run_self_check 失败 %s: %s", type(e).__name__, e)
@@ -269,7 +332,8 @@ class PipelineOrchestrator:
             {"role": "user", "content": "# 修改要求\n\n" + fix_note},
         ]
         try:
-            message = await self._call_llm_with_stream(messages, thinking_budget=500)
+            message = await self._call_llm_with_stream(
+                messages, thinking_budget=_TB_ANALYSIS)
             text = (message.get("content") or "").strip()
             return text or ""
         except Exception as e:
@@ -279,8 +343,6 @@ class PipelineOrchestrator:
     # ---- Phase 2: COMPILE ------------------------------------------------
 
     async def _phase_compile(self, stock_md: str, prior: dict) -> dict:
-        from ..analyzer import _strip_xml_tool_calls as _strip_xml
-
         draft = str(prior.get("analysis_draft", "") or "")
         if not draft:
             draft = f"# 标的快照\n\n{stock_md}"
@@ -290,12 +352,13 @@ class PipelineOrchestrator:
             {"role": "user", "content": f"# 经自检认可的草稿\n\n{draft}"},
         ]
         try:
-            message = await self._call_llm_with_stream(messages, thinking_budget=500)
+            message = await self._call_llm_with_stream(
+                messages, thinking_budget=_TB_COMPILE)
             text = (message.get("content") or "").strip() if isinstance(message, dict) else ""
         except Exception as e:
             logger.warning("[pipeline] COMPILE 非流式调用失败 %s: %s", type(e).__name__, e)
             text = draft
-        stripped = _strip_xml(text) if text else ""
+        stripped = _strip_xml_tool_calls_local(text) if text else ""
         return {"output": stripped or draft, "tool_results": {}, "partial": False}
 
     async def _call_llm_with_stream(self, messages: list[dict], *,
@@ -308,14 +371,16 @@ class PipelineOrchestrator:
         body: dict[str, object] = {
             "model": settings.deepseek_model, "messages": messages,
             "temperature": settings.deepseek_temperature,
-            "max_tokens": max_tokens or min(settings.deepseek_max_tokens, 4096),
+            # 默认使用配置上限(不再硬卡 4096,避免长报告被截断 — 见 #5 覆盖度修复)
+            "max_tokens": max_tokens or settings.deepseek_max_tokens,
             "thinking": {"type": "enabled", "budget_tokens": thinking_budget},
         }
-        async with _httpx.AsyncClient(timeout=300.0) as http:
-            resp = await http.post(analyzer.api_url,
-                                   headers={"Authorization": f"Bearer {analyzer.api_key}",
-                                            "Content-Type": "application/json"},
-                                   json=body)
+        with logphase(f"llm(tb={thinking_budget}, mt={body['max_tokens']})"):
+            async with _httpx.AsyncClient(timeout=300.0) as http:
+                resp = await http.post(analyzer.api_url,
+                                       headers={"Authorization": f"Bearer {analyzer.api_key}",
+                                                "Content-Type": "application/json"},
+                                       json=body)
         if resp.status_code >= 400:
             logger.error("[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -451,6 +516,16 @@ async def _run_peer_compare(si: object, search_fn) -> dict:
     return peer_parse(html, getattr(si, "financial", None)) if html else {"__partial__": "no_data"}
 
 
+def _strip_xml_tool_calls_local(text: str) -> str:
+    """模块级 XML tool-call 剥离(避免每个调用点重复 import)。"""
+    import re
+    text = re.sub(
+        r"<｜｜DSML｜｜tool_calls>.*?</｜｜DSML｜｜tool_calls>", "", text, flags=re.DOTALL
+    )
+    text = re.sub(r"<｜｜DSML｜｜invoke.*?</｜｜DSML｜｜invoke>", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
 def _tool_results_to_messages(tool_results: dict) -> list[dict]:
     messages = []
     for name, value in tool_results.items():
@@ -505,3 +580,33 @@ def _phase_output_text(phase_result: object) -> str:
     r = phase_result if isinstance(phase_result, dict) else {}
     out = r.get("output")
     return out if isinstance(out, str) else ""
+
+
+def _split_inline_self_check(text: str) -> tuple[str, dict, list[str]]:
+    """从 single-call 初稿末尾剥离内联自检 JSON。
+
+    返回 ``(body, checks, fixes)``:
+    - ``body`` 是剥离 JSON 块后的纯报告文本(未解析到 JSON 时返回原文)。
+    - ``checks`` 是解析后的 dict(至少含 ``citations_ok`` 等八项 key),
+      解析失败返回空 dict。
+    - ``fixes_needed`` 列表。
+    """
+    import re
+    if not text:
+        return "", {}, []
+    # 找文档末尾的 JSON fence 或裸 {...} 块(self-check JSON 必须放在最后)
+    fence = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    candidates = fence[:] if fence else []
+    # 也收集最后一个裸 {...} 候选
+    last_brace = text.rfind("}")
+    first_brace = text.rfind("{", 0, last_brace) if last_brace > 0 else -1
+    if first_brace >= 0:
+        candidates.append(text[first_brace:last_brace + 1])
+    for cand in reversed(candidates):
+        parsed, fixes = _parse_self_check_json(cand.strip())
+        if parsed is not None:
+            body = text[: text.rfind(cand)].rstrip()
+            # 去掉末尾可能残留的 "```json" / "```" fence 行
+            body = re.sub(r"```json\s*$", "", body.rstrip(), flags=re.MULTILINE).rstrip()
+            return body, parsed, fixes
+    return text, {}, []
