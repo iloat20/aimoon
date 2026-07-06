@@ -29,6 +29,7 @@ async def collect_and_analyze(
     skip_ai: bool = False,
     *,
     use_pipeline_v2: bool = False,
+    use_fast: bool = False,
 ) -> Path:
     """完整流水线：采集 → 验证 → AI分析 → 生成报告。
 
@@ -42,6 +43,7 @@ async def collect_and_analyze(
         output_dir: 输出目录，可选
         skip_ai: 是否跳过AI分析
         use_pipeline_v2: 启用 AI pipeline v2 五阶段分析
+        use_fast: v2 pipeline 跳过 ANALYSIS 自检(更快输出)
 
     Returns:
         生成的报告文件路径
@@ -60,7 +62,8 @@ async def collect_and_analyze(
     else:
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(
-            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2
+            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2,
+            use_fast=use_fast,
         )
 
     analysis = analysis.model_copy(
@@ -90,6 +93,7 @@ async def analyze_stock(
     *,
     skip_ai: bool = False,
     use_pipeline_v2: bool = False,
+    use_fast: bool = False,
 ) -> AnalysisReport:
     """仅分析：验证 → AI分析。
 
@@ -99,6 +103,8 @@ async def analyze_stock(
         stock_analysis: StockAnalysis 聚合根
         ai_analyzer: AI分析器
         data_validator: 数据验证器
+        skip_ai: 是否跳过AI分析
+        use_fast: v2 pipeline 跳过 ANALYSIS 自检
         skip_ai: 是否跳过AI分析
 
     Returns:
@@ -113,7 +119,8 @@ async def analyze_stock(
     else:
         logging.info("AI分析中...")
         analysis = await _run_ai_analysis(
-            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2
+            stock_analysis, ai_analyzer, use_pipeline_v2=use_pipeline_v2,
+            use_fast=use_fast,
         )
 
     analysis = analysis.model_copy(
@@ -151,11 +158,14 @@ def _validate_data(
 
 
 async def _run_ai_analysis(
-    stock_analysis: StockAnalysis, ai_analyzer: AIAnalyzer, *, use_pipeline_v2: bool = False
+    stock_analysis: StockAnalysis, ai_analyzer: AIAnalyzer, *,
+    use_pipeline_v2: bool = False, use_fast: bool = False,
 ) -> AnalysisReport:
     """执行AI分析，失败时返回降级结果。"""
     try:
-        analysis = await ai_analyzer.analyze(stock_analysis, use_pipeline_v2=use_pipeline_v2)
+        analysis = await ai_analyzer.analyze(
+            stock_analysis, use_pipeline_v2=use_pipeline_v2, use_fast=use_fast,
+        )
     except Exception as e:
         logging.warning("[ai_analyze_stock] %s: %s", type(e).__name__, e)
         analysis = _fallback_analysis(stock_analysis)

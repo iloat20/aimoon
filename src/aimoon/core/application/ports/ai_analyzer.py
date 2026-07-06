@@ -23,6 +23,7 @@ class AIAnalyzer(ABC):
         financial_md_path: Path | None = None,
         *,
         use_pipeline_v2: bool = False,
+        use_fast: bool = False,
     ) -> AnalysisReport:
         """对股票信息进行 AI 分析。
 
@@ -30,6 +31,8 @@ class AIAnalyzer(ABC):
             stock_info: 聚合的股票信息实体
             reports: 财务报告原始数据，可选
             financial_md_path: 财务报告 MD 文件路径，可选
+            use_pipeline_v2: 启用 v2 两阶段 pipeline
+            use_fast: v2 pipeline 跳过 ANALYSIS 自检(更快输出)
 
         Returns:
             AnalysisReport AI 分析结果实体

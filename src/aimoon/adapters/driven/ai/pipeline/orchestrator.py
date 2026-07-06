@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 
 MAX_TOTAL_SEC = 540  # 9 min (240 ANALYSIS + 300 COMPILE + buffer)
 
+# 运行时硬门控(prompt 级约束 financial/business_depth 不参与判定 → 少误杀)
+_REQUIRED_GATES = (
+    "citations_ok", "tables_ok", "trigger_ok", "advice_ok",
+    "norepeat_ok", "justified_ok",
+)
+
 
 class AnalyzerRuntime(Protocol):
     _settings: Any
@@ -60,7 +66,8 @@ class PipelineOrchestrator:
         self.analyzer = analyzer
 
     async def run(self, si: StockAnalysis, *, reports: dict | None = None,
-                  financial_md_path: Path | None = None) -> dict[str, object]:
+                  financial_md_path: Path | None = None,
+                  use_fast: bool = False) -> dict[str, object]:
         ctx = PipelineContext()
         stock_md = self._render_stock_context(si, reports, financial_md_path)
         prior: dict[str, object] = {}
@@ -68,7 +75,9 @@ class PipelineOrchestrator:
         # Phase 1: ANALYSIS — 并行工具 + LLM + 自检
         try:
             analysis_result = await asyncio.wait_for(
-                self._phase_analysis(si, stock_md, prior, reports, financial_md_path),
+                self._phase_analysis(
+                    si, stock_md, prior, reports, financial_md_path, use_fast=use_fast,
+                ),
                 timeout=240,
             )
         except TimeoutError:
@@ -126,7 +135,8 @@ class PipelineOrchestrator:
     # ---- Phase 1: ANALYSIS ------------------------------------------------
 
     async def _phase_analysis(self, si: StockAnalysis, stock_md: str, prior: dict,
-                              reports: dict | None, financial_md_path: Path | None) -> dict:
+                              reports: dict | None, financial_md_path: Path | None,
+                              *, use_fast: bool = False) -> dict:
         from ..web_search_tool import execute_web_search
 
         # 1. 并行跑 4 个纯工具(async-safe coroutines)
@@ -166,19 +176,32 @@ class PipelineOrchestrator:
             *injected,
         ]
 
-        # 3. LLM 一轮产出完整 Markdown 草稿(禁用 tool_choice 避免搜索循环)
-        try:
-            message = await self._call_llm_with_stream(messages, thinking_budget=500)
-            draft = (message.get("content") or "").strip()
-        except Exception as e:
-            logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
-            draft = ""
+        # 3. LLM 产出完整 Markdown 草稿(禁用 tool_choice 避免搜索循环)
+        #    空输出重试至多 2 次,重试时提高 thinking_budget 让模型想更久 + 避限流
+        draft = ""
+        for _attempt in range(3):
+            try:
+                message = await self._call_llm_with_stream(
+                    messages, thinking_budget=800 if _attempt > 0 else 500)
+                draft = (message.get("content") or "").strip()
+            except Exception as e:
+                logger.error("[pipeline] ANALYSIS LLM 调用失败 %s: %s", type(e).__name__, e)
+                draft = ""
+            if draft:
+                break
+            if _attempt < 2:
+                await asyncio.sleep(1)
         if not draft:
-            logger.warning("[pipeline] ANALYSIS 输出为空,标记降级")
+            logger.warning("[pipeline] ANALYSIS 输出为空(重试 %d 次后),标记降级", 3)
             return {"output": "", "tool_results": tool_results,
                     "partial": True, "checks": {}, "empty_analysis": True}
 
-        # 4. 自检 JSON 由单独的 LLM 调用产出(更稳定,避免模型在长文末漏写 JSON)
+        # 4. 自检(可选)
+        #    --fast / use_fast:跳过自检,直接把初稿传 COMPILE(prompt 已约束质控)
+        if use_fast:
+            return {"output": draft, "tool_results": tool_results,
+                    "partial": partial, "checks": {}}
+
         check_json = await self._run_self_check(draft)
         checks, fixes = _parse_self_check_json(check_json)
         if checks is None:
@@ -186,10 +209,10 @@ class PipelineOrchestrator:
             return {"output": draft, "tool_results": tool_results,
                     "partial": True, "checks": {}}
 
-        # 5. 修复循环(至多 1 次重跑)
-        gates_pass = bool(checks.get("citations_ok") and checks.get("tables_ok")
-                          and checks.get("trigger_ok") and checks.get("advice_ok"))
-        if not gates_pass and fixes:
+        # 5. 修复循环:仅在校验未通过 + 初稿不够长 → 重跑(至多 1 次重跑)
+        #    阈值:全部 6 项 runtime 门控通过即视为通过;且长初稿(>3000 字)直接采纳
+        gates_pass = all(checks.get(g) for g in _REQUIRED_GATES)
+        if not gates_pass and fixes and len(draft) <= 3000:
             draft = await self._reanalysis_with_fixes(stock_md, prior, tool_results, fixes)
             check_json2 = await self._run_self_check(draft)
             checks2, fixes2 = _parse_self_check_json(check_json2)
@@ -203,15 +226,15 @@ class PipelineOrchestrator:
         """单独一次 LLM 调用,仅输出自检 JSON。"""
         system = (
             "你是报告质检员。基于下方草稿与强制校验清单,仅输出合法 JSON。\n"
-            "强制校验 7 项:\n"
+            "强制校验 8 项(后两项为 prompt 级软约束;前 6 项为运行时硬门控):\n"
             "- citations_ok: 每个关键数字都标注来源(训练数据/公司年报/搜索结果)\n"
             "- tables_ok: 三张核心表格(近年财务时序 ≥5 行/同行竞品 ≥5 家/估值三档含概率)格式合规\n"
             "- trigger_ok: 每一条看空都含明确触发条件(可量化阈值)+估值冲击%\n"
             "- advice_ok: 投资建议明确(买/持/卖+价格区间+催化剂+止损)\n"
-            "- financial_depth_ok: 覆盖 5 年 CAGR+ROE 杜邦+OCF/利润比+有息负债/商誉\n"
-            "- business_depth_ok: 覆盖分产品/分渠道收入结构+护城河 3+ 维度+竞争格局 3+ 同业\n"
             "- norepeat_ok: 全文无连续超过 20 字的重复段落\n"
             "- justified_ok: 任何定性判断必须有具体数字支撑\n"
+            "- financial_depth_ok: 5 年 CAGR+ROE 杜邦+OCF/利润比(prompt 级软约束)\n"
+            "- business_depth_ok: 产品结构+护城河+竞争格局(prompt 级软约束)\n"
             "严格输出以下 JSON Schema(不要 fences,不要其他内容):\n"
             '{"citations_ok": bool, "tables_ok": bool, "trigger_ok": bool, '
             '"advice_ok": bool, "financial_depth_ok": bool, "business_depth_ok": bool, '
@@ -267,12 +290,13 @@ class PipelineOrchestrator:
             {"role": "user", "content": f"# 经自检认可的草稿\n\n{draft}"},
         ]
         try:
-            text = await self.analyzer._stream_final_response(messages)
+            message = await self._call_llm_with_stream(messages, thinking_budget=500)
+            text = (message.get("content") or "").strip() if isinstance(message, dict) else ""
         except Exception as e:
-            logger.warning("[pipeline] COMPILE stream 失败 %s: %s", type(e).__name__, e)
+            logger.warning("[pipeline] COMPILE 非流式调用失败 %s: %s", type(e).__name__, e)
             text = draft
         stripped = _strip_xml(text) if text else ""
-        return {"output": stripped or text, "tool_results": {}, "partial": False}
+        return {"output": stripped or draft, "tool_results": {}, "partial": False}
 
     async def _call_llm_with_stream(self, messages: list[dict], *,
                                      max_tokens: int | None = None,

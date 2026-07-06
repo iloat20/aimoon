@@ -97,7 +97,8 @@ def main() -> None:
     try:
         use_v2 = not bool(args.legacy)
         orchestrator = PipelineOrchestrator(
-            output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2
+            output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2,
+            use_fast=bool(args.fast),
         )
         if mock_mode:
             out = asyncio.run(orchestrator.run_mock(parsed_symbol, name))
@@ -146,5 +147,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"aimoon {__version__}")
     parser.add_argument(
         "--legacy", action="store_true", help="强制走旧链路(AI 一段式)"
+    )
+    parser.add_argument(
+        "--fast", action="store_true",
+        help="v2 pipeline 快速模式:跳过 ANALYSIS 自检 + 修复循环,直接输出初稿编译终稿"
     )
     return parser
