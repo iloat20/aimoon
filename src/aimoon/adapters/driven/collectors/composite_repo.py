@@ -250,7 +250,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         if self._financial_collector is not None and hasattr(
             self._financial_collector, "fetch_history"
         ):
-            return await self._financial_collector.fetch_history(symbol, years=1)
+            return await self._financial_collector.fetch_history(symbol)
         return []
 
     def _unwrap(
