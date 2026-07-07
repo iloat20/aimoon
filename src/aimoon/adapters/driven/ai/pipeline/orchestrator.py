@@ -76,6 +76,10 @@ class PipelineOrchestrator:
 
     def __init__(self, analyzer: AnalyzerRuntime) -> None:
         self.analyzer = analyzer
+        # Dedicated long-timeout client for LLM calls (300s).
+        # Reuses TCP/TLS connections across ANALYSIS and COMPILE phases.
+        import httpx as _httpx
+        self._llm_http = _httpx.AsyncClient(timeout=300.0)
 
     async def run(self, si: StockAnalysis, *, reports: dict | None = None,
                   financial_md_path: Path | None = None,
@@ -325,7 +329,6 @@ class PipelineOrchestrator:
         使用 reasoning_effort 控制思考强度(max = 最深思考)。
         思考模式下 temperature/top_p 等参数无效,不传。
         """
-        import httpx as _httpx
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
         body: dict[str, object] = {
@@ -334,11 +337,12 @@ class PipelineOrchestrator:
             "reasoning_effort": reasoning_effort,
         }
         with logphase(f"llm(effort={reasoning_effort}, mt={body['max_tokens']})"):
-            async with _httpx.AsyncClient(timeout=300.0) as http:
-                resp = await http.post(analyzer.api_url,
-                                       headers={"Authorization": f"Bearer {analyzer.api_key}",
-                                                "Content-Type": "application/json"},
-                                       json=body)
+            resp = await self._llm_http.post(
+                analyzer.api_url,
+                headers={"Authorization": f"Bearer {analyzer.api_key}",
+                         "Content-Type": "application/json"},
+                json=body,
+            )
         if resp.status_code >= 400:
             logger.error("[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -348,7 +352,6 @@ class PipelineOrchestrator:
                           max_tokens: int | None = None,
                           reasoning_effort: str = "max") -> str:
         """流式 LLM 调用,适用于 COMPILE 期(终稿输出需要流式累积)。"""
-        import httpx as _httpx
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
         body: dict[str, object] = {
@@ -358,26 +361,27 @@ class PipelineOrchestrator:
             "reasoning_effort": reasoning_effort,
         }
         full_text: list[str] = []
-        async with _httpx.AsyncClient(timeout=300.0) as http:
-            async with http.stream("POST", analyzer.api_url,
-                                   headers={"Authorization": f"Bearer {analyzer.api_key}",
-                                            "Content-Type": "application/json"},
-                                   json=body) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    payload = line[6:].strip()
-                    if payload == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(payload)
-                        delta = (chunk.get("choices") or [{}])[0].get("delta", {})
-                        content = delta.get("content")
-                        if content:
-                            full_text.append(content)
-                    except json.JSONDecodeError:
-                        continue
+        async with self._llm_http.stream(
+            "POST", analyzer.api_url,
+            headers={"Authorization": f"Bearer {analyzer.api_key}",
+                     "Content-Type": "application/json"},
+            json=body,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[6:].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(payload)
+                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        full_text.append(content)
+                except json.JSONDecodeError:
+                    continue
         return "".join(full_text)
         """单次文本输出,禁用 tool_choice 避免搜索循环。
 
