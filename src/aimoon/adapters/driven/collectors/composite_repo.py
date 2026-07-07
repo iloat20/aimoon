@@ -81,24 +81,29 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             await self._quote_collector.aclose()
 
     async def _collect_all_inner(self, symbol: str, name: str) -> StockAnalysis:
-        print(" 并行采集行情/财务/K线/资金流/研报...")
+        # Phase A: quote first (fast, needed by social for stock name)
+        print(" 采集行情...")
+        quote_result = await self._fetch_quote(symbol, name)
+        quote = self._unwrap_quote(quote_result, symbol, name)
+        stock_name = quote.name or name
+
+        # Phase B: remaining 6 collectors + social, all parallel
+        print(" 并行采集财务/K线/资金流/研报/社媒...")
         t0 = time.monotonic()
         results = await asyncio.gather(
-            self._fetch_quote(symbol, name),
             self._collect_financial(symbol),
             self._collect_quarterly_financial(symbol),
             self._kline_collector.fetch(symbol),
             self._capital_flow_collector.fetch(symbol),
             self._research_collector.fetch(symbol),
             self._collect_history_financial(symbol),
+            self._social_collector.collect(symbol, stock_name),
             return_exceptions=True,
         )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
-        quote = self._unwrap_quote(results[0], symbol, name)
-
         financial = self._unwrap(
-            results[1],
+            results[0],
             FinancialData,
             symbol=symbol,
             platform="财务数据(年报)",
@@ -108,7 +113,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         quarterly = self._unwrap(
-            results[2],
+            results[1],
             QuarterlyFinancialData,
             symbol=symbol,
             platform="财务数据(季报)",
@@ -121,7 +126,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         kline = self._unwrap(
-            results[3],
+            results[2],
             KlineData,
             symbol=symbol,
             platform="K线数据",
@@ -131,7 +136,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         capital_flow = self._unwrap(
-            results[4],
+            results[3],
             CapitalFlowData,
             symbol=symbol,
             platform="资金流向",
@@ -141,7 +146,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             elapsed_ms=elapsed_ms,
         )
         research = self._unwrap(
-            results[5],
+            results[4],
             ResearchReportData,
             symbol=symbol,
             platform="研报数据",
@@ -150,7 +155,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             fail="   研报: 获取失败。",
             elapsed_ms=elapsed_ms,
         )
-        history_raw = results[6]
+        history_raw = results[5]
         if isinstance(history_raw, Exception):
             logger.debug("[history] 历史财务采集失败: %s", history_raw)
             print("   历史财务: 获取失败")
@@ -163,12 +168,18 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         else:
             history = []
 
-        all_posts, social_results = await self._social_collector.collect(symbol, quote.name or name)
-        self._collect_results.extend(social_results)
+        # Social result is at index 6
+        all_posts: list = []
+        social_raw = results[6]
+        if isinstance(social_raw, Exception):
+            logger.debug("[social] 社媒采集异常: %s", social_raw)
+        elif isinstance(social_raw, tuple) and len(social_raw) == 2:
+            all_posts, social_results = social_raw
+            self._collect_results.extend(social_results)
 
         return StockAnalysis(
             symbol=symbol,
-            name=quote.name or name,
+            name=stock_name,
             market=resolve_market(symbol),
             quote=quote,
             financial=financial,
@@ -239,7 +250,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         if self._financial_collector is not None and hasattr(
             self._financial_collector, "fetch_history"
         ):
-            return await self._financial_collector.fetch_history(symbol)
+            return await self._financial_collector.fetch_history(symbol, years=1)
         return []
 
     def _unwrap(
