@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import inspect
 import json
 import logging
 from pathlib import Path
@@ -20,7 +19,7 @@ from typing import Any, Protocol
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
-from .phases import Phase, phase_system_prompt, _SECTIONS_MD
+from .phases import _SECTIONS_MD, Phase, phase_system_prompt
 from .table_renderer import (
     render_financial_temporal,
     render_peer_comparison,
@@ -183,7 +182,7 @@ class PipelineOrchestrator:
             moat = cached_tools.get("business_moat", {})
             partial = any(_is_partial(v) for v in [tech, fin, peer, risk, val, moat])
         else:
-            # 1. 并行跑 4 个纯工具(async-safe coroutines)
+            # 1. 并行跑 4 个纯工具 + peer_compare(web search)
             tech_coro = _run_safe(TOOL_RUNNERS["technicals"], getattr(si, "kline", None),
                                    getattr(si, "capital_flow", None))
             fin_coro = _run_safe(TOOL_RUNNERS["financial_temporal"],
@@ -195,14 +194,14 @@ class PipelineOrchestrator:
                 getattr(si, "social_posts", None),
                 getattr(si, "history_financial", None),
             )
-            peer_raw = _run_peer_compare(si, execute_web_search)
-            if inspect.iscoroutine(peer_raw):
-                peer = await peer_raw
-            else:
-                peer = peer_raw
-            tech, fin, moat = await asyncio.gather(tech_coro, fin_coro, moat_coro)
-            risk = await _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote)
-            val = await _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote)
+            peer_coro = _run_peer_compare(si, execute_web_search)
+            tech, fin, moat, peer = await asyncio.gather(
+                tech_coro, fin_coro, moat_coro, peer_coro,
+            )
+            risk, val = await asyncio.gather(
+                _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote),
+                _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote),
+            )
 
             tool_results = {
                 "technicals": tech, "financial_temporal": fin, "peer_compare": peer,

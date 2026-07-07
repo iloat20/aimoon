@@ -108,7 +108,7 @@ def _fake_analyzer(monkeypatch):
     async def _fake_stream_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
         return "[compiled fake markdown]"
 
-    def _fake_peer_compare_module(si, search_fn):
+    async def _fake_peer_compare_module(si, search_fn):
         return {"_fake": True, "tool": "peer_compare"}
 
     monkeypatch.setattr(PipelineOrchestrator, "_call_llm_with_stream", _fake_call_llm)
