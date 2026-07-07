@@ -86,6 +86,20 @@ class PipelineOrchestrator:
                   use_fast: bool = False,
                   use_single_call: bool = False,
                   use_ultra_fast: bool = False) -> dict[str, object]:
+        try:
+            return await self._run_pipeline(
+                si, reports=reports, financial_md_path=financial_md_path,
+                use_fast=use_fast, use_single_call=use_single_call,
+                use_ultra_fast=use_ultra_fast,
+            )
+        finally:
+            await self._llm_http.aclose()
+
+    async def _run_pipeline(self, si: StockAnalysis, *, reports: dict | None = None,
+                            financial_md_path: Path | None = None,
+                            use_fast: bool = False,
+                            use_single_call: bool = False,
+                            use_ultra_fast: bool = False) -> dict[str, object]:
         ctx = PipelineContext()
         stock_md = self._render_stock_context(si, reports, financial_md_path)
         prior: dict[str, object] = {}
