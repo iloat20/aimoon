@@ -57,9 +57,10 @@ async def test_collect_all_populates_history_financial():
 # ---- Task 4 ----
 
 
-def test_two_phases_defined():
-    assert len(Phase) == 2
+def test_three_phases_defined():
+    assert len(Phase) == 3
     assert Phase.ANALYSIS.value == "analysis"
+    assert Phase.SELF_CHECK.value == "self_check"
     assert Phase.COMPILE.value == "compile"
 
 
@@ -126,3 +127,63 @@ async def test_orchestrator_runs_two_phases(_fake_analyzer):
     # ANALYSIS + COMPILE 两阶段都登记在 phase_results 里
     assert "analysis" in ctx["phase_results"]
     assert "compile" in ctx["phase_results"]
+
+
+# ---- Self-check unit tests ----
+
+
+def test_parse_self_check_json_code_fence():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    text = 'Some preamble\n```json\n{"passed": false, "fixes_needed": ["add PE ratio"]}\n```\n'
+    parsed, fixes = _parse_self_check_json(text)
+    assert parsed is not None
+    assert parsed["passed"] is False
+    assert fixes == ["add PE ratio"]
+
+
+def test_parse_self_check_json_bare_object():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    text = '{"passed": true, "fixes_needed": []}'
+    parsed, fixes = _parse_self_check_json(text)
+    assert parsed is not None
+    assert parsed["passed"] is True
+    assert fixes == []
+
+
+def test_parse_self_check_json_garbage():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    parsed, fixes = _parse_self_check_json("no json here at all")
+    assert parsed is None
+    assert fixes == []
+
+
+def test_parse_self_check_json_nested_braces():
+    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+
+    text = 'Result: {"passed": false, "fixes_needed": ["fix section 3", "add ROE"]}'
+    parsed, fixes = _parse_self_check_json(text)
+    assert parsed is not None
+    assert parsed["passed"] is False
+    assert len(fixes) == 2
+
+
+@pytest.mark.asyncio
+async def test_self_check_phase_registered(_fake_analyzer):
+    """When not skipping, self_check phase appears in phase_results."""
+    ctx = await PipelineOrchestrator(_fake_analyzer).run(
+        StockAnalysis(symbol="000001"),
+    )
+    # Default (no fast/single/ultra flags) should run self-check
+    assert "self_check" in ctx["phase_results"]
+
+
+@pytest.mark.asyncio
+async def test_self_check_skipped_in_fast_mode(_fake_analyzer):
+    """use_fast=True skips self-check."""
+    ctx = await PipelineOrchestrator(_fake_analyzer).run(
+        StockAnalysis(symbol="000001"), use_fast=True,
+    )
+    assert "self_check" not in ctx["phase_results"]

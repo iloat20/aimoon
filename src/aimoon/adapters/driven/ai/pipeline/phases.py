@@ -8,10 +8,11 @@ from pathlib import Path
 
 
 class Phase(StrEnum):
-    """Pipeline v2 两阶段."""
+    """Pipeline v2 phases: ANALYSIS → SELF_CHECK → COMPILE."""
 
-    ANALYSIS = "analysis"   # 规划+采集+分析
-    COMPILE = "compile"     # 终稿
+    ANALYSIS = "analysis"     # 规划+采集+分析
+    SELF_CHECK = "self_check" # 轻量自检
+    COMPILE = "compile"       # 终稿
 
 
 # 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
@@ -57,6 +58,12 @@ def get_pipeline_phases() -> list[PhaseSpec]:
             ],
             timeout_sec=240,   # 4 min: 并行工具 + LLM 思考 + 自检 + 重跑
             required_outputs=["分析初稿 + 自检 JSON", "三看空含触发", "三张核心表"],
+        ),
+        PhaseSpec(
+            Phase.SELF_CHECK,
+            _load(Phase.SELF_CHECK),
+            timeout_sec=60,    # 1 min: 轻量 JSON 自检
+            required_outputs=["自检 JSON: passed + fixes_needed"],
         ),
         PhaseSpec(
             Phase.COMPILE,

@@ -143,6 +143,19 @@ class PipelineOrchestrator:
             prior["self_check_fixes"] = analysis_result.get("checks", {}).get("fixes_needed", [])
             prior["tools_output"] = analysis_result.get("tool_results", {})
 
+        # Phase 1.5: SELF_CHECK — lightweight draft validation
+        draft = str(prior.get("analysis_draft", "") or "")
+        if draft and not skip_self_check:
+            try:
+                sc_result = await self._phase_self_check(draft)
+            except Exception as e:
+                logger.warning("[pipeline] SELF_CHECK 外层异常 %s: %s", type(e).__name__, e)
+                sc_result = {"passed": True, "fixes_needed": []}
+            ctx.phase_results[Phase.SELF_CHECK.value] = sc_result
+            fixes = sc_result.get("fixes_needed", [])
+            if fixes:
+                prior["self_check_fixes"] = fixes
+
         # single-call / ultra-fast: 直接把 ANALYSIS 初稿当终稿输出,跳过 COMPILE
         if skip_compile and prior["analysis_draft"]:
             ctx.final_markdown = _strip_xml_tool_calls_local(str(prior["analysis_draft"]))
@@ -315,6 +328,43 @@ class PipelineOrchestrator:
                 "partial": partial, "checks": {}}
 
 
+
+    # ---- Phase 1.5: SELF_CHECK ------------------------------------------------
+
+    async def _phase_self_check(self, draft: str) -> dict[str, object]:
+        """Lightweight self-check: single short LLM call, never blocks pipeline.
+
+        Returns ``{"passed": bool, "fixes_needed": list[str]}``.
+        On any failure (timeout, parse error, exception) defaults to passed.
+        """
+        system = phase_system_prompt(Phase.SELF_CHECK, "", {"analysis_draft": draft})
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"# ANALYSIS 初稿\n\n{draft}"},
+        ]
+        try:
+            message = await asyncio.wait_for(
+                self._call_llm_with_tools(
+                    messages, max_tokens=2048, reasoning_effort="low",
+                ),
+                timeout=60,
+            )
+            text = (message.get("content") or "").strip()
+        except TimeoutError:
+            logger.warning("[pipeline] SELF_CHECK 超时 60s, 跳过")
+            return {"passed": True, "fixes_needed": []}
+        except Exception as e:
+            logger.warning("[pipeline] SELF_CHECK 异常 %s: %s", type(e).__name__, e)
+            return {"passed": True, "fixes_needed": []}
+
+        parsed, fixes = _parse_self_check_json(text)
+        if parsed is None:
+            logger.warning("[pipeline] SELF_CHECK JSON 解析失败, 跳过")
+            return {"passed": True, "fixes_needed": []}
+
+        passed = bool(parsed.get("passed", True))
+        logger.info("[pipeline] SELF_CHECK passed=%s fixes=%d", passed, len(fixes))
+        return {"passed": passed, "fixes_needed": fixes}
 
     # ---- Phase 2: COMPILE ------------------------------------------------
 
@@ -583,7 +633,16 @@ def _compact_tool_output(name: str, value: Any) -> str:
     return out
 
 
-    # 1. 优先匹配 ```json fence
+def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
+    """Parse self-check JSON from LLM response text.
+
+    Tries ``json`` code fence first, then falls back to finding any JSON
+    object containing a ``passed`` key.  Returns ``(parsed_dict, fixes_list)``
+    or ``(None, [])`` on failure.
+    """
+    import re
+
+    # 1. Prefer ```json fence
     m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
     if m:
         try:
@@ -593,16 +652,16 @@ def _compact_tool_output(name: str, value: Any) -> str:
                 return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
         except (json.JSONDecodeError, ValueError):
             pass
-    # 2. 回退: 找最后一个独立的 { ... } 块
+    # 2. Fallback: find any { ... } containing "passed"
     for match in re.finditer(r"\{[^{}]*\}", text):
         try:
             parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict) and "citations_ok" in parsed:
+            if isinstance(parsed, dict) and "passed" in parsed:
                 fixes = parsed.get("fixes_needed", [])
                 return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
         except (json.JSONDecodeError, ValueError):
             continue
-    # 3. 回退: 取最后一个 '}' 往前
+    # 3. Last resort: find outermost braces
     last_brace = text.rfind("}")
     if last_brace > 0:
         first_brace = text.rfind("{", 0, last_brace)
