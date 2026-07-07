@@ -13,6 +13,7 @@ import time
 
 import httpx
 
+from aimoon.adapters.driven.ai.pipeline.timing import logphase
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
@@ -24,8 +25,6 @@ from aimoon.core.domain.repositories.stock_analysis_repo import (
 )
 from aimoon.core.domain.services.symbols import resolve_market
 from aimoon.core.domain.value_objects.collect_result import CollectResult
-
-from aimoon.adapters.driven.ai.pipeline.timing import logphase
 
 from .capital_flow import CapitalFlowCollector
 from .kline import KlineCollector
