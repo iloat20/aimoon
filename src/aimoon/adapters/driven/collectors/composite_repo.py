@@ -25,6 +25,8 @@ from aimoon.core.domain.repositories.stock_analysis_repo import (
 from aimoon.core.domain.services.symbols import resolve_market
 from aimoon.core.domain.value_objects.collect_result import CollectResult
 
+from aimoon.adapters.driven.ai.pipeline.timing import logphase
+
 from .capital_flow import CapitalFlowCollector
 from .kline import KlineCollector
 from .quote import QuoteCollector
@@ -90,16 +92,17 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         # Phase B: remaining 6 collectors + social, all parallel
         print(" 并行采集财务/K线/资金流/研报/社媒...")
         t0 = time.monotonic()
-        results = await asyncio.gather(
-            self._collect_financial(symbol),
-            self._collect_quarterly_financial(symbol),
-            self._kline_collector.fetch(symbol),
-            self._capital_flow_collector.fetch(symbol),
-            self._research_collector.fetch(symbol),
-            self._collect_history_financial(symbol),
-            self._social_collector.collect(symbol, stock_name),
-            return_exceptions=True,
-        )
+        with logphase("collectors(fin+kline+cf+research+history+social)"):
+            results = await asyncio.gather(
+                self._collect_financial(symbol),
+                self._collect_quarterly_financial(symbol),
+                self._kline_collector.fetch(symbol),
+                self._capital_flow_collector.fetch(symbol),
+                self._research_collector.fetch(symbol),
+                self._collect_history_financial(symbol),
+                self._social_collector.collect(symbol, stock_name),
+                return_exceptions=True,
+            )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
         financial = self._unwrap(

@@ -199,13 +199,15 @@ class PipelineOrchestrator:
                 getattr(si, "history_financial", None),
             )
             peer_coro = _run_peer_compare(si, execute_web_search)
-            tech, fin, moat, peer = await asyncio.gather(
-                tech_coro, fin_coro, moat_coro, peer_coro,
-            )
-            risk, val = await asyncio.gather(
-                _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote),
-                _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote),
-            )
+            with logphase("tools(tech+fin+moat+peer)"):
+                tech, fin, moat, peer = await asyncio.gather(
+                    tech_coro, fin_coro, moat_coro, peer_coro,
+                )
+            with logphase("tools(risk+val)"):
+                risk, val = await asyncio.gather(
+                    _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote),
+                    _run_safe(TOOL_RUNNERS["valuation"], fin, peer, si.quote),
+                )
 
             tool_results = {
                 "technicals": tech, "financial_temporal": fin, "peer_compare": peer,
