@@ -27,8 +27,7 @@ uv run mypy src/aimoon/                    # ignore_missing_imports, warn_unused
 
 # Tests
 uv run pytest                              # run all tests
-uv run pytest tests/test_scoring.py         # single test file
-uv run pytest tests/test_scoring.py::TestCapitalFlowScore::test_neutral_flow  # single test
+uv run pytest tests/test_pipeline_phases.py   # v2 管线 tool 链路 + 缓存命中回归
 
 # Dev dependencies (pytest, ruff, bandit, pylint)
 uv sync --group dev
@@ -70,8 +69,7 @@ uv sync --group dev
   - `aggregates/stock_analysis.py` — StockAnalysis aggregate root
   - `entities/` — Entities with identity (quote, financial, kline, capital_flow, social, research)
   - `value_objects/` — Immutable value objects (KlineBar, DimensionScore, AnalysisReport, CollectResult, FinancialReport)
-  - `services/scoring.py` — 11-factor scoring model (pure functions)
-  - `services/symbols.py` — Stock code → market resolution
+  - `services/symbols.py` — Stock code → market resolution（注: 文档曾描述的 `scoring.py` 11 因子评分模型并不存在）
   - `repositories/stock_analysis_repo.py` — Repository interface (port)
 
 - **`core/application/`** — Orchestration only

@@ -6,14 +6,82 @@ These never hit the real LLM: 像 test_pipeline_phases.py 一样 fake 掉
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+
 import pytest
 
-from aimoon.adapters.driven.ai.pipeline import section_coverage
 from aimoon.adapters.driven.ai.pipeline.orchestrator import (
     PipelineOrchestrator,
     _split_inline_self_check,
 )
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+
+# ---------------------------------------------------------------------------
+# 报告八章节覆盖度评估(原 pipeline/section_coverage.py 的 evaluate_coverage)。
+# 该模块在 src/ 中已无生产引用,仅被本测试用作 single-call / ultra-fast 模式的
+# 覆盖度断言,故下沉为测试本地基础设施,避免孤儿 import。
+# ---------------------------------------------------------------------------
+
+SECTION_KEYWORDS: list[tuple[str, list[str]]] = [
+    ("一、业务画像与护城河", ["业务画像", "护城河", "核心业务结构", "商业模式"]),
+    ("二、财务健康诊断", ["财务健康", "成长性", "现金流质量", "ROE 杜邦", "ROE杜邦"]),
+    ("三、交叉验证", ["交叉验证", "业务 vs 财务", "业务/财务背离", "四方验证"]),
+    ("四、风险量化与看空", ["风险量化", "看空", "触发条件", "冲击量级"]),
+    ("五、估值建模", ["估值建模", "FCFE", "保守档", "中性档", "乐观档"]),
+    ("六、逆向视角", ["逆向视角", "看多逻辑", "安全边际", "市场错在哪里"]),
+    ("七、投资建议", ["投资建议", "买入/增持/持有", "目标价格区间", "止损"]),
+    ("八、附录", ["附录", "数据源索引", "关键数字汇总", "数据来源", "可信度"]),
+]
+
+
+def _normalize(text: str) -> str:
+    text = text.replace(" ", "").replace("　", "").replace("\t", "")
+    text = text.replace("（", "(").replace("）", ")").replace("：", ":")
+    return text
+
+
+@dataclass
+class SectionCoverage:
+    total: int
+    hit: int
+    missing: list[str]
+    per_section: dict[str, bool]
+
+    @property
+    def ratio(self) -> float:
+        return self.hit / self.total if self.total else 0.0
+
+    @property
+    def all_present(self) -> bool:
+        return self.hit == self.total
+
+
+def evaluate_coverage(markdown: str) -> SectionCoverage:
+    """评估八个核心章节的覆盖度(章节编号或关键词任一命中即视为存在)。"""
+    norm = _normalize(markdown)
+    per_section: dict[str, bool] = {}
+    for section_name, keywords in SECTION_KEYWORDS:
+        hit = False
+        if _normalize(section_name) in norm:
+            hit = True
+        else:
+            num = section_name.split("、")[0]
+            if re.search(rf"(?:^|[^一-鿿]){re.escape(num)}\s*、", markdown):
+                hit = True
+            else:
+                for kw in keywords:
+                    if _normalize(kw) in norm:
+                        hit = True
+                        break
+        per_section[section_name] = hit
+    missing = [k for k, v in per_section.items() if not v]
+    return SectionCoverage(
+        total=len(SECTION_KEYWORDS),
+        hit=len(SECTION_KEYWORDS) - len(missing),
+        missing=missing,
+        per_section=per_section,
+    )
 
 
 class _FakeSettings:
@@ -121,7 +189,7 @@ async def test_single_call_skips_compile_and_inline_self_check(_fake_llm):
     assert compile_res.get("skipped") is True or not compile_res
     # 终稿非空且覆盖 ≥ 7 个章节
     assert ctx["final_markdown"]
-    cov = section_coverage.evaluate_coverage(ctx["final_markdown"])
+    cov = evaluate_coverage(ctx["final_markdown"])
     assert cov.hit >= 7, f"章节覆盖不足 7: missing={cov.missing}"
     # 终稿中不应再残留自检 JSON
     assert '"citations_ok"' not in ctx["final_markdown"]
@@ -137,7 +205,7 @@ async def test_ultra_fast_skips_self_check_and_compile(_fake_llm):
     assert len(_fake_llm) == 1
     assert ctx["phase_results"]["compile"].get("skipped") is True
     assert ctx["final_markdown"]
-    cov = section_coverage.evaluate_coverage(ctx["final_markdown"])
+    cov = evaluate_coverage(ctx["final_markdown"])
     assert cov.hit >= 7
 
 
