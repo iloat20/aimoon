@@ -82,18 +82,25 @@ def phase_system_prompt(phase: Phase, stock_md: str, prior: dict) -> str:
         replacements.append(("{{ stock_info }}", stock_md))
     if "{{ tools_output }}" in template and "tools_output" in prior:
         import json
-        replacements.append(("{{ tools_output }}", json.dumps(prior["tools_output"], ensure_ascii=False, default=str)))
+        tools_json = json.dumps(prior["tools_output"], ensure_ascii=False, default=str)
+        replacements.append(("{{ tools_output }}", tools_json))
     if "{{ tools }}" in template and "tools_output" in prior:
         import json
-        replacements.append(("{{ tools }}", json.dumps(prior["tools_output"], ensure_ascii=False, default=str)))
+        tools_json = json.dumps(prior["tools_output"], ensure_ascii=False, default=str)
+        replacements.append(("{{ tools }}", tools_json))
     if "{{ prior }}" in template:
         import json
-        replacements.append(("{{ prior }}", json.dumps(prior, ensure_ascii=False, default=str) if isinstance(prior, dict) else str(prior)))
+        if isinstance(prior, dict):
+            prior_json = json.dumps(prior, ensure_ascii=False, default=str)
+        else:
+            prior_json = str(prior)
+        replacements.append(("{{ prior }}", prior_json))
     if "{{ draft }}" in template:
         replacements.append(("{{ draft }}", str(prior.get("analysis_draft", "") or "")))
     if "{{ self_check_fixes }}" in template:
         import json
-        replacements.append(("{{ self_check_fixes }}", json.dumps(prior.get("self_check_fixes", []), ensure_ascii=False)))
+        fixes_json = json.dumps(prior.get("self_check_fixes", []), ensure_ascii=False)
+        replacements.append(("{{ self_check_fixes }}", fixes_json))
     if "{{ sections }}" in template:
         replacements.append(("{{ sections }}", _SECTIONS_MD))
     compiled = template

@@ -1,0 +1,135 @@
+"""自由现金流与股息工具(纯函数,零 LLM token)。
+
+输入:
+- fin_temporal: financial_temporal 工具输出(含 operating_cf / investing_cf 年度序列)
+- financial: FinancialData 实体(含 statements 三大表明细、net_profit)
+- quote: StockQuote(含 price / market_cap,用于推导股本与股息率)
+
+输出:
+- fcf / ocf / capex 及 FCF 利润率
+- 股息支付率、股息率(对比 10Y 国债收益率)、FCF-分红 缺口 —— 用于判断分红可持续性
+所有缺失项显式标 N/A,绝不编造。
+"""
+from __future__ import annotations
+
+import logging
+
+from aimoon.adapters.driven.ai.tools._safe import tool_safe
+from aimoon.core.domain.entities.financial import FinancialData
+from aimoon.core.domain.entities.quote import StockQuote
+
+logger = logging.getLogger(__name__)
+
+# 10 年期国债收益率锚(用于股债相对价值比较)
+CGB_10Y = 0.025
+INDUSTRIAL_CAPEX_OCF_RATIO = 0.30  # investing_cf 缺失时的工业类 capex 兜底
+
+
+@tool_safe("computation_error")
+def run(
+    fin_temporal: dict | None,
+    financial: FinancialData | None,
+    quote: StockQuote | None,
+) -> dict[str, object]:
+    if fin_temporal is None:
+        return {"__partial__": "missing_fin_temporal"}
+    if quote is None:
+        return {"__partial__": "missing_quote"}
+
+    ocf = _first_year_ocf(fin_temporal)
+    if not ocf:
+        return {
+            "__partial__": "missing_ocf",
+            "fcf": None,
+            "ocf": None,
+            "capex": None,
+            "fcf_margin": None,
+            "payout_ratio": None,
+            "dividend_yield": None,
+            "fcf_minus_dividend": None,
+            "yield_vs_cgb": None,
+        }
+
+    investing = _first_year_investing(fin_temporal)
+    capex = _capex(ocf, investing)
+    fcf = ocf - capex
+    np_ = float(financial.net_profit) if financial else 0.0
+    fcf_margin = (fcf / np_) if np_ else None
+
+    # 分红现金:优先从现金流量表"分配股利、利润或偿付利息支付的现金"科目读取
+    div_cash = _dividend_from_statements(financial)
+    payout_ratio = (div_cash / np_) if (div_cash and np_) else None
+    # 股息率 = 分红总额 / 总市值
+    dividend_yield = (
+        div_cash / float(quote.market_cap)
+        if (div_cash and quote.market_cap)
+        else None
+    )
+    fcf_minus_dividend = (fcf - div_cash) if div_cash is not None else None
+    yield_vs_cgb = (dividend_yield - CGB_10Y) if dividend_yield is not None else None
+
+    sustainable = None
+    if div_cash is not None and fcf is not None:
+        # FCF 覆盖分红的倍数:<1 表示分红靠筹资/存量支撑,可持续性存疑
+        sustainable = (fcf / div_cash) if div_cash else None
+
+    return {
+        "ocf": round(ocf, 4),
+        "capex": round(capex, 4),
+        "fcf": round(fcf, 4),
+        "fcf_margin": round(fcf_margin, 4) if fcf_margin is not None else None,
+        "payout_ratio": round(payout_ratio, 4) if payout_ratio is not None else None,
+        "dividend_yield": round(dividend_yield, 4) if dividend_yield is not None else None,
+        "dividend_total": round(div_cash, 4) if div_cash is not None else None,
+        "fcf_minus_dividend": (
+            round(fcf_minus_dividend, 4) if fcf_minus_dividend is not None else None
+        ),
+        "yield_vs_cgb": round(yield_vs_cgb, 4) if yield_vs_cgb is not None else None,
+        "fcf_cover": round(sustainable, 2) if sustainable is not None else None,
+        "cgb_10y": CGB_10Y,
+    }
+
+
+def _first_year_ocf(fin: dict) -> float:
+    years = fin.get("years") or []
+    if years and isinstance(years[0], dict):
+        v = years[0].get("operating_cf")
+        return float(v) if v is not None else 0.0
+    return 0.0
+
+
+def _first_year_investing(fin: dict) -> float:
+    years = fin.get("years") or []
+    if years and isinstance(years[0], dict):
+        v = years[0].get("investing_cf")
+        return float(v) if v is not None else 0.0
+    return 0.0
+
+
+def _capex(ocf: float, investing_cf: float) -> float:
+    """capex 代理:投资现金流净流出绝对值;否则工业兜底 OCF * 30%。"""
+    if investing_cf < 0:
+        return -investing_cf
+    if ocf > 0:
+        return ocf * INDUSTRIAL_CAPEX_OCF_RATIO
+    return 0.0
+
+
+def _dividend_from_statements(financial: FinancialData | None) -> float | None:
+    """从现金流量表明细提取分红现金(分配股利、利润或偿付利息支付的现金)。
+
+    返回金额(元);找不到则返回 None(由上层标 N/A)。
+    """
+    if financial is None:
+        return None
+    stmts = getattr(financial, "statements", None) or {}
+    rows = stmts.get("cash_flow") or []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        item = str(r.get("item", ""))
+        if "股利" in item or "利润分配" in item or "股息" in item:
+            val = r.get("value")
+            if val is not None:
+                return float(val)
+    return None
