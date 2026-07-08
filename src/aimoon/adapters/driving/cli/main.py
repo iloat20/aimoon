@@ -29,19 +29,6 @@ from aimoon.core.domain.services.symbols import resolve_symbol
 from .pipeline import PipelineOrchestrator
 
 
-def _suppress_asyncio_pipe_warning() -> None:
-    """Suppress harmless Python 3.13 asyncio pipe cleanup warning.
-
-    This is a known issue with Python 3.13 + Playwright where the browser
-    subprocess transport is garbage-collected after the event loop closes.
-    It has no effect on functionality - the report is generated correctly.
-    """
-    import os
-
-    # Set environment variable to suppress asyncio debug warnings
-    os.environ["PYTHONASYNCIODEBUG"] = "0"
-
-
 def main() -> None:
     warnings.filterwarnings(
         "ignore",
@@ -51,7 +38,6 @@ def main() -> None:
     )
     # Suppress harmless Python 3.13 asyncio slow-task warnings
     warnings.filterwarnings("ignore", category=Warning, module="asyncio")
-    _suppress_asyncio_pipe_warning()
     parser = build_parser()
 
     args = parser.parse_args()
