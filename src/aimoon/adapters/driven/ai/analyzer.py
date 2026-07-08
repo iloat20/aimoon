@@ -84,23 +84,6 @@ def _strip_xml_tool_calls(text: str) -> str:
     return text.strip()
 
 
-def _build_fallback_report(stock_info: StockAnalysis) -> str:
-    """Generate a degraded Markdown summary when the v2 pipeline produces no text.
-
-    Never raises: returns a short, always-valid Markdown string assembled from
-    whatever domain data is available.
-    """
-    lines = [f"# {stock_info.name or stock_info.symbol} 分析（降级）"]
-    quote = stock_info.quote
-    if quote and quote.price:
-        lines.append(f"- 最新价: {quote.price} | 涨跌: {quote.change_pct}%")
-    fin = stock_info.financial
-    if fin and fin.report_period:
-        lines.append(f"- 报告期: {fin.report_period}")
-    lines.append("\n> 本次分析未能生成完整报告，以下为已采集基础数据汇总。")
-    return "\n".join(lines)
-
-
 def _deduplicate_tail(text: str) -> str:
     """Remove repeated blocks at the end of the response.
 
