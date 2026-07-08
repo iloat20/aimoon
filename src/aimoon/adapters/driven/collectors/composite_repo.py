@@ -14,6 +14,7 @@ import time
 import httpx
 
 from aimoon.adapters.driven.ai.pipeline.timing import logphase
+from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
@@ -51,8 +52,10 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         research_collector: ResearchReportCollector | None = None,
         social_collector: SocialMediaOrchestrator | None = None,
         http_client: httpx.AsyncClient | None = None,
+        reporter: ProgressReporter | None = None,
     ) -> None:
         self._http = http_client
+        self._reporter = reporter or CliProgressReporter()
         self._quote_collector = quote_collector or QuoteCollector(client=http_client)
         self._financial_collector = financial_collector
         self._kline_collector = kline_collector or KlineCollector(client=http_client)
@@ -83,13 +86,13 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
 
     async def _collect_all_inner(self, symbol: str, name: str) -> StockAnalysis:
         # Phase A: quote first (fast, needed by social for stock name)
-        print(" 采集行情...")
+        self._reporter.report(" 采集行情...")
         quote_result = await self._fetch_quote(symbol, name)
         quote = self._unwrap_quote(quote_result, symbol, name)
         stock_name = quote.name or name
 
         # Phase B: remaining 6 collectors + social, all parallel
-        print(" 并行采集财务/K线/资金流/研报/社媒...")
+        self._reporter.report(" 并行采集财务/K线/资金流/研报/社媒...")
         t0 = time.monotonic()
         with logphase("collectors(fin+kline+cf+research+history+social)"):
             results = await asyncio.gather(
@@ -160,13 +163,13 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         history_raw = results[5]
         if isinstance(history_raw, Exception):
             logger.debug("[history] 历史财务采集失败: %s", history_raw)
-            print("   历史财务: 获取失败")
+            self._reporter.report("   历史财务: 获取失败")
             history = []
         elif isinstance(history_raw, list) and (
             not history_raw or isinstance(history_raw[0], FinancialData)
         ):
             history = history_raw
-            print(f"   历史财务: {len(history)} 年年报")
+            self._reporter.report(f"   历史财务: {len(history)} 年年报")
         else:
             history = []
 
@@ -212,7 +215,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             quote = result  # type: ignore[assignment]
         if quote and quote.price > 0:
             info = f"{quote.name}: {quote.price} ({quote.change_pct:+.2f}%) PE={quote.pe}"
-            print(f"   {info} [来源: {quote.source}]")
+            self._reporter.report(f"   {info} [来源: {quote.source}]")
             self._collect_results.append(
                 CollectResult(
                     platform="实时行情",
@@ -224,9 +227,9 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
             return quote
         error = str(result) if isinstance(result, Exception) else "价格为零"
         if isinstance(result, Exception):
-            print(f"   行情: 获取失败 [{type(result).__name__}]")
+            self._reporter.report(f"   行情: 获取失败 [{type(result).__name__}]")
         else:
-            print("   行情: 获取失败（价格为零）")
+            self._reporter.report("   行情: 获取失败（价格为零）")
         self._collect_results.append(
             CollectResult(
                 platform="实时行情",
@@ -283,7 +286,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
         if not is_ok and not isinstance(result, Exception):
             status = "empty"
         label = msg(data) if is_ok else fail
-        print(label)
+        self._reporter.report(label)
         self._collect_results.append(
             CollectResult(
                 platform=platform,

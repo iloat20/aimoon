@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 import logging
-from typing import Any
 
+from aimoon.core.application.browser_factory import BrowserFactory, PlaywrightBrowserFactory
+from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.value_objects.collect_result import CollectResult
 
@@ -15,73 +15,58 @@ from .cninfo import CninfoCollector
 from .eastmoney_playwright import GubaCollector
 from .mock import mock_social_posts
 
-# Module-level Playwright singleton for cold-start optimization.
-# Reusing a single browser instance across collect() calls avoids the
-# ~1s Playwright + Chromium launch cost on each invocation.
-_pw_instance: Any | None = None
-_pw_browser: Any | None = None
-_pw_lock: asyncio.Lock | None = None
+logger = logging.getLogger(__name__)
+
+# Module-level default browser factory for backward compatibility.
+# PipelineOrchestrator calls close_shared_browser() without holding a reference
+# to the SocialMediaOrchestrator instance, so we keep a process-wide default.
+_default_browser_factory: BrowserFactory = PlaywrightBrowserFactory()
 
 
 async def _get_shared_browser() -> tuple[object, object]:
     """Return a shared (playwright, browser) pair, creating them lazily.
 
-    Uses a module-level singleton with async lock for thread safety.
-    The browser stays open between collect() calls to avoid repeated
-    Playwright cold-start overhead (~1s per launch).
+    Delegates to the module-level default factory. Kept for backward
+    compatibility — callers only use the browser, pw_instance is returned
+    but unused.
     """
-    global _pw_instance, _pw_browser, _pw_lock
-
-    if _pw_browser is not None:
-        return _pw_instance, _pw_browser
-
-    if _pw_lock is None:
-        _pw_lock = asyncio.Lock()
-
-    async with _pw_lock:
-        # Double-check after acquiring the lock.
-        if _pw_browser is not None:
-            return _pw_instance, _pw_browser
-
-        from playwright.async_api import async_playwright
-
-        _pw_instance = await async_playwright().start()
-        _pw_browser = await _pw_instance.chromium.launch(headless=True)
-        logging.info("[social_orchestrator] Playwright browser started (shared)")
-        return _pw_instance, _pw_browser
+    browser = await _default_browser_factory.acquire()
+    pw = getattr(_default_browser_factory, "_pw_instance", None)
+    return pw, browser
 
 
 async def close_shared_browser() -> None:
-    """Close the shared Playwright browser.
+    """Close the shared Playwright browser (backward compat).
 
-    Call this during application shutdown to clean up resources.
+    Delegates to the default factory's shutdown().
     """
-    global _pw_instance, _pw_browser, _pw_lock
-
-    if _pw_browser is not None:
-        try:
-            await _pw_browser.close()
-        except Exception as e:
-            logging.debug("[social_orchestrator] browser close error: %s", e)
-        _pw_browser = None
-    if _pw_instance is not None:
-        try:
-            await _pw_instance.stop()
-        except Exception as e:
-            logging.debug("[social_orchestrator] playwright stop error: %s", e)
-        _pw_instance = None
-    _pw_lock = None
+    await _default_browser_factory.shutdown()
 
 
 class SocialMediaOrchestrator:
-    """Manages social media collectors and their execution lifecycle."""
+    """Manages social media collectors and their execution lifecycle.
+
+    Args:
+        browser_factory: Browser lifecycle manager. Defaults to the module-level
+            shared factory (kept warm across calls). Tests can inject a fake.
+        reporter: Progress output. Defaults to CliProgressReporter (print).
+            Tests can inject NullProgressReporter or RecordingProgressReporter.
+    """
+
+    def __init__(
+        self,
+        browser_factory: BrowserFactory | None = None,
+        reporter: ProgressReporter | None = None,
+    ) -> None:
+        self._browser_factory = browser_factory or _default_browser_factory
+        self._reporter = reporter or CliProgressReporter()
 
     async def collect(self, symbol: str, name: str) -> tuple[list[SocialPost], list[CollectResult]]:
         """Collect social media sentiment from multiple platforms.
 
         Returns (all_posts, collect_results).
         """
-        print(" 采集社交媒体舆情...")
+        self._reporter.report(" 采集社交媒体舆情...")
 
         registry = CollectorRegistry()
         playwright_collectors: list[BaseCollector] = []
@@ -114,7 +99,7 @@ class SocialMediaOrchestrator:
         try:
             if playwright_collectors:
                 try:
-                    _pw, browser = await _get_shared_browser()
+                    browser = await self._browser_factory.acquire()
                     for c in playwright_collectors:
                         if hasattr(c, "set_browser") and callable(getattr(c, "set_browser", None)):
                             c.set_browser(browser)
@@ -146,11 +131,11 @@ class SocialMediaOrchestrator:
                 collect_results.append(result)
                 if p_name == "东方财富股吧":
                     source_tag = result.error or "股吧"
-                    print(f"   东方财富股吧: {result.count}条 [{source_tag}]")
+                    self._reporter.report(f"   东方财富股吧: {result.count}条 [{source_tag}]")
                 elif p_name == "巨潮资讯":
-                    print(f"   巨潮资讯: {result.count}条 [真实数据]")
+                    self._reporter.report(f"   巨潮资讯: {result.count}条 [真实数据]")
                 else:
-                    print(f"   {p_name}: {result.count}条 [真实数据]")
+                    self._reporter.report(f"   {p_name}: {result.count}条 [真实数据]")
             else:
                 mock = mock_social_posts(p_name, symbol, name)
                 # 模拟数据不发给 AI，仅用于展示
@@ -164,14 +149,16 @@ class SocialMediaOrchestrator:
                 )
                 if p_name == "巨潮资讯":
                     error_msg = result.error if result else "未知错误"
-                    print(f"   巨潮资讯: {len(mock)}条 (mock) [{error_msg}]")
+                    self._reporter.report(f"   巨潮资讯: {len(mock)}条 (mock) [{error_msg}]")
                 elif p_name in ("微信公众号",) and result and result.status == "failed":
                     error_msg = result.error or "未知错误"
-                    print(f"   {p_name}: {len(mock)}条 (mock) [采集失败: {error_msg}]")
+                    self._reporter.report(
+                        f"   {p_name}: {len(mock)}条 (mock) [采集失败: {error_msg}]"
+                    )
                 elif p_name in ("微信公众号",) and is_failed:
-                    print(f"   {p_name}: {len(mock)}条 (mock) [模块导入失败]")
+                    self._reporter.report(f"   {p_name}: {len(mock)}条 (mock) [模块导入失败]")
                 else:
-                    print(f"   {p_name}: {len(mock)}条 (mock)")
+                    self._reporter.report(f"   {p_name}: {len(mock)}条 (mock)")
 
         return all_posts, collect_results
 
@@ -180,4 +167,4 @@ class SocialMediaOrchestrator:
 
         Call this when the application exits.
         """
-        await close_shared_browser()
+        await self._browser_factory.shutdown()
