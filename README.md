@@ -18,6 +18,8 @@ aimoon 600519 --test           # 测试模式（采集真实数据，跳过AI分
 aimoon test 600519             # 同 --test
 aimoon 000001                  # 平安银行
 aimoon 000858 -o ./reports     # 五粮液，指定输出目录
+aimoon 600519 --fast           # 快速模式(跳过自检+COMPILE,直接出初稿)
+aimoon 600519 --mock --fast    # Mock + 快速组合
 ```
 
 ---

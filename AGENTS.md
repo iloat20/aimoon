@@ -102,7 +102,7 @@ Playwright collectors (guba, toutiao, wechat) spin up real browsers — first ru
 - **Streaming analysis** — `analyzer.py:analyze_stock` uses `stream=True`, prints section headers (`##`) as they arrive, accumulates full response for HTML report
 - **Tool calling for web search** — DeepSeek API `tools` + `tool_choice="auto"` triggers `web_search_tool.py` which scrapes Bing (primary) → DuckDuckGo (fallback); max 5 rounds before forced final response
 - **Support/resistance sanity** — `adapters/driven/ai/analyzer.py`: if support ≥ price or resistance ≤ price, override to price×0.92/1.08
-- **Capital flow override** — `core/domain/services/scoring.py`: if 0 < turnover < 0.1%, force "交投清淡, 观望"
+- **Capital flow override** — 文档曾描述 `core/domain/services/scoring.py` 中「if 0 < turnover < 0.1%, 强制"交投清淡, 观望"」,该评分模块实际不存在(详见 CLAUDE.md「Scoring」段)
 - **Report**: `output/<symbol>_<timestamp>.html`; inline CSS Jinja2 template; all dimensions scored 1-5
 - **No 小红书/抖音 collector** — explicitly removed by user
 

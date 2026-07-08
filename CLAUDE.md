@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**aimoon** is an AI-powered A-share (Chinese domestic stock) analysis tool. Input a stock code → automated pipeline: collect data → validate → AI analyze → generate HTML report. Python 3.12+, MIT license, version 0.4.0.
+**aimoon** is an AI-powered A-share (Chinese domestic stock) analysis tool. Input a stock code → automated pipeline: collect data → validate → AI analyze → generate HTML report. Python 3.12+, MIT license, version 0.4.2.
 
 ## Commands
 
@@ -125,7 +125,7 @@ uv sync --group dev
 ### Data Sources & Quirks
 
 - **pysnowball** for financials — requires `XUEQIU_TOKEN`, silently returns empty if missing
-- **K-line 3-tier** — akshare `stock_zh_a_hist` (qfq) → `stock_zh_a_daily` → Tencent `fqkline`. Tencent volume unit = 手 × 100
+- **K-line 3-tier** — akshare `stock_zh_a_hist` (qfq) → `stock_zh_a_daily` → Tencent `fqkline`. Tencent volume unit = 手(腾讯接口直接返回手,无需 ×100)
 - **East Money push2*.eastmoney.com** — all subdomains connection reset (HTTP 000)
 - **Xueqiu WAF** — main domain blocked; only `stock.xueqiu.com` subdomain works
 - **No 小红书/抖音 collectors** — explicitly removed by user
