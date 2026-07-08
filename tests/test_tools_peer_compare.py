@@ -95,3 +95,14 @@ def test_run_without_search_returns_partial() -> None:
 def test_run_with_empty_name_returns_partial() -> None:
     out = run("", _self_fin())
     assert "__partial__" in out
+
+
+@pytest.mark.unit
+def test_run_no_html_returns_peers_shape() -> None:
+    # search_fn 返回空 html → 仍然返回 {peers, industry} 标准形状
+    def _empty_search(_q: str) -> str:
+        return ""
+
+    out = run(name="贵州茅台", self_fin=None, search_fn=_empty_search)
+    assert isinstance(out.get("peers"), list)
+    assert "industry" in out

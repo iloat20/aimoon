@@ -715,22 +715,17 @@ async def _run_safe(fn, *args) -> dict[str, object]:
 
 
 async def _run_peer_compare(si: object, search_fn) -> dict:
-    from ..tools.peer_compare import build_search_query
-    from ..tools.peer_compare import parse as peer_parse
+    """委托 ``peer_compare.run`` 单一入口,保持 ``{peers, industry}`` 返回形状。
+
+    ``search_fn`` 直接透传给工具,避免 orchestrator 层进入
+    ``build_search_query``/``parse`` 的实现细节;
+    所有未预期错误由工具内部 try/except 兜底为 ``{"__partial__": "no_data"}``。
+    """
+    from ..tools.peer_compare import run as peer_run
 
     name = str(getattr(si, "name", "") or getattr(si, "symbol", "") or "")
-    query = build_search_query(name, getattr(si, "industry", "") or "")
-    try:
-        html = await search_fn(query) if search_fn else ""
-    except Exception as e:
-        logger.debug("[pipeline] peer_compare search failed: %s", e)
-        html = ""
-    if not html:
-        return {"__partial__": "no_data", "peers": []}
-    # parse() 返回裸 list,必须包成 {"peers": ...} 才能被 render_peer_comparison 消费
-    # (该函数取 data.get("peers"));直接返回 list 会让同行对比表恒空。
-    peers = peer_parse(html, getattr(si, "financial", None))
-    return {"peers": peers, "industry": getattr(si, "industry", "")}
+    self_fin = getattr(si, "financial", None)
+    return peer_run(name=name, self_fin=self_fin, search_fn=search_fn)
 
 
 def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
