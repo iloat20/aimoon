@@ -28,4 +28,5 @@
 - 持久化钩子在每次写入后篡改文件：`tuple(`→`tuble(`、async 函数前插 `@pytest.mark.asyncio`、import 排序。规避：Write 整文件重写绕过 Edit 守卫；sed 精确替换后立刻跑 pytest 不留间隙；`grep -rc "tuble("` 验证还原。
 
 ## Git
-- `main` 长期领先 `origin/main`；推送前确保工作区仅留刻意排除项（`.pytest-tmp/`、`docs/screenshots/`、`pipeline/compile.md` 死副本）。
+- 2026-07-10 已将九轮审查全部 14 个提交推上 `origin/main`（`b595497..386cb18`），main 与远端已同步。
+- 推送前确保工作区仅留刻意排除项（`.pytest-tmp/`、`docs/screenshots/`、`src/aimoon/adapters/driven/ai/pipeline/compile.md` 死副本）。
