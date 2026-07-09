@@ -59,6 +59,7 @@ class PromptContext:
     quarterly_report: Any
     financial_md_path: str | None
     industry: str
+    social: dict[str, list[str]]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,6 +73,7 @@ class PromptContext:
             "quarterly_report": self.quarterly_report,
             "financial_md_path": self.financial_md_path,
             "industry": self.industry,
+            "social": self.social,
         }
 
 
@@ -100,31 +102,39 @@ def build_data_dict(
     financial_dict = {
         **(
             {"rev": round(financial.revenue / 1e8, 2)}
-            if financial.revenue
+            if financial.revenue is not None
             else {}
         ),
-        **({"rev_yoy": financial.revenue_yoy} if financial.revenue_yoy else {}),
+        **(
+            {"rev_yoy": financial.revenue_yoy}
+            if financial.revenue_yoy is not None
+            else {}
+        ),
         **(
             {"np": round(financial.net_profit / 1e8, 2)}
-            if financial.net_profit
+            if financial.net_profit is not None
             else {}
         ),
-        **({"np_yoy": financial.net_profit_yoy} if financial.net_profit_yoy else {}),
-        **({"roe": financial.roe} if financial.roe else {}),
-        **({"eps": financial.eps} if financial.eps else {}),
+        **(
+            {"np_yoy": financial.net_profit_yoy}
+            if financial.net_profit_yoy is not None
+            else {}
+        ),
+        **({"roe": financial.roe} if financial.roe is not None else {}),
+        **({"eps": financial.eps} if financial.eps is not None else {}),
         **(
             {"ta": round(financial.total_assets / 1e8, 2)}
-            if financial.total_assets
+            if financial.total_assets is not None
             else {}
         ),
         **(
             {"tl": round(financial.total_liabilities / 1e8, 2)}
-            if financial.total_liabilities
+            if financial.total_liabilities is not None
             else {}
         ),
         **(
             {"ocf": round(financial.operating_cf / 1e8, 2)}
-            if financial.operating_cf
+            if financial.operating_cf is not None
             else {}
         ),
         "period": financial.report_period,
@@ -136,17 +146,34 @@ def build_data_dict(
         **({"type": quarterly.report_type} if quarterly.report_type else {}),
         **(
             {"rev": round(quarterly.revenue / 1e8, 2)}
-            if quarterly.revenue
+            if quarterly.revenue is not None
             else {}
         ),
-        **({"rev_yoy": quarterly.revenue_yoy} if quarterly.revenue_yoy else {}),
+        **(
+            {"rev_yoy": quarterly.revenue_yoy}
+            if quarterly.revenue_yoy is not None
+            else {}
+        ),
         **(
             {"np": round(quarterly.net_profit / 1e8, 2)}
-            if quarterly.net_profit
+            if quarterly.net_profit is not None
             else {}
         ),
-        **({"np_yoy": quarterly.net_profit_yoy} if quarterly.net_profit_yoy else {}),
+        **(
+            {"np_yoy": quarterly.net_profit_yoy}
+            if quarterly.net_profit_yoy is not None
+            else {}
+        ),
     }
+
+    # 按平台聚合社媒舆情标题,供 legacy prompt 注入(2026-07-09 修复:
+    # 原 _format_social_kline 读 xueqiu/eastmoney/wechat 键,而 PromptContext
+    # 从不构造这些键 → 恒空;现直接消费 info.social_posts)。
+    social_by_platform: dict[str, list[str]] = {}
+    for post in info.social_posts or []:
+        text = (post.title or post.content or "").strip()
+        if text:
+            social_by_platform.setdefault(post.platform, []).append(text)
 
     return PromptContext(
         symbol=info.symbol,
@@ -170,6 +197,7 @@ def build_data_dict(
         quarterly_report=info.quarterly_report,
         financial_md_path=str(financial_md_path) if financial_md_path else None,
         industry=detect_industry(info.symbol, info.name),
+        social=social_by_platform,
     )
 
 
@@ -200,7 +228,7 @@ def build_user_message(stock_code: str, stock_name: str, data: PromptContext) ->
     if financial and financial.get("period"):
         sections.append(f"\n\n【已采集财务数据（{financial.get('period', '')}）】")
         for k, v in financial.items():
-            if v and v != 0:
+            if v is not None:
                 sections.append(f"- {k}: {v}")
 
     # Quarterly/semi-annual financial data
@@ -211,7 +239,7 @@ def build_user_message(stock_code: str, stock_name: str, data: PromptContext) ->
             f"{quarterly.get('type', '')}）】"
         )
         for k, v in quarterly.items():
-            if v and v != 0 and k not in ("period",):
+            if v is not None and k != "period":
                 sections.append(f"- {k}: {v}")
 
     md_path = d.get("financial_md_path")
@@ -242,20 +270,28 @@ def build_user_message(stock_code: str, stock_name: str, data: PromptContext) ->
 
 
 def _format_capital_flow(data: dict) -> list[str]:
-    """Format capital flow data section."""
+    """Format capital flow data section.
+
+    主力净流入为 0 仅代表该维度无信号, 不应连带丢弃已成功采集的北向/龙虎榜数据。
+    """
     cf = data.get("capital_flow", {})
-    if not cf or cf.get("main_net_5d") is None or cf.get("main_net_5d") == 0:
+    if not cf:
         return []
-    parts = [
-        "\n\n【已采集资金面数据】",
-        f"- 近5日主力净流入: {cf.get('main_net_5d', 0) / 1e8:.2f}亿元",
-        f"- 3日净流入: {cf.get('main_net_3d', 0) / 1e8:.2f}亿元",
-        f"- 10日净流入: {cf.get('main_net_10d', 0) / 1e8:.2f}亿元",
-        f"- 20日净流入: {cf.get('main_net_20d', 0) / 1e8:.2f}亿元",
-    ]
+    parts: list[str] = []
+    main5 = cf.get("main_net_5d")
+    if main5 is not None and main5 != 0:
+        parts.append("\n\n【已采集资金面数据】")
+        parts.append(f"- 近5日主力净流入: {main5 / 1e8:.2f}亿元")
+        parts.append(f"- 3日净流入: {cf.get('main_net_3d', 0) / 1e8:.2f}亿元")
+        parts.append(f"- 10日净流入: {cf.get('main_net_10d', 0) / 1e8:.2f}亿元")
+        parts.append(f"- 20日净流入: {cf.get('main_net_20d', 0) / 1e8:.2f}亿元")
     if cf.get("northbound_chg"):
+        if not parts:
+            parts.append("\n\n【已采集资金面数据】")
         parts.append(f"- 北向资金变化: {cf['northbound_chg'] / 1e8:+.2f}亿元")
     if cf.get("lhb_date"):
+        if not parts:
+            parts.append("\n\n【已采集资金面数据】")
         parts.append(
             f"- 龙虎榜({cf['lhb_date']}): 净买入{cf.get('lhb_net_buy', 0) / 1e8:.2f}亿元"
         )
@@ -265,15 +301,17 @@ def _format_capital_flow(data: dict) -> list[str]:
 
 
 def _format_social_kline(data: dict) -> list[str]:
-    """Format social media data sections (K-line is intentionally excluded)."""
+    """Format social media data sections (K-line is intentionally excluded).
+
+    直接消费 PromptContext.social(按平台聚合的舆情标题), 不再读已不存在的
+    xueqiu/eastmoney/wechat 顶层键。
+    """
+    social = data.get("social") or {}
     parts: list[str] = []
-    for key, label in [
-        ("xueqiu", "雪球"),
-        ("eastmoney", "东方财富股吧"),
-        ("wechat", "微信公众号"),
-    ]:
-        text = data.get(key, "")
-        if text and text != "暂无数据":
-            parts.append(f"\n\n【已采集{label}舆情摘要】")
-            parts.append(text[:1500])
+    for platform, texts in social.items():
+        if not texts:
+            continue
+        parts.append(f"\n\n【已采集{platform}舆情摘要】")
+        for t in texts[:15]:
+            parts.append(f"- {t[:200]}")
     return parts

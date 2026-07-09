@@ -127,7 +127,9 @@ class QuoteCollector(DataCollector[StockQuote]):
         price = float(parts[3])
         high = float(parts[4])
         low = float(parts[5])
-        volume = int(float(parts[8]))
+        # 新浪 parts[8] = 成交量(股); 模板与腾讯/K线 canon 均以"手"为单位,
+        # 故 ÷100 归一化为手(2026-07-09 实抓双源核对: 新浪 3409634 股 = 腾讯 34096 手)。
+        volume = int(float(parts[8]) / 100)
         amount = float(parts[9])
 
         change = price - prev_close
