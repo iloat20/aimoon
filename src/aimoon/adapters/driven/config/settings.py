@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     deepseek_max_tokens: int = 16384
     deepseek_temperature: float = 0.3
 
+    # 东方财富数据(akshare)的代理补丁配置。
+    # 配置后 akshare-proxy-patch 会注入代理认证头,绕过部分 WAF 限制。
+    # 留空则不走代理(默认)。代理 IP 需向商业代理服务商(芝麻/快代理等)购买。
+    akshare_proxy_auth_ip: str = ""
+    akshare_proxy_auth_token: str = ""
+
     xueqiu_cookie: str = ""
     xueqiu_token: str = ""
 

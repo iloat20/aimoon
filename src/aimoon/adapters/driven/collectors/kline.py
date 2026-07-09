@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from aimoon.adapters.driven.collectors.eastmoney_direct import EastMoneyDirectCollector
 from aimoon.adapters.driven.common.retry import retry_on_connection, silent_failure
 from aimoon.core.domain.entities.kline import KlineData
 from aimoon.core.domain.services.symbols import to_sina_symbol
@@ -57,6 +58,12 @@ class KlineCollector(DataCollector[KlineData]):
         # Level 3: Tencent fqkline
         with silent_failure("kline_tencent_fqkline"):
             result = await self._fetch_tencent(symbol)
+            if result and result.bars:
+                return result
+
+        # Level 4: 东方财富官方免鉴权 HTTP 接口(绕过 akshare 中间层)
+        with silent_failure("kline_eastmoney_direct"):
+            result = await self._fetch_eastmoney_direct(symbol)
             if result and result.bars:
                 return result
 
@@ -188,7 +195,7 @@ class KlineCollector(DataCollector[KlineData]):
                     high=high_f,
                     low=low_f,
                     close=close_f,
-                    volume=vol_f * 100,
+                    volume=vol_f,
                     amount=0.0,
                     pct_change=round(pct, 2) if pct is not None else None,
                 )
@@ -200,3 +207,13 @@ class KlineCollector(DataCollector[KlineData]):
         # Take last N days
         bars = bars[-self._days :]
         return KlineData(symbol=symbol, bars=bars, source="tencent(fqkline)", period="daily")
+
+    async def _fetch_eastmoney_direct(self, symbol: str) -> KlineData | None:
+        """Fetch via 东方财富官方免鉴权 HTTP 接口(Level 4 fallback)。
+
+        绕过 akshare 中间层,直接调用东财 push2his 接口。
+        在 akshare / Tencent 全部失败(被 WAF 拦截/超时)时作为最后手段。
+        东财接口同样可能被代理拦截,需配合 akshare-proxy-patch 使用。
+        """
+        collector = EastMoneyDirectCollector(days=self._days)
+        return await collector.fetch(symbol=symbol)

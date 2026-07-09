@@ -32,6 +32,11 @@ class FinancialData(BaseModel):
     eps: float = 0.0
     bvps: float = 0.0
 
+    # 资产负债表扩展字段(渠道压货/库存减值/分红可持续性诊断)
+    accounts_receivable: float = 0.0  # 应收账款(元)
+    inventory: float = 0.0  # 存货(元)
+    dividend_paid: float = 0.0  # 分配股利、利润或偿付利息支付的现金(元)
+
     source: str = ""
 
 

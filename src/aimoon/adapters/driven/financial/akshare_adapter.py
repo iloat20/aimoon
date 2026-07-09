@@ -62,7 +62,44 @@ class AkshareFinancialAdapter:
             namespace="akshare_financial",
             ttl_seconds=86400,  # 24 hours
         )
+        # 请求间隔:在多次 API 调用之间插入延迟,降低被 WAF 拦截概率。
+        # akshare 原生不设间隔选项,我们在采集器层自己控制。
+        self._request_interval = 0.5  # 秒
+        self._init_proxy_patch()
 
+    def _init_proxy_patch(self) -> None:
+        """若用户在 .env 配置了代理(auth_ip + auth_token),启用 akshare-proxy-patch。
+
+        代理补丁会在 akshare 的 HTTP 请求中注入代理认证头,绕过部分 WAF 限制。
+        未配置代理时不执行任何操作,走直连。
+        """
+        try:
+            from aimoon.adapters.driven.config.settings import get_settings
+
+            settings = get_settings()
+            auth_ip = getattr(settings, "akshare_proxy_auth_ip", "")
+            auth_token = getattr(settings, "akshare_proxy_auth_token", "")
+            if auth_ip:
+                import akshare_proxy_patch
+
+                akshare_proxy_patch.install_patch(
+                    auth_ip=auth_ip,
+                    auth_token=auth_token,
+                    retry=30,
+                    timeout=5,
+                    fast=True,
+                )
+                logger.info("[akshare] 代理补丁已启用: auth_ip=%s", auth_ip)
+            else:
+                logger.debug("[akshare] 未配置代理,走直连")
+        except ImportError:
+            logger.debug("[akshare] akshare-proxy-patch 未安装,跳过")
+        except Exception as e:
+            logger.warning("[akshare] 代理补丁初始化失败: %s", e)
+
+    async def _throttle(self) -> None:
+        """请求间隔控制:调用前等待,降低被 WAF 拦截概率。"""
+        await asyncio.sleep(self._request_interval)
     async def fetch(self, symbol: str, **kwargs: Any) -> FinancialData:
         """Fetch financial data for a symbol.
 
@@ -95,6 +132,9 @@ class AkshareFinancialAdapter:
         result = FinancialData(symbol=symbol, source="akshare(东方财富)")
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
+
+        # 请求间隔:在每次实际 API 请求前等待,降低被 WAF 拦截概率。
+        await self._throttle()
 
         loop = asyncio.get_running_loop()
         income_df: pd.DataFrame | BaseException
@@ -196,6 +236,50 @@ class AkshareFinancialAdapter:
         if result.total_assets > 0:
             result.equity = result.total_assets - result.total_liabilities
 
+        # ====== 应收账款(多候选列名 + 部分匹配兜底) ======
+        # 东财 API 列名不稳定,优先精确匹配,找不到则做子串匹配。
+        ar = _safe_float(_get_col(df, "TOTAL_NOTE_ACCOUNTS_RECEIVABLE"))
+        if ar == 0.0:
+            ar = _safe_float(_get_col(df, "NOTE_ACCOUNTS_RECEIVABLE"))
+        if ar == 0.0:
+            ar = _safe_float(_get_col(df, "BILL_RECEIVABLE"))
+        if ar == 0.0:
+            ar = _safe_float(_get_col(df, "ACCOUNT_RECEIVABLE"))
+        if ar == 0.0:
+            # 部分匹配兜底:列名含 RECEIV 且非 PAYABLE
+            for c in df.columns:
+                cu = c.upper()
+                if "RECEIV" in cu and "PAY" not in cu:
+                    ar = _safe_float(_get_col(df, c))
+                    if ar != 0.0:
+                        logger.debug(
+                            "[akshare] balance_sheet AR fallback matched %s", c
+                        )
+                        break
+        if ar != 0.0:
+            result.accounts_receivable = ar
+
+        # ====== 存货 ======
+        inv = _safe_float(_get_col(df, "INVENTORY"))
+        if inv == 0.0:
+            for c in df.columns:
+                if "INVENT" in c.upper():
+                    inv = _safe_float(_get_col(df, c))
+                    if inv != 0.0:
+                        logger.debug(
+                            "[akshare] balance_sheet INV fallback matched %s", c
+                        )
+                        break
+        if inv != 0.0:
+            result.inventory = inv
+
+        # 自诊断:若新字段全 0,把实际列名写进日志,方便用户上报。
+        if ar == 0.0 and inv == 0.0:
+            logger.warning(
+                "[akshare] balance_sheet 应收/存货列未匹配,实际列=%s",
+                list(df.columns),
+            )
+
     def _parse_cash_flow(self, result: FinancialData, df: pd.DataFrame) -> None:
         """Parse cash flow statement DataFrame into FinancialData."""
         operating_cf = _safe_float(_get_col(df, "NETCASH_OPERATE"))
@@ -209,6 +293,31 @@ class AkshareFinancialAdapter:
         financing_cf = _safe_float(_get_col(df, "NETCASH_FINANCE"))
         if financing_cf != 0:
             result.financing_cf = financing_cf
+
+        # ====== 分配股利/利润/偿付利息现金流出(多候选+部分匹配) ======
+        div = _safe_float(_get_col(df, "DIVIDEND_INTEREST_PAID"))
+        if div == 0.0:
+            div = _safe_float(_get_col(df, "DIVIDEND_PAID"))
+        if div == 0.0:
+            div = _safe_float(_get_col(df, "DIVIDEND_PROFIT_PAID"))
+        if div == 0.0:
+            for c in df.columns:
+                cu = c.upper()
+                if "DIVID" in cu or ("PROFIT" in cu and "PAY" in cu):
+                    div = _safe_float(_get_col(df, c))
+                    if div != 0.0:
+                        logger.debug(
+                            "[akshare] cashflow DIV fallback matched %s", c
+                        )
+                        break
+        if div != 0.0:
+            result.dividend_paid = div
+
+        # 自诊断
+        if div == 0.0:
+            logger.info(
+                "[akshare] cashflow 股利列未匹配,实际列=%s", list(df.columns)
+            )
 
     async def fetch_financial(self, symbol: str, **kwargs: Any) -> FinancialData:
         """Alias for fetch() — matches PysnowballAdapter interface."""
