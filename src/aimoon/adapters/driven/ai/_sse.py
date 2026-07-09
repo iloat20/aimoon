@@ -21,7 +21,24 @@ async def collect_sse_content(resp: object) -> str:
     """
     full_text: list[str] = []
     buffer = ""
-    current_section = ""
+    state = {"section": ""}
+
+    def _emit(line_text: str) -> None:
+        """Print one complete/partial line, handling ``##`` section banners."""
+        header_match = re.match(r"^##\s+(.+)", line_text)
+        if header_match:
+            if state["section"]:
+                print()
+            section_name = header_match.group(1).strip()
+            state["section"] = section_name
+            print(f"\n{'─' * 40}")
+            print(f"  {section_name}")
+            print(f"{'─' * 40}")
+        elif state["section"] and line_text.strip():
+            stripped = line_text.rstrip()
+            if len(stripped) > 120:
+                stripped = stripped[:117] + "..."
+            print(f"  {stripped}")
 
     async for line in resp.aiter_lines():  # type: ignore[attr-defined]
         if not line.startswith("data: "):
@@ -44,26 +61,17 @@ async def collect_sse_content(resp: object) -> str:
         full_text.append(content)
         buffer += content
 
-        # O(n) splitlines replaces O(n^2) ``while "\n" in buffer`` loop
+        # O(n) splitlines: each complete line is flushed for streaming print,
+        # the trailing partial stays in ``buffer`` until the next delta completes it.
         *lines, buffer = buffer.splitlines()
         for line_text in lines:
-            line_text = line_text + "\n"
-            header_match = re.match(r"^##\s+(.+)", line_text)
-            if header_match:
-                if current_section:
-                    print()
-                section_name = header_match.group(1).strip()
-                current_section = section_name
-                print(f"\n{'─' * 40}")
-                print(f"  {section_name}")
-                print(f"{'─' * 40}")
-            elif current_section and line_text.strip():
-                stripped = line_text.rstrip()
-                if len(stripped) > 120:
-                    stripped = stripped[:117] + "..."
-                print(f"  {stripped}")
+            _emit(line_text + "\n")
 
+    # Flush the final partial line for streaming display.
+    # NOTE: do NOT append ``buffer`` to ``full_text`` here — it is already included
+    # via the per-delta ``full_text.append(content)`` above; re-appending would
+    # duplicate the report's last sentence.
     if buffer.strip():
-        full_text.append(buffer)
+        _emit(buffer)
 
     return "".join(full_text)

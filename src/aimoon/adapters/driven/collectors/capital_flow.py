@@ -81,14 +81,35 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             if not result:
                 return
             data_sum = result.get("data") or {}
-            if data_sum.get("sum5"):
-                data.main_net_5d = float(data_sum["sum5"])
-            if data_sum.get("sum3"):
-                data.main_net_3d = float(data_sum["sum3"])
-            if data_sum.get("sum10"):
-                data.main_net_10d = float(data_sum["sum10"])
-            if data_sum.get("sum20"):
-                data.main_net_20d = float(data_sum["sum20"])
+            # 雪球 capital_history 返回 {data: {columns:[...], item:[[...]]}}
+            # 列名形如 sum3/sum5/sum10/sum20（N 日主力累计净流入,单位:元,与 akshare 兜底一致）
+            rows = data_sum.get("item")
+            if isinstance(rows, list) and rows:
+                cols = [str(c).lower() for c in (data_sum.get("columns") or [])]
+                last = rows[-1]
+                mapping = (
+                    ("main_net_5d", "sum5"),
+                    ("main_net_3d", "sum3"),
+                    ("main_net_10d", "sum10"),
+                    ("main_net_20d", "sum20"),
+                )
+                for attr, col in mapping:
+                    if col in cols:
+                        try:
+                            v = last[cols.index(col)]
+                        except (IndexError, TypeError):
+                            v = None
+                        if v is not None:
+                            setattr(data, attr, float(v))
+            elif data_sum:  # 兜底:扁平结构(旧假设)
+                for attr, key in (
+                    ("main_net_5d", "sum5"),
+                    ("main_net_3d", "sum3"),
+                    ("main_net_10d", "sum10"),
+                    ("main_net_20d", "sum20"),
+                ):
+                    if data_sum.get(key):
+                        setattr(data, attr, float(data_sum[key]))
             if any([data.main_net_5d, data.main_net_3d, data.main_net_10d, data.main_net_20d]):
                 sources.append("pysnowball(雪球)")
         except Exception as e:
@@ -155,21 +176,9 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
                 data.northbound_date = cf_result.get("date", "")
                 sources.append("eastmoney(北向持股)")
 
-        # 2. 北向整体净流入（沪深股通）
-        with silent_failure("akshare_northbound_flow"):
-            df_flow = await asyncio.to_thread(self._ak_northbound_flow)
-            if df_flow is not None and not df_flow.empty:
-                direction_col = "资金方向" if "资金方向" in df_flow.columns else None
-                if direction_col is None:
-                    logger.warning("北向净流入: 找不到资金方向列, 列=%s", list(df_flow.columns))
-                else:
-                    mask = df_flow[direction_col].astype(str).str.contains("北向", na=False)
-                    north = df_flow[mask]
-                    if not north.empty:
-                        total_net = north["成交净买额"].sum()
-                        data.northbound_net_flow = float(total_net) * 1e8  # 单位: 亿元→元
-                        if "eastmoney(北向持股)" not in sources:
-                            sources.append("akshare(北向)")
+        # 注:原「北向整体净流入(沪深股通)」分支取的是全市场北向净买额,并非个股
+        # 北向持股变动,语义错误,且 northbound_net_flow 字段无任何消费端,故移除,
+        # 以免误导 sources 标注。个股级北向见上方 _em_northbound。
 
     async def _em_northbound(self, symbol: str) -> dict:
         """东方财富 API 获取个股北向持股（季度数据）."""
@@ -217,11 +226,6 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             "change_value": change_value,
             "date": date,
         }
-
-    def _ak_northbound_flow(self):
-        import akshare as ak
-
-        return ak.stock_hsgt_fund_flow_summary_em()
 
     async def _fetch_lhb(self, symbol: str, data: CapitalFlowData, sources: list[str]) -> None:
         """龙虎榜（最近上榜记录）. Uses stock_lhb_detail_em for the last ~30 days."""
