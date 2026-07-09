@@ -66,7 +66,15 @@ class QuoteCollector(DataCollector[StockQuote]):
             if result and result.price > 0:
                 if name and (not result.name or result.name == symbol):
                     result.name = name
-                if result.pe <= 0:
+                # 新浪恒不提供换手率(turnover), 且 PE/PB/市值可能缺失;
+                # 任一缺失字段即补腾讯真实值(_enrich_from_tencent 按字段独立守卫, 不覆盖已有真值)。
+                # 否则 turnover 恒为 0 会触发完整性检查误报"量换不一致"(第七轮 W3)。
+                if (
+                    result.pe <= 0
+                    or result.pb <= 0
+                    or result.market_cap <= 0
+                    or result.turnover <= 0
+                ):
                     await self._enrich_from_tencent(symbol, result)
                 return result
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):

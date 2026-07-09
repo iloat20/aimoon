@@ -111,6 +111,19 @@ class AkshareFinancialAdapter:
     async def _throttle(self) -> None:
         """请求间隔控制:调用前等待,降低被 WAF 拦截概率。"""
         await asyncio.sleep(self._request_interval)
+    @staticmethod
+    def _latest_report(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
+        """按报告类型过滤后, 按 REPORT_DATE 降序取最新一期。
+
+        东方财富 by_report_em 三表返回顺序不可信(经验上升序, 最旧在前),
+        必须显式排序后再读首行, 否则会把最旧报告期当成最新基本面喂给下游。
+        与 fetch_quarterly(382-383) / fetch_history(_annual) 的取最新期逻辑保持一致。
+        """
+        filtered = _filter_report_type(df, report_type)
+        if "REPORT_DATE" in filtered.columns:
+            filtered = filtered.sort_values("REPORT_DATE", ascending=False)
+        return filtered
+
     async def fetch(self, symbol: str, **kwargs: Any) -> FinancialData:
         """Fetch financial data for a symbol.
 
@@ -135,14 +148,17 @@ class AkshareFinancialAdapter:
 
         result = FinancialData(symbol=symbol, source="akshare(东方财富)")
         if income_df is not None and not income_df.empty:
-            self._parse_income_statement(result, _filter_report_type(income_df, report_type))
+            self._parse_income_statement(result, self._latest_report(income_df, report_type))
         if bs_df is not None and not bs_df.empty:
-            self._parse_balance_sheet(result, _filter_report_type(bs_df, report_type))
+            self._parse_balance_sheet(result, self._latest_report(bs_df, report_type))
         if cf_df is not None and not cf_df.empty:
-            self._parse_cash_flow(result, _filter_report_type(cf_df, report_type))
+            self._parse_cash_flow(result, self._latest_report(cf_df, report_type))
 
         if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
             result.source = "akshare_empty"
+            # 全零基本面视为无效, 清除报告期使 orchestrator/完整性检查判缺并降级,
+            # 而非让估值/同业比较在伪数据上跑(2026-07-09 第七轮 W2)。
+            result.report_period = ""
         if result.net_profit != 0 and result.equity > 0:
             result.roe = round(result.net_profit / result.equity * 100, 2)
 
