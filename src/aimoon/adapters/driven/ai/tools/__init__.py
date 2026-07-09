@@ -6,9 +6,12 @@
 from __future__ import annotations
 
 from aimoon.adapters.driven.ai.tools.business_moat import run as run_business_moat
+from aimoon.adapters.driven.ai.tools.fcf_dividend import run as run_fcf_dividend
 from aimoon.adapters.driven.ai.tools.financial_temporal import run as run_financial_temporal
 from aimoon.adapters.driven.ai.tools.peer_compare import run as run_peer_compare
 from aimoon.adapters.driven.ai.tools.risk_quant import run as run_risk_quant
+from aimoon.adapters.driven.ai.tools.scenario_prob import run as run_scenario_prob
+from aimoon.adapters.driven.ai.tools.sentiment import run as run_sentiment
 from aimoon.adapters.driven.ai.tools.technicals import run as run_technicals
 from aimoon.adapters.driven.ai.tools.valuation import run as run_valuation
 
@@ -18,6 +21,8 @@ __all__ = [
     "run_peer_compare",
     "run_business_moat",
     "run_risk_quant",
+    "run_scenario_prob",
+    "run_sentiment",
     "run_valuation",
     "TOOL_RUNNERS",
 ]
@@ -28,6 +33,9 @@ TOOL_RUNNERS = {
     "financial_temporal": run_financial_temporal,
     "peer_compare": run_peer_compare,
     "business_moat": run_business_moat,
+    "fcf_dividend": run_fcf_dividend,
     "risk_quant": run_risk_quant,
+    "scenario_prob": run_scenario_prob,
+    "sentiment": run_sentiment,
     "valuation": run_valuation,
 }

@@ -59,6 +59,8 @@ def _serialize(f: FinancialData) -> dict[str, object]:
         "net_profit_yoy": f.net_profit_yoy,
         "roe": _safe_div(f.net_profit, f.equity),
         "operating_cf": f.operating_cf,
+        "eps": f.eps,
+        "bvps": f.bvps,
     }
 
 

@@ -96,9 +96,16 @@ def render_valuation_targets(data: Any) -> str:
         return ""
 
     assumptions = data.get("fcfe_assumptions") or data.get("assumptions") or {}
-    disc = assumptions.get("discount_rate") or assumptions.get("r")
-    g = assumptions.get("growth") or assumptions.get("g")
-    tg = assumptions.get("terminal_growth") or assumptions.get("terminal_g")
+    # 用 is None 判断而非 or,避免 0.0 等合法 falsy 值被误判为缺失。
+    disc = assumptions.get("discount_rate")
+    if disc is None:
+        disc = assumptions.get("r")
+    g = assumptions.get("growth")
+    if g is None:
+        g = assumptions.get("g")
+    tg = assumptions.get("terminal_growth")
+    if tg is None:
+        tg = assumptions.get("terminal_g")
 
     lines: list[str] = [
         "## 估值三档表",
@@ -286,6 +293,41 @@ def render_fcf_dividend(data: Any) -> str:
         f"| FCF 覆盖分红 | {(f'{cover:.2f} 倍') if cover is not None else 'N/A'} | ≥1 倍方可持续 |",
         f"| 股息率 − 10Y 国债 | {_signed_pct(yield_vs)} | 股债相对价值(国债锚 2.5%) |",
         f"| 分红可持续性 | {sustain_note} | — |",
+    ]
+    return "\n".join(lines)
+
+
+def render_financial_health_ext(financial: Any) -> str:
+    """Render extended financial-health indicators(应收账款/存货/分红).
+
+    数据来自 FinancialData 实体根级字段(accounts_receivable / inventory /
+    dividend_paid),这些字段在旧版实体中不存在,导致「渠道压货」「库存减值」
+    「股息可持续性」三大核心判断缺失数据支撑。若全部字段为 0 则返回 ''。
+    """
+    if not hasattr(financial, "accounts_receivable"):
+        return ""
+    ar = getattr(financial, "accounts_receivable", 0.0) or 0.0
+    inv = getattr(financial, "inventory", 0.0) or 0.0
+    div = getattr(financial, "dividend_paid", 0.0) or 0.0
+    if ar == 0 and inv == 0 and div == 0:
+        return ""
+    revenue = getattr(financial, "revenue", 0.0) or 0.0
+    net_profit = getattr(financial, "net_profit", 0.0) or 0.0
+
+    # 占营收比(渠道压货/库存积压信号)
+    ar_ratio = _pct(ar / revenue) if revenue > 0 else "N/A"
+    inv_ratio = _pct(inv / revenue) if revenue > 0 else "N/A"
+    # 股利支付率(分红 / 净利润)
+    payout = _pct(div / net_profit) if net_profit > 0 and div > 0 else "N/A"
+
+    lines = [
+        "## 财务健康扩展指标(应收账款/存货/分红)",
+        "",
+        "| 指标 | 数值 | 占营收 / 支付率 | 诊断 |",
+        "|------|------|----------------|------|",
+        f"| 应收账款 | {_fmt_num(ar)} 亿 | {ar_ratio} | 占营收比上升=渠道压货信号 |",
+        f"| 存货 | {_fmt_num(inv)} 亿 | {inv_ratio} | 积压风险 / 库存减值先行指标 |",
+        f"| 分配股利(现金流出) | {_fmt_num(div)} 亿 | {payout} | 股息可持续性;_coverage=FCF÷分红 |",
     ]
     return "\n".join(lines)
 

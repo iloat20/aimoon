@@ -15,17 +15,19 @@ class Phase(StrEnum):
     COMPILE = "compile"       # 终稿
 
 
-# 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
+# 报告章节结构 —— 代码侧维护,运行时格式化为
+# `## 一、…` 标题块,与 compile.md 8 节大师级结构对齐。
 _REPORT_SECTIONS = [
-    ("一", "业务画像与护城河"),
-    ("二", "财务健康诊断"),
-    ("三", "交叉验证"),
-    ("四", "风险量化与看空逻辑"),
-    ("五", "估值建模"),
-    ("六", "逆向视角"),
-    ("七", "投资建议"),
+    ("一", "数据采集与叙事"),
+    ("二", "法务会计审计"),
+    ("三", "隐含市场预期反推"),
+    ("四", "条件概率决策树"),
+    ("五", "反向论证"),
+    ("六", "投资策略"),
+    ("七", "自我批判与情景应急"),
     ("八", "附录"),
 ]
+_SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
 _SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
 
 
@@ -101,6 +103,11 @@ def phase_system_prompt(phase: Phase, stock_md: str, prior: dict) -> str:
         import json
         fixes_json = json.dumps(prior.get("self_check_fixes", []), ensure_ascii=False)
         replacements.append(("{{ self_check_fixes }}", fixes_json))
+    if "{{ tables_md }}" in template:
+        replacements.append(("{{ tables_md }}", str(prior.get("tables_md", "") or "")))
+    if "{{ summary }}" in template:
+        tools_summary = prior.get("summary") or prior.get("tools_summary") or ""
+        replacements.append(("{{ summary }}", str(tools_summary)))
     if "{{ sections }}" in template:
         replacements.append(("{{ sections }}", _SECTIONS_MD))
     compiled = template

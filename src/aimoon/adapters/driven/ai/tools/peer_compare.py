@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
+from typing import Any
 
 from aimoon.core.domain.entities.financial import FinancialData
 
@@ -81,15 +82,16 @@ def parse(html_or_text: str, self_fin: FinancialData) -> list[dict[str, object]]
     return peers
 
 
-def run(
+async def run(
     name: str,
     self_fin: FinancialData,
-    search_fn: Callable[[str], str | None] | None = None,
+    search_fn: Callable[[str], Any] | None = None,
 ) -> dict[str, object]:
     """组合 entry point。
 
-    真实场景下 orchestrator 注入 ``execute_web_search``,此处仅组合调用;
+    真实场景下 orchestrator 注入 ``execute_web_search``(async),此处 await 后组合;
     无注入时上游依赖此工具 → 返 ``{"__partial__":"no_data"}`` 降级。
+    ``search_fn`` 为 async 可调用对象(返回 HTML 字符串),调用方需 await。
     """
     try:
         if not name or not self_fin:
@@ -101,7 +103,7 @@ def run(
 
         industry = _detect_industry(name)
         query = build_search_query(name, industry)
-        html = search_fn(query)
+        html = await search_fn(query)
         if not html:
             return {"__partial__": "no_data", "peers": [], "industry": industry}
 
