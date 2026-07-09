@@ -76,7 +76,9 @@ class CollectorOrchestrator:
             client=http_client
         )
         self._research_collector = research_collector or ResearchReportCollector()
-        self._social_collector = social_collector or SocialMediaOrchestrator()
+        self._social_collector = social_collector or SocialMediaOrchestrator(
+            http_client=self._http
+        )
         self._last_results: tuple[CollectResult, ...] = ()
 
     @property

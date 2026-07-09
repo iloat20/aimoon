@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 import logging
 
+import httpx
+
 from aimoon.core.application.browser_factory import BrowserFactory, PlaywrightBrowserFactory
 from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.entities.social import SocialPost
@@ -57,9 +59,11 @@ class SocialMediaOrchestrator:
         self,
         browser_factory: BrowserFactory | None = None,
         reporter: ProgressReporter | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._browser_factory = browser_factory or _default_browser_factory
         self._reporter = reporter or CliProgressReporter()
+        self._http = http_client
 
     async def collect(self, symbol: str, name: str) -> tuple[list[SocialPost], list[CollectResult]]:
         """Collect social media sentiment from multiple platforms.
@@ -72,8 +76,8 @@ class SocialMediaOrchestrator:
         playwright_collectors: list[BaseCollector] = []
         failed_platforms: set[str] = set()
 
-        guba_collector = GubaCollector()
-        cninfo_collector = CninfoCollector()
+        guba_collector = GubaCollector(http_client=self._http)
+        cninfo_collector = CninfoCollector(http_client=self._http)
         registry.register(guba_collector)
         registry.register(cninfo_collector)
         playwright_collectors.append(guba_collector)

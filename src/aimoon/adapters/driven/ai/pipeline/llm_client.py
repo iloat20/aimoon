@@ -12,6 +12,9 @@ from .types import AnalyzerRuntime
 
 logger = logging.getLogger(__name__)
 
+# Dedicated long-timeout client for LLM calls (analyzer path uses short-timeout).
+LLM_CLIENT_TIMEOUT = 300.0
+
 
 class PipelineLlmClient:
     """Owns a dedicated long-timeout httpx client for LLM calls.
@@ -27,7 +30,7 @@ class PipelineLlmClient:
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.analyzer = analyzer
-        self._llm_http = http_client or httpx.AsyncClient(timeout=300.0)
+        self._llm_http = http_client or httpx.AsyncClient(timeout=LLM_CLIENT_TIMEOUT)
 
     async def aclose(self) -> None:
         await self._llm_http.aclose()

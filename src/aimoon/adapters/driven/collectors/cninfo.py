@@ -38,6 +38,9 @@ class CninfoCollector(BaseCollector):
 
     name = "巨潮资讯"
 
+    def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
+        self._http = http_client
+
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
         t0 = time.monotonic()
         try:
@@ -58,7 +61,7 @@ class CninfoCollector(BaseCollector):
             **_HEADERS,
             "User-Agent": get_settings().default_user_agent,
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with (self._http or httpx.AsyncClient(timeout=15.0)) as client:
             search_key = stock_name if stock_name else symbol
             payload = {
                 "stock": "",

@@ -36,8 +36,9 @@ class GubaCollector(BaseCollector):
 
     name = "东方财富股吧"
 
-    def __init__(self) -> None:
+    def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
         self._browser: Any = None
+        self._http: httpx.AsyncClient | None = http_client
 
     def set_browser(self, browser: Any) -> None:
         """Set shared browser instance for Playwright reuse."""
@@ -161,7 +162,7 @@ class GubaCollector(BaseCollector):
             **_HEADERS,
             "User-Agent": get_settings().default_user_agent,
         }
-        async with httpx.AsyncClient(headers=headers, timeout=15.0) as client:
+        async with (self._http or httpx.AsyncClient(headers=headers, timeout=15.0)) as client:
             market = "1" if symbol.startswith("6") else "0" if symbol.startswith("0") else "0"
             url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
             resp = await client.get(url)

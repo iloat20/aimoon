@@ -23,6 +23,9 @@ os.environ["PYTHONASYNCIODEBUG"] = "0"
 logging.getLogger("asyncio").setLevel(logging.ERROR)
 
 from aimoon import __version__
+from aimoon.adapters.driven.collectors.social_orchestrator import (
+    close_shared_browser,
+)
 from aimoon.adapters.driven.config.settings import get_settings
 from aimoon.core.domain.services.symbols import resolve_symbol
 
@@ -107,6 +110,12 @@ def main() -> None:
         print("\n堆栈跟踪:")
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        # Release the warm Playwright browser on CLI exit (kept warm during run)
+        try:
+            asyncio.run(close_shared_browser())
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

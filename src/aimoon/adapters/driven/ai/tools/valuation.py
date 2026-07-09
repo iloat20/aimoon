@@ -9,9 +9,14 @@ import logging
 
 from aimoon.core.domain.entities.quote import StockQuote
 
+from ._common import (
+    _capex,
+    _first_year_investing,
+    _first_year_ocf,
+)
+
 logger = logging.getLogger(__name__)
 
-INDUSTRIAL_CAPEX_OCF_RATIO = 0.30  # 工业类 capex 兜底:OCF 的 30%
 FCFE_YEARS = 5
 
 
@@ -28,9 +33,8 @@ def run(
 
         pe = float(quote.pe or 0.0)
         pb = float(quote.pb or 0.0)
-        market_cap = float(quote.market_cap or 0.0)
 
-        invest_cf = float(_first_year_ocf_investing(fin_temporal) or 0.0)
+        invest_cf = float(_first_year_investing(fin_temporal) or 0.0)
         ocf_partial = bool(fin_temporal.get("ocf_partial"))
         ocf = _first_year_ocf(fin_temporal)
 
@@ -51,15 +55,15 @@ def run(
         base_fcfe = ocf - capex
         growth = float(fin_temporal.get("revenue_cagr") or 0.0)
         discount_rate = _discount_rate(quote)
+        fcfe_targets, terminal_growth = _project_fcfe(base_fcfe, growth, discount_rate, quote)
         fcfe_assumptions = {
             "growth": round(growth, 4),
             "discount_rate": round(discount_rate, 4),
+            "terminal_growth": round(terminal_growth, 4),
             "years": FCFE_YEARS,
             "capex": round(capex, 4),
             "ocf": round(ocf, 4),
         }
-
-        fcfe_targets = _project_fcfe(base_fcfe, growth, discount_rate, market_cap)
 
         return {
             "pe": pe,
@@ -73,31 +77,6 @@ def run(
         return {"__partial__": "computation_error"}
 
 
-def _first_year_ocf(fin: dict) -> float:
-    years = fin.get("years") or []
-    if years and isinstance(years[0], dict):
-        v = years[0].get("operating_cf")
-        return float(v) if v is not None else 0.0
-    return 0.0
-
-
-def _first_year_ocf_investing(fin: dict) -> float:
-    years = fin.get("years") or []
-    if years and isinstance(years[0], dict):
-        v = years[0].get("investing_cf")
-        return float(v) if v is not None else 0.0
-    return 0.0
-
-
-def _capex(ocf: float, investing_cf: float) -> float:
-    """cape 代理:投资现金流绝对值;否则工业兜底 OCF * 30%。"""
-    if investing_cf < 0:
-        return -investing_cf
-    if ocf > 0:
-        return ocf * INDUSTRIAL_CAPEX_OCF_RATIO
-    return 0.0
-
-
 def _discount_rate(quote: StockQuote) -> float:
     return 0.10  # 无风险 + 股权溢价综合:8%-10% 取中轨 10%
 
@@ -106,9 +85,25 @@ def _project_fcfe(
     base_fcfe: float,
     growth: float,
     discount_rate: float,
-    market_cap: float,
-) -> dict[str, object]:
-    """三档情景 FCFE 折现 → 保守(低增长) / 中性 / 乐观(高增长)。"""
+    quote: StockQuote,
+) -> tuple[dict[str, object], float]:
+    """三档情景 FCFE 折现 → 保守(低增长) / 中性 / 乐观(高增长)。
+
+    返回每股目标价(元) + 对应 PE + 概率(None,模型不估概率)。
+    总价值按「流通股本 = market_cap / 价格」折算为每股,避免总价值误标为每股价。
+    """
+    price = float(quote.price or 0.0)
+    market_cap = float(quote.market_cap or 0.0)
+    pe = float(quote.pe or 0.0)
+    # 流通股本:用「市值 / 股价」推导(采集器已填充 market_cap)。
+    shares = market_cap / price if price > 0 else 0.0
+    # EPS = 股价 / PE,用于把目标价换算为 PE 倍数。
+    eps = price / pe if pe > 0 else 0.0
+    # 永续增速封顶:取「中性增速 / 2」且不超过 2.5%、不低于 0,并严格低于折现率。
+    terminal_growth = min(max(growth / 2, 0.0), 0.025)
+    if terminal_growth >= discount_rate:
+        terminal_growth = discount_rate / 2
+
     growth_low = min(growth, 0.0)
     growth_high = growth + 0.05
     scenarios = {
@@ -118,24 +113,38 @@ def _project_fcfe(
     }
     targets: dict[str, object] = {}
     for name, cfg in scenarios.items():
-        targets[name] = _pv_fcfe(
-            base_fcfe, float(cfg["growth"]), float(cfg["discount"]), market_cap
+        equity_value = _pv_fcfe(
+            base_fcfe, float(cfg["growth"]), float(cfg["discount"]), terminal_growth, market_cap
         )
-    return targets
+        # 总价值 → 每股目标价;无股本信息时退化为总价值(极端兜底)。
+        per_share = (equity_value / shares) if shares > 0 else equity_value
+        target_pe = (per_share / eps) if eps > 0 else None
+        targets[name] = {
+            "price": round(per_share, 2),
+            "pe": round(target_pe, 2) if target_pe is not None else None,
+            "probability": None,  # 模型不估概率,显式 None → 渲染为 N/A
+        }
+    return targets, terminal_growth
 
 
-def _pv_fcfe(base_fcfe: float, growth: float, discount: float, market_cap: float) -> float:
-    """对 base_fcfe 做 5 年高增长折现 + 终值,用 market_cap 兜底避免 0。"""
+def _pv_fcfe(
+    base_fcfe: float, growth: float, discount: float, terminal_growth: float, market_cap: float,
+) -> float:
+    """对 base_fcfe 做 5 年情景增速折现 + 永续终值(Gordon,增速封顶 < 折现率)。
+
+    终值用 ``terminal_growth``(封顶 < discount)计算,避免高增长情景分母趋 0 爆炸;
+    ``market_cap`` 仅作零值兜底。
+    """
     r = max(discount, 0.001)
-    g = growth
-    if r <= g:
-        g = r - 0.001  # 防止分母为负
+    g = min(growth, r - 0.001)  # 显式预测期增速也封顶,避免 (1+r)^N 前出现负分母
     pv = 0.0
     fcfe = base_fcfe
     for _ in range(FCFE_YEARS):
         pv += fcfe / (1 + r) ** (_ + 1)
         fcfe *= 1 + g
-    terminal = fcfe / (r - g) / (1 + r) ** FCFE_YEARS
+    # 永续终值:第 N 年 FCFE 按永续增速 g_t 永续增长,折现回现值。
+    gt = min(terminal_growth, r * 0.5)  # 永续增速严格低于折现率(取半轨兜底)
+    terminal = fcfe * (1 + gt) / (r - gt) / (1 + r) ** FCFE_YEARS
     return round(pv + terminal, 2)
 
 

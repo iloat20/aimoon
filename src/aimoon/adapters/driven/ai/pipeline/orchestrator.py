@@ -66,6 +66,11 @@ logger = logging.getLogger(__name__)
 
 MAX_TOTAL_SEC = 720  # 12 min (采集+ANALYSIS 210s + COMPILE 480s + buffer)
 
+# 各阶段 LLM 调用超时 (extracted from inline magic numbers, audit P2.5)
+ANALYSIS_TIMEOUT = 210
+COMPILE_TIMEOUT = 480
+SELF_CHECK_TIMEOUT = 60
+
 # DeepSeek 思考强度(reasoning_effort)。
 # 官方支持: low/medium→映射为 high, high, xhigh→映射为 max。
 # 默认 high;重试时保持 high(不降级,避免思考不充分)。
@@ -212,7 +217,7 @@ class PipelineOrchestrator:
             try:
                 compile_result = await asyncio.wait_for(
                     self._phase_compile(stock_md, prior),
-                    timeout=480,
+                    timeout=COMPILE_TIMEOUT,
                 )
             except TimeoutError:
                 logger.warning("[pipeline] COMPILE 超时 300s, 降级")
@@ -420,7 +425,7 @@ class PipelineOrchestrator:
                 self._call_llm_with_stream(
                     messages, max_tokens=2048, reasoning_effort="low",
                 ),
-                timeout=60,
+                timeout=SELF_CHECK_TIMEOUT,
             )
             text = (message.get("content") or "").strip()
         except TimeoutError:

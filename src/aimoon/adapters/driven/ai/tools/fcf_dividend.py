@@ -18,11 +18,16 @@ from aimoon.adapters.driven.ai.tools._safe import tool_safe
 from aimoon.core.domain.entities.financial import FinancialData
 from aimoon.core.domain.entities.quote import StockQuote
 
+from ._common import (
+    _capex,
+    _first_year_investing,
+    _first_year_ocf,
+)
+
 logger = logging.getLogger(__name__)
 
 # 10 年期国债收益率锚(用于股债相对价值比较)
 CGB_10Y = 0.025
-INDUSTRIAL_CAPEX_OCF_RATIO = 0.30  # investing_cf 缺失时的工业类 capex 兜底
 
 
 @tool_safe("computation_error")
@@ -88,31 +93,6 @@ def run(
         "fcf_cover": round(sustainable, 2) if sustainable is not None else None,
         "cgb_10y": CGB_10Y,
     }
-
-
-def _first_year_ocf(fin: dict) -> float:
-    years = fin.get("years") or []
-    if years and isinstance(years[0], dict):
-        v = years[0].get("operating_cf")
-        return float(v) if v is not None else 0.0
-    return 0.0
-
-
-def _first_year_investing(fin: dict) -> float:
-    years = fin.get("years") or []
-    if years and isinstance(years[0], dict):
-        v = years[0].get("investing_cf")
-        return float(v) if v is not None else 0.0
-    return 0.0
-
-
-def _capex(ocf: float, investing_cf: float) -> float:
-    """capex 代理:投资现金流净流出绝对值;否则工业兜底 OCF * 30%。"""
-    if investing_cf < 0:
-        return -investing_cf
-    if ocf > 0:
-        return ocf * INDUSTRIAL_CAPEX_OCF_RATIO
-    return 0.0
 
 
 def _dividend_from_statements(financial: FinancialData | None) -> float | None:
