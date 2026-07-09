@@ -14,7 +14,7 @@
 ## 关键领域事实
 - K 线 canon 单位 = **手**（档1/2 akshare 本就手；档3 腾讯原 `×100` 已改 `vol_f` 直接用手）。
 - `StockAnalysis`：数据字段 `Optional=None` + `extensions: dict[str,BaseModel]` 扩展点 + `social_posts: tuple`；消费者 `x or EmptyEntity()` 回退。
-- `FinancialData` 无 `statements` 字段 → `_dividend_from_statements` 恒 None（真实 gap，测试记 None）。
+- `FinancialData` 无 `statements` 字段；`_dividend_from_statements` 原依赖 `statements` 恒 None，F1 已改为读 `financial.dividend_paid`，当前正确（无真实 gap）。
 - `scoring.py` 不存在（评分在 `validation/integrity_checker.py`），四文档统一"不存在"口径。
 - 提示词从 `pipeline/prompts/` 加载；根目录 `pipeline/compile.md` 是死副本不被加载。
 - **DeepSeek 模型默认 `deepseek-reasoner`**（旧默认 `deepseek-v4-flash` 是占位符、非公开模型，会 API 400 + 重试 + 静默降级）。`reasoning_effort` 仅 reasoner 发送；`DEEPSEEK_MODEL=deepseek-chat` 可作低成本档位。
