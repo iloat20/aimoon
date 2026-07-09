@@ -342,6 +342,9 @@ class PipelineOrchestrator:
         # 3. Hybrid user message: snapshot + 已渲染表格 + 工具摘要 + 舆情 + 研报
         #    模型只需做分析对比,不需要重新生成表格数字(否则会与 tables_md 重复)。
         tool_ctx: dict[str, object] = {**prior, "tables_md": tables_md, "summary": summary}
+        # 把上游工具摘要也写入 prior, 供后续 COMPILE 阶段的 {{ summary }} 引用
+        # (否则 summary 仅存在于 ANALYSIS 局部 tool_ctx, COMPILE 解析为空)。
+        prior["summary"] = summary
         system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
         # 舆情摘要(取每条 post 的 title,最多 15 条)
         social_summary = "\n".join(

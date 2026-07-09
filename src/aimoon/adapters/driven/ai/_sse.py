@@ -61,11 +61,12 @@ async def collect_sse_content(resp: object) -> str:
         full_text.append(content)
         buffer += content
 
-        # O(n) splitlines: each complete line is flushed for streaming print,
-        # the trailing partial stays in ``buffer`` until the next delta completes it.
-        *lines, buffer = buffer.splitlines()
-        for line_text in lines:
-            _emit(line_text + "\n")
+        # 保留换行符切分: 每遇到完整 \n 即 flush 用于流式打印, 行尾残留留在
+        # buffer 直到下个 delta 补全。splitlines() 会丢弃 \n 导致跨 delta 行被合并
+        # (第二个 "##" 头被裹进正文不再识别为 banner)。
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            _emit(line + "\n")
 
     # Flush the final partial line for streaming display.
     # NOTE: do NOT append ``buffer`` to ``full_text`` here — it is already included

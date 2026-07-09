@@ -54,7 +54,5 @@ USER_PROMPT_TEMPLATE = """\
 
 【用户提供的原始数据】
 {quote_data}
-{financial_summary}   （可选，若用户传入了财务摘要）
-{industry_data}       （可选）
 
 请立即基于以上信息进行深度分析。若某些部分数据缺失，必须在该部分开头标明并停止深入，不得编造。"""
