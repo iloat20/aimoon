@@ -8,18 +8,22 @@ Returns ~180 daily bars with OHLCV + pct_change.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 
 from aimoon.adapters.driven.collectors.eastmoney_direct import EastMoneyDirectCollector
+from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.adapters.driven.common.retry import retry_on_connection, silent_failure
 from aimoon.core.domain.entities.kline import KlineData
 from aimoon.core.domain.services.symbols import to_sina_symbol
 from aimoon.core.domain.value_objects.kline_bar import KlineBar
 
 from .base import DataCollector
+
+logger = logging.getLogger(__name__)
 
 _TENCENT_URL = "https://ifzq.gtimg.cn/appstock/app/fqkline/get"
 
@@ -33,6 +37,20 @@ class KlineCollector(DataCollector[KlineData]):
         self._days = days
         self._client_provided = client is not None
         self._client = client
+        # 日内 K 线基本不变, 缓存 1 小时: 重复运行 / 重分析不再重拉约 180 根日线。
+        self._cache = DiskTtlCache(namespace="kline", ttl_seconds=3600)
+        self._eastmoney_direct_enabled = self._read_eastmoney_direct_enabled()
+
+    @staticmethod
+    def _read_eastmoney_direct_enabled() -> bool:
+        """L4 回退(东方财富 push2his 直连)在部分网络被 WAF 拦截(连接重置);
+        若该子域不可达, 关闭可省去约 14s 空耗重试(见 settings)。"""
+        try:
+            from aimoon.adapters.driven.config.settings import get_settings
+
+            return get_settings().kline_eastmoney_direct_enabled
+        except Exception:
+            return True
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -40,32 +58,44 @@ class KlineCollector(DataCollector[KlineData]):
         return self._client
 
     async def fetch(self, symbol: str, **kwargs: Any) -> KlineData:
-        """Fetch K-line with three-level fallback.
-        Returns empty bars on total failure.
+        """Fetch K-line with four-level fallback.
+
+        Results are disk-cached (1h TTL) so repeated runs / re-analysis don't
+        re-pull ~180 daily bars. Each level is bounded by ``asyncio.wait_for`` so a
+        hung source can't stall the whole pipeline.
         """
-        # Level 1: stock_zh_a_hist (前复权)
-        with silent_failure("kline_akshare_hist"):
-            result = await self._fetch_hist(symbol)
-            if result and result.bars:
-                return result
+        cache_key = f"kline:{symbol}:{self._days}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return KlineData.model_validate(cached)
 
-        # Level 2: stock_zh_a_daily
-        with silent_failure("kline_akshare_daily"):
-            result = await self._fetch_daily(symbol)
-            if result and result.bars:
-                return result
+        result = await self._fetch_with_fallback(symbol)
+        if result and result.bars:
+            self._cache.set(cache_key, result.model_dump())
+        return result
 
-        # Level 3: Tencent fqkline
-        with silent_failure("kline_tencent_fqkline"):
-            result = await self._fetch_tencent(symbol)
-            if result and result.bars:
-                return result
+    async def _fetch_with_fallback(self, symbol: str) -> KlineData:
+        """逐级回退, 每级带超时上限; L4 可在配置中关闭。"""
+        levels = [
+            ("kline_akshare_hist", self._fetch_hist, 15),
+            ("kline_akshare_daily", self._fetch_daily, 15),
+            ("kline_tencent_fqkline", self._fetch_tencent, 15),
+        ]
+        if self._eastmoney_direct_enabled:
+            # push2his 子域若在部署网络被 WAF 拦截, 收紧到 10s 上限。
+            levels.append(
+                ("kline_eastmoney_direct", self._fetch_eastmoney_direct, 10)
+            )
 
-        # Level 4: 东方财富官方免鉴权 HTTP 接口(绕过 akshare 中间层)
-        with silent_failure("kline_eastmoney_direct"):
-            result = await self._fetch_eastmoney_direct(symbol)
-            if result and result.bars:
-                return result
+        for name, coro_fn, timeout in levels:
+            with silent_failure(name):
+                try:
+                    result = await asyncio.wait_for(coro_fn(symbol), timeout=timeout)
+                except TimeoutError:
+                    logger.warning("[kline] %s 超过 %ss 超时, 跳过该数据源", name, timeout)
+                    continue
+                if result and result.bars:
+                    return result
 
         return KlineData(symbol=symbol, source="all_failed")
 

@@ -62,6 +62,17 @@ class AkshareFinancialAdapter:
             namespace="akshare_financial",
             ttl_seconds=86400,  # 24 hours
         )
+        # 季报/历史年报的磁盘缓存: 历史年报变化极慢(7天),季报24小时。
+        # 默认模式下 fetch/quarterly/history 三者并行,各自独立磁盘缓存避免重复网络拉取。
+        self._quarterly_cache = DiskTtlCache(
+            namespace="akshare_quarterly", ttl_seconds=86400
+        )
+        self._history_cache = DiskTtlCache(
+            namespace="akshare_history", ttl_seconds=604800
+        )
+        # 进程内(单次运行)原始三表记忆化: fetch/quarterly/history 共享同一份
+        # 东方财富原始 DataFrame,避免对利润表/资产负债表/现金流表各拉 2~3 次。
+        self._raw_statements: dict[str, asyncio.Future] = {}
         # 请求间隔:在多次 API 调用之间插入延迟,降低被 WAF 拦截概率。
         # akshare 原生不设间隔选项,我们在采集器层自己控制。
         self._request_interval = 0.5  # 秒
@@ -114,11 +125,26 @@ class AkshareFinancialAdapter:
                 return FinancialData(symbol=symbol, source="akshare_cache_empty")
             return FinancialData.model_validate(cached)
 
+        prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
+        ak_symbol = f"{prefix}{symbol}"
         try:
-            result = await self._fetch_all(symbol, report_type)
+            income_df, bs_df, cf_df = await self._get_raw_statements(ak_symbol)
         except Exception as e:
             logger.warning("[akshare] fetch failed for %s: %s", symbol, e)
             return FinancialData(symbol=symbol, source=f"akshare_failed: {e}")
+
+        result = FinancialData(symbol=symbol, source="akshare(东方财富)")
+        if income_df is not None and not income_df.empty:
+            self._parse_income_statement(result, _filter_report_type(income_df, report_type))
+        if bs_df is not None and not bs_df.empty:
+            self._parse_balance_sheet(result, _filter_report_type(bs_df, report_type))
+        if cf_df is not None and not cf_df.empty:
+            self._parse_cash_flow(result, _filter_report_type(cf_df, report_type))
+
+        if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
+            result.source = "akshare_empty"
+        if result.net_profit != 0 and result.equity > 0:
+            result.roe = round(result.net_profit / result.equity * 100, 2)
 
         if result.source.startswith("akshare_empty"):
             self._cache.set(cache_key, {"_empty": True})
@@ -127,66 +153,66 @@ class AkshareFinancialAdapter:
 
         return result
 
-    async def _fetch_all(self, symbol: str, report_type: str = "年报") -> FinancialData:
-        """Fetch and merge data from all three financial statements in parallel."""
-        result = FinancialData(symbol=symbol, source="akshare(东方财富)")
-        prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
-        ak_symbol = f"{prefix}{symbol}"
+    async def _get_raw_statements(
+        self, ak_symbol: str
+    ) -> tuple[Any, Any, Any]:
+        """拉取利润表/资产负债表/现金流表三张原始全量(含所有报告类型)DataFrame 一次。
 
-        # 请求间隔:在每次实际 API 请求前等待,降低被 WAF 拦截概率。
+        结果按 (ak_symbol) 记忆化为 asyncio.Future: 即使 fetch/quarterly/history
+        在同一事件循环内并行调用,也只会真正发起一次三表网络请求,其余 await 同一 Future。
+        """
+        if ak_symbol in self._raw_statements:
+            return await self._raw_statements[ak_symbol]
+        task = asyncio.ensure_future(self._fetch_raw_statements(ak_symbol))
+        self._raw_statements[ak_symbol] = task
+        try:
+            return await task
+        except Exception:
+            # 拉取失败不缓存,允许后续重试
+            self._raw_statements.pop(ak_symbol, None)
+            raise
+
+    async def _fetch_raw_statements(
+        self, ak_symbol: str
+    ) -> tuple[Any, Any, Any]:
+        """真正发起三表并行请求(在线程池),返回全量 DataFrame。"""
         await self._throttle()
-
         loop = asyncio.get_running_loop()
         income_df: pd.DataFrame | BaseException
         bs_df: pd.DataFrame | BaseException
         cf_df: pd.DataFrame | BaseException
         income_df, bs_df, cf_df = await asyncio.gather(
-            loop.run_in_executor(None, self._sync_income, ak_symbol, report_type),
-            loop.run_in_executor(None, self._sync_balance, ak_symbol, report_type),
-            loop.run_in_executor(None, self._sync_cashflow, ak_symbol, report_type),
+            loop.run_in_executor(None, self._sync_profit_full, ak_symbol),
+            loop.run_in_executor(None, self._sync_balance_full, ak_symbol),
+            loop.run_in_executor(None, self._sync_cashflow_full, ak_symbol),
             return_exceptions=True,
         )
+        return (
+            income_df if isinstance(income_df, pd.DataFrame) else None,
+            bs_df if isinstance(bs_df, pd.DataFrame) else None,
+            cf_df if isinstance(cf_df, pd.DataFrame) else None,
+        )
 
-        if isinstance(income_df, pd.DataFrame) and not income_df.empty:
-            self._parse_income_statement(result, income_df)
-        if isinstance(bs_df, pd.DataFrame) and not bs_df.empty:
-            self._parse_balance_sheet(result, bs_df)
-        if isinstance(cf_df, pd.DataFrame) and not cf_df.empty:
-            self._parse_cash_flow(result, cf_df)
-
-        if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
-            result.source = "akshare_empty"
-        if result.net_profit != 0 and result.equity > 0:
-            result.roe = round(result.net_profit / result.equity * 100, 2)
-
-        return result
-
-    def _sync_income(self, ak_symbol: str, report_type: str):
-        """同步获取利润表（在线程池中运行）。"""
+    def _sync_profit_full(self, ak_symbol: str) -> pd.DataFrame | None:
+        """同步拉取利润表全量(在线程池中运行),空则返回 None。"""
         import akshare as ak
 
         df = ak.stock_profit_sheet_by_report_em(symbol=ak_symbol)
-        if df is not None and not df.empty:
-            return _filter_report_type(df, report_type)
-        return None
+        return df if (df is not None and not df.empty) else None
 
-    def _sync_balance(self, ak_symbol: str, report_type: str):
-        """同步获取资产负债表。"""
+    def _sync_balance_full(self, ak_symbol: str) -> pd.DataFrame | None:
+        """同步拉取资产负债表全量(在线程池中运行),空则返回 None。"""
         import akshare as ak
 
         df = ak.stock_balance_sheet_by_report_em(symbol=ak_symbol)
-        if df is not None and not df.empty:
-            return _filter_report_type(df, report_type)
-        return None
+        return df if (df is not None and not df.empty) else None
 
-    def _sync_cashflow(self, ak_symbol: str, report_type: str):
-        """同步获取现金流表。"""
+    def _sync_cashflow_full(self, ak_symbol: str) -> pd.DataFrame | None:
+        """同步拉取现金流表全量(在线程池中运行),空则返回 None。"""
         import akshare as ak
 
         df = ak.stock_cash_flow_sheet_by_report_em(symbol=ak_symbol)
-        if df is not None and not df.empty:
-            return _filter_report_type(df, report_type)
-        return None
+        return df if (df is not None and not df.empty) else None
 
     @staticmethod
     def _filter_by_report_type(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
@@ -327,21 +353,31 @@ class AkshareFinancialAdapter:
         """Fetch the latest non-annual report data.
 
         Returns the most recent 一季报/中报/三季报, preferring the latest date.
+        Reuses the memoized raw profit sheet (shares the fetch with ``fetch``/
+        ``fetch_history``) and adds a 24h disk cache.
         """
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
 
+        cache_key = f"quarterly:{symbol}"
+        cached = self._quarterly_cache.get(cache_key)
+        if cached is not None:
+            return QuarterlyFinancialData.model_validate(cached)
+
         try:
-            df = await asyncio.to_thread(ak.stock_profit_sheet_by_report_em, ak_symbol)
+            income_df, _, _ = await self._get_raw_statements(ak_symbol)
         except Exception as e:
-            logger.debug("[akshare] fetch_quarterly failed: %s", e)
+            logger.debug("[akshare] fetch_quarterly raw fetch failed: %s", e)
             return QuarterlyFinancialData(symbol=symbol, source="akshare_quarterly_failed")
 
-        if df is None or df.empty:
+        if income_df is None or income_df.empty:
             return QuarterlyFinancialData(symbol=symbol, source="akshare_quarterly_empty")
 
         # Filter out annual reports, sort by date descending, take the latest
-        non_annual = df[df["REPORT_TYPE"] != "年报"] if "REPORT_TYPE" in df.columns else df
+        if "REPORT_TYPE" in income_df.columns:
+            non_annual = income_df[income_df["REPORT_TYPE"] != "年报"]
+        else:
+            non_annual = income_df
         if "REPORT_DATE" in non_annual.columns:
             non_annual = non_annual.sort_values("REPORT_DATE", ascending=False)
         if non_annual.empty:
@@ -353,7 +389,9 @@ class AkshareFinancialAdapter:
             report_type = latest.get("REPORT_TYPE", "一季报")
         else:
             report_type = "一季报"
-        return self._parse_quarterly(non_annual, symbol, report_type)
+        result = self._parse_quarterly(non_annual, symbol, report_type)
+        self._quarterly_cache.set(cache_key, result.model_dump())
+        return result
 
     @staticmethod
     def _parse_quarterly(df: pd.DataFrame, symbol: str, report_type: str) -> QuarterlyFinancialData:
@@ -418,23 +456,26 @@ class AkshareFinancialAdapter:
     async def fetch_history(self, symbol: str, years: int = 3) -> list[FinancialData]:
         """拉取近 N 年年报,按报告期降序返回。
 
-        并行拉取 profit_sheet / balance_sheet / cash_flow_sheet 三张表,
-        按 (symbol, 年报日期) 内连接对齐,一次性补全收入、净利润、ROE、权益、OCF。
+        复用 _get_raw_statements 的进程内记忆化(与 fetch/quarterly 共享三表),
+        并加 7 天磁盘缓存: 重复运行不再重拉东方财富。
 
         任何异常均兜底返回 [],保证 pipeline v2 不因历史采集失败中断。
         """
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
-        loop = asyncio.get_running_loop()
-        p_task = loop.run_in_executor(None, ak.stock_profit_sheet_by_report_em, ak_symbol)
-        b_task = loop.run_in_executor(None, ak.stock_balance_sheet_by_report_em, ak_symbol)
-        c_task = loop.run_in_executor(None, ak.stock_cash_flow_sheet_by_report_em, ak_symbol)
+        cache_key = f"history:{symbol}:{years}"
+        cached = self._history_cache.get(cache_key)
+        if cached is not None:
+            return [FinancialData.model_validate(d) for d in cached]
+
         try:
-            p_df, b_df, c_df = await asyncio.gather(p_task, b_task, c_task)
+            p_df, b_df, c_df = await self._get_raw_statements(ak_symbol)
         except Exception as e:
             logger.debug("[akshare] fetch_history failed for %s: %s", symbol, e)
             return []
-        return self._merge_statements(symbol, years, p_df, b_df, c_df)
+        result = self._merge_statements(symbol, years, p_df, b_df, c_df)
+        self._history_cache.set(cache_key, [fd.model_dump() for fd in result])
+        return result
 
     @staticmethod
     def _annual(df: pd.DataFrame | None) -> pd.DataFrame:

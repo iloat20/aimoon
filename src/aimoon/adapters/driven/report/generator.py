@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +23,10 @@ from aimoon.core.domain.value_objects.collect_result import CollectResult
 from .... import __version__
 from ..config.settings import get_settings
 
+logger = logging.getLogger(__name__)
+
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+_VENDOR_DIR = Path(__file__).resolve().parent / "static" / "vendor"
 
 
 def _md_to_html(md_text: str) -> Markup:
@@ -117,7 +122,22 @@ class HtmlReportGenerator(ReportGeneratorPort):
         html = template.render(**ctx)
 
         out.write_text(html, encoding="utf-8")
+        # 复制本地 JS 依赖到输出目录, 使报告离线可用、零外部请求(替代 CDN)。
+        self._copy_vendor(out.parent)
         return out
+
+    def _copy_vendor(self, output_dir: Path) -> None:
+        """复制内置 JS 依赖(chart.js/html2canvas/jspdf)到报告同级 vendor/ 目录。"""
+        if not _VENDOR_DIR.is_dir():
+            logger.warning("[report] 内置 vendor 目录缺失: %s", _VENDOR_DIR)
+            return
+        dest = output_dir / "vendor"
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+            for f in _VENDOR_DIR.glob("*.js"):
+                shutil.copyfile(f, dest / f.name)
+        except OSError as e:
+            logger.warning("[report] 复制 vendor 依赖失败: %s", e)
 
     def _build_context(
         self,

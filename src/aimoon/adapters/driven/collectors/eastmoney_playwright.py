@@ -44,25 +44,36 @@ class GubaCollector(BaseCollector):
         """Set shared browser instance for Playwright reuse."""
         self._browser = browser
 
+    def _playwright_enabled(self) -> bool:
+        """是否启用股吧 Playwright 渲染。默认关闭(见 settings.guba_playwright_enabled),
+        以节省一次完整浏览器启动 + 渲染的算力开销。"""
+        try:
+            from aimoon.adapters.driven.config.settings import get_settings
+
+            return get_settings().guba_playwright_enabled
+        except Exception:
+            return False
+
     async def collect(self, symbol: str, stock_name: str = "") -> CollectResult:
         t0 = time.monotonic()
         posts: list[SocialPost] = []
         source = ""
 
-        # Strategy 1: Playwright DOM rendering
-        with silent_failure("guba_playwright_fetch"):
-            pw_posts = await self._fetch_playwright(symbol)
-            if pw_posts:
-                posts.extend(pw_posts)
-                source = "Playwright"
+        # Strategy 1 (default): lightweight akshare HTML parsing — no browser, fast.
+        with silent_failure("guba_html_fetch"):
+            html_posts = await self._fetch_guba_html(symbol)
+            if html_posts:
+                posts.extend(html_posts)
+                source = "akshare(HTML)"
 
-        # Strategy 2: akshare HTML parsing (lightweight fallback)
-        if not posts:
-            with silent_failure("guba_html_fetch"):
-                html_posts = await self._fetch_guba_html(symbol)
-                if html_posts:
-                    posts.extend(html_posts)
-                    source = "akshare(HTML)"
+        # Strategy 2: Playwright DOM rendering — only if HTML yielded nothing,
+        # and only when explicitly enabled (default off, to avoid launching a browser).
+        if not posts and self._playwright_enabled():
+            with silent_failure("guba_playwright_fetch"):
+                pw_posts = await self._fetch_playwright(symbol)
+                if pw_posts:
+                    posts.extend(pw_posts)
+                    source = "Playwright"
 
         elapsed = (time.monotonic() - t0) * 1000
         if posts:
@@ -94,7 +105,11 @@ class GubaCollector(BaseCollector):
         async with browser_session(self._browser) as (_browser, context):
             page = await context.new_page()
             await page.goto(url, timeout=15000)
-            await page.wait_for_timeout(3000)
+            try:
+                # 事件驱动等待: 列表行出现即继续, 避免盲目硬等 3s。
+                await page.wait_for_selector("tr.listitem", timeout=8000)
+            except Exception:
+                pass
 
             rows = await page.query_selector_all("tr.listitem")
             for row in rows[:30]:

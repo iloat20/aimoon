@@ -26,10 +26,16 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
 
     name = "fund_flow"
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        financial_adapter: Any | None = None,
+    ) -> None:
         self._sources_ok: list[str] = []
         self._client_provided = client is not None
         self._client = client
+        # 复用 orchestrator 已注入的财务适配器(及其磁盘缓存), 避免每次 new 一个。
+        self._financial_adapter = financial_adapter
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -116,7 +122,8 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
         try:
             from ..financial.akshare_adapter import AkshareFinancialAdapter
 
-            adapter = AkshareFinancialAdapter()
+            # 优先复用注入的适配器(共享其年报/季报/历史磁盘缓存); 否则惰性构造一个。
+            adapter = self._financial_adapter or AkshareFinancialAdapter()
             cf = await adapter.fetch_capital_flow(symbol)
             if cf:
                 if data.main_net_5d == 0.0:

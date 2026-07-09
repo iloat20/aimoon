@@ -52,13 +52,21 @@ class WechatCollector(BaseCollector):
 
                 # Visit main page first to get cookies
                 await page.goto("https://weixin.sogou.com/", timeout=15000)
-                await page.wait_for_timeout(2000)
+                try:
+                    # 事件驱动等待: 搜索框就绪即继续, 避免盲目硬等。
+                    await page.wait_for_selector("input#query", timeout=8000)
+                except Exception:
+                    pass
 
-                for pg in range(1, 4):  # pages 1-3
+                for pg in range(1, 3):  # pages 1-2(原 1-3, 减少一页浏览器开销)
                     try:
                         url = f"https://weixin.sogou.com/weixin?type=2&query={keyword}%20股票&page={pg}"
                         await page.goto(url, timeout=15000)
-                        await page.wait_for_timeout(2000)
+                        try:
+                            # 事件驱动等待: 列表项出现即解析, 替代固定 2s sleep。
+                            await page.wait_for_selector("ul.news-list li", timeout=8000)
+                        except Exception:
+                            pass
 
                         content = await page.content()
                         has_captcha = "请输入验证码" in content or "antispider" in content.lower()

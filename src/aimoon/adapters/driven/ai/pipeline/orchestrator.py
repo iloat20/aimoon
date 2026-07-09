@@ -22,6 +22,7 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.quote import StockQuote
 from aimoon.core.domain.entities.research import ResearchReportData
 
+from ...config.settings import get_settings
 from ..tools import TOOL_RUNNERS
 from ..xml_utils import strip_xml_tool_calls
 from .context_renderer import render_stock_context
@@ -75,8 +76,9 @@ SELF_CHECK_TIMEOUT = 60
 
 # DeepSeek 思考强度(reasoning_effort)。
 # 官方支持: low/medium→映射为 high, high, xhigh→映射为 max。
-# 默认 high;重试时保持 high(不降级,避免思考不充分)。
-_EFFORT_TWO_PHASE = "high"  # 双阶段模式(重试时仍用 high)
+# ANALYSIS 阶段的强度由 settings.deepseek_analysis_effort 控制(默认 high),
+# 这是 reasoner 思考 token 的主要消耗点,用户可通过环境变量设为 medium/low 省钱;
+# 重试时保持配置值(不自动降级,避免思考不充分)。
 
 
 @dataclasses.dataclass
@@ -384,12 +386,18 @@ class PipelineOrchestrator:
         # LLM 产出 Markdown。仅当传输层 / 网络层 / HTTP 状态异常(连接重置、
         # 超时、DNS、以及 DeepSeek 瞬时 429/500/503 等)时才重试——模型正常
         # 返回空内容属于其真实输出,不重试(避免无谓重复调用)。
+        settings = get_settings()
+        analysis_effort = settings.deepseek_analysis_effort
+        analysis_max_tokens = settings.deepseek_analysis_max_tokens
         draft = cached_report
         if not draft:
             for _attempt in range(3):
                 try:
                     message = await self._call_llm_with_stream(
-                        messages, reasoning_effort=_EFFORT_TWO_PHASE)
+                        messages,
+                        max_tokens=analysis_max_tokens,
+                        reasoning_effort=analysis_effort,
+                    )
                 except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
                     logger.error(
                         "[pipeline] ANALYSIS LLM 传输异常 %s: %s (重试 %d/2)",

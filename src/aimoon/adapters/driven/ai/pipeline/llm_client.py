@@ -15,6 +15,21 @@ logger = logging.getLogger(__name__)
 # Dedicated long-timeout client for LLM calls (analyzer path uses short-timeout).
 LLM_CLIENT_TIMEOUT = 300.0
 
+# reasoning_effort 仅 DeepSeek 思考(reasoner)模型支持; 普通 chat 模型传此参数
+# 会被 API 拒绝。据此守卫,既保证 reasoner 质量,又允许用户用 DEEPSEEK_MODEL=deepseek-chat
+# (更便宜、更快) 作为成本档位。
+#
+# 前缀缓存: DeepSeek 对已发送过的「相同前缀」自动缓存(命中后处理被跳过、输入按折扣计费)。
+# 本流水线每条消息的 system 段(analysis.md / compile.md / self_check.md 固定文本)位于
+# 最前,天然成为稳定缓存前缀;同一标的复跑时 stock_md + tables_md 前缀也一致 → 自动命中。
+# 因此无需任何额外参数,重复分析同一股票即可显著省 token。
+_REASONER_HINTS = ("reasoner",)
+
+
+def _is_reasoner_model(model: str | None) -> bool:
+    name = (model or "").lower()
+    return any(hint in name for hint in _REASONER_HINTS)
+
 
 class PipelineLlmClient:
     """Owns a dedicated long-timeout httpx client for LLM calls.
@@ -53,8 +68,9 @@ class PipelineLlmClient:
             "model": settings.deepseek_model,
             "messages": messages,
             "max_tokens": max_tokens or settings.deepseek_max_tokens,
-            "reasoning_effort": reasoning_effort,
         }
+        if _is_reasoner_model(settings.deepseek_model):
+            body["reasoning_effort"] = reasoning_effort
         with logphase(f"llm(effort={reasoning_effort}, mt={body['max_tokens']})"):
             resp = await self._llm_http.post(
                 analyzer.api_url,
@@ -87,9 +103,10 @@ class PipelineLlmClient:
             "model": settings.deepseek_model,
             "messages": messages,
             "max_tokens": max_tokens or settings.deepseek_max_tokens,
-            "reasoning_effort": reasoning_effort,
             "stream": True,
         }
+        if _is_reasoner_model(settings.deepseek_model):
+            body["reasoning_effort"] = reasoning_effort
         with logphase(f"llm-stream(effort={reasoning_effort})"):
             async with self._llm_http.stream(
                 "POST",

@@ -73,7 +73,7 @@ class CollectorOrchestrator:
         self._financial_collector = financial_collector
         self._kline_collector = kline_collector or KlineCollector(client=http_client)
         self._capital_flow_collector = capital_flow_collector or CapitalFlowCollector(
-            client=http_client
+            client=http_client, financial_adapter=self._financial_collector
         )
         self._research_collector = research_collector or ResearchReportCollector()
         self._social_collector = social_collector or SocialMediaOrchestrator(
