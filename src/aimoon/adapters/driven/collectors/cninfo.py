@@ -81,13 +81,9 @@ class CninfoCollector(BaseCollector):
                 return []
 
             data = resp.json()
-            # 兼容两种返回结构: 公告数组在顶层 {"announcements":[...]}
-            # 或包在 {"data":{"announcements":[...]}}。
-            items = (
-                data.get("announcements")
-                or (data.get("data") or {}).get("announcements")
-                or []
-            )
+            # 实测确认(2026-07-09 抓包): 公告数组固定在顶层 "announcements" 键,
+            # 响应中并无 "data" 包裹层, 故直接取顶层即可。
+            items = data.get("announcements") or []
             if not items:
                 return []
 
