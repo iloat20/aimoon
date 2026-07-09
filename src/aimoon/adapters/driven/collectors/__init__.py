@@ -20,6 +20,7 @@ from .base import BaseCollector, CollectorRegistry, DataCollector
 from .capital_flow import CapitalFlowCollector
 from .cninfo import CninfoCollector
 from .composite_repo import CompositeStockAnalysisRepository
+from .eastmoney_direct import EastMoneyDirectCollector
 from .eastmoney_playwright import GubaCollector
 from .kline import KlineCollector
 from .mock import (
@@ -30,6 +31,7 @@ from .mock import (
     mock_stock_analysis,
 )
 from .mock_repo import MockStockAnalysisRepository
+from .orchestrator import CollectorOrchestrator, CollectPayload
 from .quote import QuoteCollector
 from .research_report import ResearchReportCollector
 from .social_orchestrator import SocialMediaOrchestrator
@@ -38,10 +40,13 @@ from .wechat import WechatCollector
 __all__ = [
     "BaseCollector",
     "CapitalFlowCollector",
+    "CollectorOrchestrator",
     "CollectorRegistry",
     "CninfoCollector",
+    "CollectPayload",
     "CompositeStockAnalysisRepository",
     "DataCollector",
+    "EastMoneyDirectCollector",
     "GubaCollector",
     "KlineCollector",
     "MockStockAnalysisRepository",
