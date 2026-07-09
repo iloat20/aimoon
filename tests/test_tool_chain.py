@@ -6,6 +6,7 @@ wrapper and each tool's explicit early-return path so a single bad input can
 never abort the analysis pipeline.
 """
 
+import asyncio
 import inspect
 
 import pytest
@@ -15,7 +16,10 @@ from aimoon.adapters.driven.ai.tools import TOOL_RUNNERS
 
 @pytest.mark.parametrize("name", list(TOOL_RUNNERS.keys()))
 def test_tool_runners_degrade_on_missing_input(name):
-    """Each tool fed all-None required args must return a ``__partial__`` dict."""
+    """Each tool fed all-None required args must return a ``__partial__`` dict.
+
+    部分工具(如 peer_compare)的 run 是 async 的,返回 coroutine,这里统一 await。
+    """
     run = TOOL_RUNNERS[name]
     sig = inspect.signature(run)
     n_required = len(
@@ -23,6 +27,8 @@ def test_tool_runners_degrade_on_missing_input(name):
     )
     # Required positional params get None; optional params keep their defaults.
     result = run(*([None] * n_required))
+    if inspect.iscoroutine(result):
+        result = asyncio.run(result)
 
     assert isinstance(result, dict), f"{name} 未返回 dict(返回 {type(result)})"
     assert "__partial__" in result, (

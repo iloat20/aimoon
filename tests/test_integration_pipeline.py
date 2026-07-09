@@ -22,36 +22,39 @@ def _parse_args(argv):
 
 
 def test_cli_flags_registered():
-    """--use-v2 and --legacy are accepted by the argument parser."""
-    args = _parse_args(["000001", "--use-v2"])
-    assert args.use_v2 is True
+    """--two-phase / --legacy are accepted by the argument parser."""
+    args = _parse_args(["000001", "--two-phase"])
+    assert args.two_phase is True
     assert args.legacy is False
 
     args = _parse_args(["000001", "--legacy"])
     assert args.legacy is True
-    assert args.use_v2 is False
+    assert args.two_phase is False
 
     args = _parse_args(["000001"])
-    assert args.use_v2 is False
+    assert args.two_phase is False
     assert args.legacy is False
 
 
 def test_cli_use_v2_and_legacy_mutually_override():
-    """--legacy wins when both are supplied (main() ignores --use-v2)."""
-    args = _parse_args(["000001", "--use-v2", "--legacy"])
-    assert args.legacy is True
+    """--legacy and --two-phase are mutually exclusive: parser errors if both given."""
+    import pytest
+
+    with pytest.raises(SystemExit):
+        _parse_args(["000001", "--two-phase", "--legacy"])
 
 
 def test_cli_v2_flag_triggers_pipeline(monkeypatch):
-    """--use-v2 flows through main() to the orchestrator (use_v2=True)."""
+    """--two-phase flows through main() to the orchestrator (use_single_call=False)."""
     import sys
 
     from aimoon.adapters.driving.cli import main as main_mod
 
     observed: list[bool] = []
 
-    def capture_orchestrator(output_dir=None, mock_mode=None, use_v2=False):
-        observed.append(use_v2)
+    def capture_orchestrator(output_dir=None, mock_mode=None, use_v2=False,
+                             use_fast=False, use_single_call=True, use_ultra_fast=False):
+        observed.append(use_single_call)
         raise SystemExit(0)
 
     monkeypatch.setattr(main_mod, "PipelineOrchestrator", capture_orchestrator)
@@ -67,7 +70,7 @@ def test_cli_v2_flag_triggers_pipeline(monkeypatch):
 
     old_argv = sys.argv
     try:
-        sys.argv = ["aimoon", "000001", "--use-v2"]
+        sys.argv = ["aimoon", "000001", "--two-phase"]
         try:
             main_mod.main()
         except SystemExit as se:
@@ -75,19 +78,21 @@ def test_cli_v2_flag_triggers_pipeline(monkeypatch):
     finally:
         sys.argv = old_argv
 
-    assert observed and observed[-1] is True, observed
+    assert observed and observed[-1] is False, observed
 
 
 def test_cli_default_off_by_default(monkeypatch):
-    """No flag -> orchestrator constructed with use_v2=False."""
+    """No flag -> orchestrator constructed with v2 single-call defaults
+    (use_v2=True, use_single_call=True)."""
     import sys
 
     from aimoon.adapters.driving.cli import main as main_mod
 
-    observed: list[bool] = []
+    observed: list[dict] = []
 
-    def capture_orchestrator(output_dir=None, mock_mode=None, use_v2=False):
-        observed.append(use_v2)
+    def capture_orchestrator(output_dir=None, mock_mode=None, use_v2=False,
+                             use_fast=False, use_single_call=True, use_ultra_fast=False):
+        observed.append({"use_v2": use_v2, "use_single_call": use_single_call})
         raise SystemExit(0)
 
     monkeypatch.setattr(main_mod, "PipelineOrchestrator", capture_orchestrator)
@@ -111,7 +116,7 @@ def test_cli_default_off_by_default(monkeypatch):
     finally:
         sys.argv = old_argv
 
-    assert observed and observed[-1] is False, observed
+    assert observed and observed[-1] == {"use_v2": True, "use_single_call": True}, observed
 
 
 # ---------------------------------------------------------------------------

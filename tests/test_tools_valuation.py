@@ -20,7 +20,7 @@ def _quote(price: float = 1500.0, pe: float = 30.0, pb: float = 9.0) -> StockQuo
     )
 
 
-def _fin_temporal(ocf: float = 55.0, investing_cf: float = 0.0) -> dict:
+def _fin_temporal(ocf: float = 6.0e10, investing_cf: float = -3e9) -> dict:
     return {
         "n_years": 3,
         "years": [
@@ -51,9 +51,12 @@ def test_happy_path_pe_pb_fcfe_and_peer_comp() -> None:
     assert out["pb"] == pytest.approx(9.0, abs=1e-3)  # type: ignore[union-attr]
     targets = out["fcfe_targets"]
     assert {"conservative", "neutral", "optimistic"}.issubset(set(targets.keys()))
-    assert targets["conservative"] > 0
-    # 保守 < 中性 < 乐观
-    assert targets["conservative"] <= targets["neutral"] <= targets["optimistic"]
+    # 每股目标价为 dict({price, pe, probability}),不再是裸浮点(避免总价值误标为每股价)。
+    neutral = targets["neutral"]
+    assert isinstance(neutral, dict) and "price" in neutral
+    assert neutral["price"] > 0
+    # 保守 < 中性 < 乐观(按每股目标价排序)
+    assert targets["conservative"]["price"] <= targets["neutral"]["price"] <= targets["optimistic"]["price"]
     assumptions = out["fcfe_assumptions"]
     assert "growth" in assumptions and "discount_rate" in assumptions and "years" in assumptions
     assert 0 < assumptions["discount_rate"] <= 0.12
@@ -83,4 +86,4 @@ def test_finite_even_with_low_numbers() -> None:
     ft = _fin_temporal(ocf=1.0)
     out = run(ft, _quote(price=10.0, pe=5.0, pb=1.0), {})
     assert "__partial__" not in out
-    assert math.isfinite(out["fcfe_targets"]["neutral"])
+    assert math.isfinite(out["fcfe_targets"]["neutral"]["price"])
