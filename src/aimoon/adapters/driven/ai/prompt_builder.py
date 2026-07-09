@@ -52,28 +52,26 @@ class PromptContext:
     current_time: str
     quote: dict[str, Any]
     financial: dict[str, Any]
-    quarteryl_financial: dict[str, Any]
+    quarterly_financial: dict[str, Any]
     capital_flow: dict[str, Any]
     annual_report: Any
     semi_annual_report: Any
-    quarteryl_report: Any
+    quarterly_report: Any
     financial_md_path: str | None
     industry: str
-    kline_summary: Any
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "current_time": self.current_time,
             "quote": self.quote,
             "financial": self.financial,
-            "quarteryl_financial": self.quarteryl_financial,
+            "quarterly_financial": self.quarterly_financial,
             "capital_flow": self.capital_flow,
             "annual_report": self.annual_report,
             "semi_annual_report": self.semi_annual_report,
-            "quarteryl_report": self.quarteryl_report,
+            "quarterly_report": self.quarterly_report,
             "financial_md_path": self.financial_md_path,
             "industry": self.industry,
-            "kline_summary": self.kline_summary,
         }
 
 
@@ -165,14 +163,13 @@ def build_data_dict(
             "source": quote.source,
         },
         financial=financial_dict,
-        quarteryl_financial=quarterly_dict,
+        quarterly_financial=quarterly_dict,
         capital_flow=capital_flow_dict,
         annual_report=info.annual_report,
         semi_annual_report=info.semi_annual_report,
-        quarteryl_report=info.quarterly_report,
+        quarterly_report=info.quarterly_report,
         financial_md_path=str(financial_md_path) if financial_md_path else None,
         industry=detect_industry(info.symbol, info.name),
-        kline_summary=getattr(info, "kline_summary", None),
     )
 
 
@@ -268,7 +265,7 @@ def _format_capital_flow(data: dict) -> list[str]:
 
 
 def _format_social_kline(data: dict) -> list[str]:
-    """Format social media and K-line data sections."""
+    """Format social media data sections (K-line is intentionally excluded)."""
     parts: list[str] = []
     for key, label in [
         ("xueqiu", "雪球"),
@@ -279,16 +276,4 @@ def _format_social_kline(data: dict) -> list[str]:
         if text and text != "暂无数据":
             parts.append(f"\n\n【已采集{label}舆情摘要】")
             parts.append(text[:1500])
-
-    kline_summary = data.get("kline_summary", {})
-    if kline_summary:
-        parts.extend(
-            [
-                "\n\n【已采集K线数据】",
-                f"- 最新收盘: {kline_summary['latest_close']} ({kline_summary['latest_date']})",
-                f"- 区间最高: {kline_summary['period_high']}",
-                f"- 区间最低: {kline_summary['period_low']}",
-                f"- K线条数: {kline_summary['bar_count']} [{kline_summary['source']}]",
-            ]
-        )
     return parts

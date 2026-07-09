@@ -31,7 +31,6 @@ from .phases import _SECTIONS_MD, Phase, phase_system_prompt
 from .table_renderer import (
     render_fcf_dividend,
     render_financial_health_ext,
-    render_financial_statements,
     render_financial_temporal,
     render_peer_comparison,
     render_scenario_prob,
@@ -149,8 +148,8 @@ class PipelineOrchestrator:
 
         # 阶段跳过优先级: ultra_fast > single_call > fast。
         # ultra_fast: 初稿即终稿(跳过自检 + COMPILE); fast: 跳过自检 + 修复循环;
-        # single_call: 合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用
-        #   (此处等价于跳过 COMPILE 独立阶段)。
+        # single_call: 跳过 self-check 与 COMPILE 独立阶段,仅保留 ANALYSIS 单次 LLM 调用
+        #   (并非把三阶段合并为一次调用,而是直接省略自检与润色阶段)。
         skip_self_check = use_fast or use_single_call or use_ultra_fast
         skip_compile = use_single_call or use_ultra_fast
 
@@ -310,8 +309,9 @@ class PipelineOrchestrator:
         partial = any(_is_partial(v) for v in tool_results.values())
 
         # 2. 渲染核心表格(Python 模板,0 LLM token)+ 工具摘要(非表格部分)
-        #    三大表(利润表/资产负债表/现金流量表)明细来自 si.financial.statements,
-        #    旧实现只抽汇总数字丢弃明细,导致 AI 看不到三大表;现在一并渲染。
+        #    注:三大表明细卡(render_financial_statements)已移除——
+        #    FinancialData 无 statements 字段、采集端也未存行项明细,该卡恒为空,属死代码。
+        #    当前表格覆盖财务时序/同行/估值三档/FCF股息/情景概率/舆情/财务健康扩展。
         tables_md = "\n\n".join(
             [
                 render_financial_temporal(fin),
@@ -321,7 +321,6 @@ class PipelineOrchestrator:
                 render_scenario_prob(scenario),
                 render_sentiment(senti),
                 render_financial_health_ext(getattr(si, "financial", None)),
-                render_financial_statements(getattr(si, "financial", None)),
             ]
         )
         # 关键:把预渲染表写入 prior,供 COMPILE 阶段引用与终稿追加
@@ -446,18 +445,18 @@ class PipelineOrchestrator:
             )
             text = (message.get("content") or "").strip()
         except TimeoutError:
-            logger.warning("[pipeline] SELF_CHECK 超时 60s, 跳过")
-            return {"passed": True, "fixes_needed": []}
+            logger.warning("[pipeline] SELF_CHECK 超时 60s, 自检未执行")
+            return {"passed": True, "fixes_needed": [], "self_check_available": False}
         except Exception as e:
             logger.warning("[pipeline] SELF_CHECK 异常 %s: %s", type(e).__name__, e)
-            return {"passed": True, "fixes_needed": []}
+            return {"passed": True, "fixes_needed": [], "self_check_available": False}
         parsed, fixes = _parse_self_check_json(text)
         if parsed is None:
-            logger.warning("[pipeline] SELF_CHECK JSON 解析失败, 跳过")
-            return {"passed": True, "fixes_needed": []}
+            logger.warning("[pipeline] SELF_CHECK JSON 解析失败, 自检未执行")
+            return {"passed": True, "fixes_needed": [], "self_check_available": False}
         passed = bool(parsed.get("passed", True))
         logger.info("[pipeline] SELF_CHECK passed=%s fixes=%d", passed, len(fixes))
-        return {"passed": passed, "fixes_needed": fixes}
+        return {"passed": passed, "fixes_needed": fixes, "self_check_available": True}
 
     # ---- Phase 2: COMPILE ------------------------------------------------
 

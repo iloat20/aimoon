@@ -24,17 +24,11 @@ def render_stock_context(
             f"涨跌: {quote.get('change_pct')}% | PE: {quote.get('pe')}"
         )
     # 注意:报告期/营收/净利/ROE 等财务字段不再在此重复列出 —— 工具结果
-    # `financial_temporal` 已注入同字段,这里只保留跨维度事实(K 线/资金/行业)
+    # `financial_temporal` 已注入同字段,这里只保留跨维度事实(资金/行业)
     # 与 snapshot 独有的舆情,避免 input token 重复。
     cf = data.get("capital_flow") or {}
     if cf.get("main_net_5d"):
         lines.append(f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f} 亿元")
-    kline = data.get("kline_summary") or {}
-    if kline.get("bar_count"):
-        lines.append(
-            f"- K线: {kline.get('bar_count')}根,"
-            f"最新 {kline.get('latest_close')} ({kline.get('latest_date')})"
-        )
     if data.get("industry"):
         lines.append(f"- 行业: {data['industry']}")
     # 舆情雪球/头条近 N 条标题摘要(跨维度事实,不在工具结果里)

@@ -572,5 +572,11 @@ class AkshareFinancialAdapter:
                 ocf = c_match.iloc[0].get("NETCASH_OPERATE")
                 if pd.notna(ocf):
                     fd.operating_cf = float(ocf)
+                inv = c_match.iloc[0].get("NETCASH_INVEST")
+                if pd.notna(inv):
+                    fd.investing_cf = float(inv)
+                fin = c_match.iloc[0].get("NETCASH_FINANCE")
+                if pd.notna(fin):
+                    fd.financing_cf = float(fin)
             out.append(fd)
         return out

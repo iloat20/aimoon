@@ -44,7 +44,7 @@ def test_happy_path_bears_at_least_three_with_triggers() -> None:
     # bulls 同样应有内容
     assert "bulls" in out and isinstance(out["bulls"], list)
     alerts = out["ratio_alerts"]
-    for key in ("goodwill_warn", "receivables_warn", "inventory_warn"):
+    for key in ("high_pb_warn", "receivables_warn", "inventory_warn"):
         assert key in alerts
         assert isinstance(alerts[key], bool)
 

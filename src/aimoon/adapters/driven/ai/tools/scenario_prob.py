@@ -142,6 +142,7 @@ def _assign_probs(
         latest = roe_trend[0]
         drop = max(0.0, peak - latest)
         cons_w += min(0.25, drop * 3.0)
+    # 历史 PE 分位:依赖逐年 PE 序列(未采集,恒为 0),该分支按设计不触发。
     hist_anchor = _hist_pe_anchor(fin_temporal)
     if hist_anchor > 0 and pe > hist_anchor * 1.15:
         cons_w += min(0.20, (pe / hist_anchor - 1.0) * 0.6)

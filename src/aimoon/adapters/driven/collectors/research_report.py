@@ -71,10 +71,18 @@ class ResearchReportCollector(DataCollector[ResearchReportData]):
                 (2, "eps_future_yr", "pe_future_yr"),
             ]:
                 year = current_year + offset
-                eps_col = f"{year}-盈利预测-收益"
-                pe_col = f"{year}-盈利预测-市盈率"
-                self._set_float(report, eps_attr, row.get(eps_col))
-                self._set_float(report, pe_attr, row.get(pe_col))
+                year_str = str(year)
+                # 宽松匹配:列名需含年份,且含「收益/EPS/每股收益」或「市盈率/PE」。
+                # 避免 akshare 列名微调(如「2026-盈利预测-收益」→「2026-每股收益」)导致全部漏读。
+                eps_col = self._find_forecast_col(row, year_str, ("收益", "eps", "每股收益"))
+                pe_col = self._find_forecast_col(row, year_str, ("市盈率", "pe"))
+                if eps_col is None or pe_col is None:
+                    logger.warning(
+                        "研报盈利预测列缺失 year=%s 列=%s",
+                        year_str, list(row.keys()),
+                    )
+                self._set_float(report, eps_attr, row.get(eps_col) if eps_col else None)
+                self._set_float(report, pe_attr, row.get(pe_col) if pe_col else None)
 
             rating = report.rating
             if "买入" in rating or "推荐" in rating:
@@ -115,3 +123,12 @@ class ResearchReportCollector(DataCollector[ResearchReportData]):
         except (ValueError, TypeError):
             v = 0.0
         setattr(report, attr, v)
+
+    @staticmethod
+    def _find_forecast_col(row: dict, year_str: str, keywords: tuple[str, ...]) -> str | None:
+        """在 row 列名中模糊匹配某年的盈利预测列(收益/市盈率)。"""
+        for col in row.keys():
+            col_lower = str(col).lower()
+            if year_str in col_lower and any(k in col_lower for k in keywords):
+                return str(col)
+        return None

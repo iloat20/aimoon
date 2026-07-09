@@ -35,7 +35,7 @@ PB_IMPACT_CAP = 25.0            # PB 偏高 impact 上限
 OCF_IMPACT_COEF = 50              # OCF 含金量影响系数
 OCF_IMPACT_CAP = 15.0           # OCF 含金量 impact 上限
 
-GOODWILL_PB_WARN = 8                # 商誉预警 PB 阈值
+HIGH_PB_WARN = 8                   # 高 PB 预警阈值（PB 过高估值偏贵）
 RECEIVABLES_PE_WARN = 50           # 应收预警 PE 阈值
 INVENTORY_PB_WARN = 8              # 存货预警 PB 阈值
 INVENTORY_PE_WARN = 30            # 存货预警 PE 阈值
@@ -126,7 +126,9 @@ def _build_bears(fin: dict, quote: StockQuote) -> list[dict[str, object]]:
                 }
             )
 
-    # ③ 估值偏高 (PE/PB 同行行业基准:以自身历史区间为锚)
+    # ③ 估值偏高 (PE 绝对值 + 历史分位)
+    # 注:_hist_pe_anchor 依赖逐年 PE 序列,但 PE 是行情快照、未随财报采集,
+    # 故当前恒返回 0(历史分位分支按设计不触发),仅保留 PE>40 绝对值兜底。
     if pe > 0:
         hist_anchor = _hist_pe_anchor(fin)
         if hist_anchor > 0 and pe > hist_anchor * PE_OVERHIST_MULT:
@@ -260,8 +262,8 @@ def _build_bulls(fin: dict, quote: StockQuote) -> list[dict[str, object]]:
 
 def _ratio_alerts(quote: StockQuote) -> dict[str, object]:
     return {
-        "goodwill_warn": (
-            float(quote.market_cap or 0) > 0 and float(quote.pb or 0) > GOODWILL_PB_WARN
+        "high_pb_warn": (
+            float(quote.market_cap or 0) > 0 and float(quote.pb or 0) > HIGH_PB_WARN
         ),
         "receivables_warn": float(quote.pe or 0) > RECEIVABLES_PE_WARN,
         "inventory_warn": (

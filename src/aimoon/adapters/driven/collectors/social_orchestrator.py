@@ -146,9 +146,10 @@ class SocialMediaOrchestrator:
                 collect_results.append(
                     CollectResult(
                         platform=p_name,
-                        status="success (mock)",
+                        status="failed",
                         count=len(mock),
                         elapsed_ms=100,
+                        error=(result.error if result else "采集失败") or "采集失败",
                     )
                 )
                 if p_name == "巨潮资讯":

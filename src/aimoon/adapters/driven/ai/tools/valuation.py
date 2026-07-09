@@ -31,7 +31,7 @@ def run(
         if quote is None:
             return {"__partial__": "missing_quote"}
 
-        pe = float(quote.pe or 0.0)
+        pe = float(quote.pe) if (quote.pe and quote.pe > 0) else 0.0
         pb = float(quote.pb or 0.0)
 
         invest_cf = float(_first_year_investing(fin_temporal) or 0.0)
@@ -55,6 +55,19 @@ def run(
         base_fcfe = ocf - capex
         growth = float(fin_temporal.get("revenue_cagr") or 0.0)
         discount_rate = _discount_rate(quote)
+
+        market_cap = float(quote.market_cap or 0.0)
+        if market_cap <= 0:
+            logger.info("[valuation] market_cap 缺失,无法折算每股,FCFE 标 partial")
+            return {
+                "__partial__": "missing_market_cap",
+                "pe": pe,
+                "pb": pb,
+                "fcfe_targets": {},
+                "fcfe_assumptions": {},
+                "peer_comparison": _peer_table(peer_comp, pe, pb),
+            }
+
         fcfe_targets, terminal_growth = _project_fcfe(base_fcfe, growth, discount_rate, quote)
         fcfe_assumptions = {
             "growth": round(growth, 4),
@@ -116,11 +129,12 @@ def _project_fcfe(
         equity_value = _pv_fcfe(
             base_fcfe, float(cfg["growth"]), float(cfg["discount"]), terminal_growth, market_cap
         )
-        # 总价值 → 每股目标价;无股本信息时退化为总价值(极端兜底)。
-        per_share = (equity_value / shares) if shares > 0 else equity_value
-        target_pe = (per_share / eps) if eps > 0 else None
+        # 总价值 → 每股目标价;无流通股本信息时无法折算每股,显式置 None
+        # (不应把总价值直接当作每股价返回)。
+        per_share = (equity_value / shares) if shares > 0 else None
+        target_pe = (per_share / eps) if (per_share is not None and eps > 0) else None
         targets[name] = {
-            "price": round(per_share, 2),
+            "price": round(per_share, 2) if per_share is not None else None,
             "pe": round(target_pe, 2) if target_pe is not None else None,
             "probability": None,  # 模型不估概率,显式 None → 渲染为 N/A
         }

@@ -68,14 +68,22 @@ def parse(html_or_text: str, self_fin: FinancialData) -> list[dict[str, object]]
         pb = _first_float(text, r"PB\s*(\d+(?:\.\d+)?)")
         roe = _first_float(text, r"ROE\s*(\d+(?:\.\d+)?)")
         np_cagr = _first_float(text, r"(?:近三年)?净利润CAGR\s*(\d+(?:\.\d+)?)")
+        price = _first_float(text, r"(?:最新价|股价)\s*([\d.]+)")
+        mcap = _first_float(text, r"市值\s*([\d.]+)\s*(?:亿|万元?)")
+        rev_g = _first_float(text, r"营收(?:增速|增长)\s*([\d.]+)")
+        np_g = _first_float(text, r"净利(?:增速|增长|润增速)\s*([\d.]+)")
 
         peers.append(
             {
                 "name": name,
+                "price": price if price is not None else 0.0,
                 "pe": pe if pe is not None else 0.0,
                 "pb": pb if pb is not None else 0.0,
                 "roe": roe if roe is not None else 0.0,
                 "np_cagr": np_cagr if np_cagr is not None else 0.0,
+                "rev_g": rev_g if rev_g is not None else 0.0,
+                "np_g": np_g if np_g is not None else 0.0,
+                "mcap": mcap if mcap is not None else 0.0,
                 "self": name == self_fin.symbol or name == getattr(self_fin, "name", ""),
             }
         )

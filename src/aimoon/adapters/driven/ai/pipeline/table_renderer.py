@@ -138,55 +138,6 @@ def render_valuation_targets(data: Any) -> str:
     return "\n".join(lines)
 
 
-def render_financial_statements(financial: Any) -> str:
-    """Render the annual-report three statements (income / balance / cash flow)
-    from ``financial.statements`` into three Markdown tables.
-
-    The detailed line items were previously discarded during collection, so the
-    AI never saw the three statements. Now they flow into ``FinancialData.statements``
-    and are rendered here (and injected into the AI prompt via ``tables_md``),
-    so the analysis can cite real 利润表/资产负债表/现金流量表 figures.
-    Returns '' when no statements are present.
-    """
-    if not isinstance(financial, object):
-        return ""
-    stmts = getattr(financial, "statements", None) or {}
-    if not isinstance(stmts, dict) or not stmts:
-        return ""
-
-    titles = {
-        "income": "利润表(年报)",
-        "balance": "资产负债表(年报)",
-        "cash_flow": "现金流量表(年报)",
-    }
-    blocks: list[str] = []
-    for key in ("income", "balance", "cash_flow"):
-        rows = stmts.get(key) or []
-        if not rows:
-            continue
-        lines = [
-            f"## {titles[key]}",
-            "",
-            "| 项目 | 金额(亿元/元) | 同比(%) |",
-            "|------|-----------|---------|",
-        ]
-        for r in rows:
-            if not isinstance(r, dict):
-                continue
-            val = r.get("value") or 0.0
-            yoy = r.get("yoy")
-            item = str(r.get("item", ""))
-            # 每股指标(基本每股收益等)单位为 元,不 ÷1e8;其余金额统一以亿元展示
-            if "每股收益" in item or item.upper().endswith("EPS"):
-                val_s = f"{float(val):.2f}"
-            else:
-                val_s = _fmt_yi_amount(val)
-            yoy_s = "—" if yoy is None else _fmt_pct(yoy)
-            lines.append(f"| {item} | {val_s} | {yoy_s} |")
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
-
-
 def _fmt_num(v: Any) -> str:
     """Format a number for display. Returns 'N/A' on None/invalid."""
     if v is None:
@@ -241,18 +192,6 @@ def _signed_pct(v: Any) -> str:
 
 def _is_partial(data: Any) -> bool:
     return isinstance(data, dict) and "__partial__" in data
-
-
-def _fmt_yi_amount(v: Any) -> str:
-    """Format a yuan-denominated amount as 亿元 with 2 decimals (unified unit).
-
-    Used by the three-statement tables so every monetary figure reads in 亿元.
-    """
-    try:
-        n = float(v)
-    except (TypeError, ValueError):
-        return str(v)
-    return f"{n / 1e8:.2f}"
 
 
 def render_fcf_dividend(data: Any) -> str:

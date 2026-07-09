@@ -129,7 +129,7 @@ def _check_financial(info: StockAnalysis, warnings: list[str], confidence: dict[
     f = info.financial
     if not f or not f.report_period:
         confidence["基本面"] = "低"
-        warnings.append("财务数据缺失（未配置XUEQIU_TOKEN），基本面分析不完整")
+        warnings.append("财务数据缺失，基本面分析不完整")
         return
 
     score = 3

@@ -27,13 +27,9 @@ def run(history: list[FinancialData] | None) -> dict[str, object]:
         net_profit_cagr = _cagr(*_endpoints(history, "net_profit"), n=n_span)
         roe_trend = [_safe_div(f.net_profit, f.equity) for f in history]
 
-        ocf_missing = any(f.operating_cf == 0.0 for f in history)
-        ocf_profit_ratio: float
-        if ocf_missing:
-            ocf_profit_ratio = 0.0
-        else:
-            latest = history[0]
-            ocf_profit_ratio = _safe_div(latest.operating_cf, latest.net_profit)
+        latest = history[0]
+        ocf_missing = latest.operating_cf == 0.0
+        ocf_profit_ratio = _safe_div(latest.operating_cf, latest.net_profit)
 
         return {
             "n_years": n_years,
@@ -59,6 +55,7 @@ def _serialize(f: FinancialData) -> dict[str, object]:
         "net_profit_yoy": f.net_profit_yoy,
         "roe": _safe_div(f.net_profit, f.equity),
         "operating_cf": f.operating_cf,
+        "investing_cf": f.investing_cf,
         "eps": f.eps,
         "bvps": f.bvps,
     }

@@ -96,20 +96,15 @@ def run(
 
 
 def _dividend_from_statements(financial: FinancialData | None) -> float | None:
-    """从现金流量表明细提取分红现金(分配股利、利润或偿付利息支付的现金)。
+    """从 FinancialData 读取分红现金(分配股利、利润或偿付利息支付的现金)。
 
-    返回金额(元);找不到则返回 None(由上层标 N/A)。
+    ``FinancialData`` 由 AkshareFinancialAdapter 直接填充 ``dividend_paid``
+    (来自现金流量表 DIVIDEND_INTEREST_PAID / DIVIDEND_PAID 科目),模型本身
+    无 ``statements`` 字段,故直接读该字段,避免整段返回 N/A。找不到则返回 None。
     """
     if financial is None:
         return None
-    stmts = getattr(financial, "statements", None) or {}
-    rows = stmts.get("cash_flow") or []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        item = str(r.get("item", ""))
-        if "股利" in item or "利润分配" in item or "股息" in item:
-            val = r.get("value")
-            if val is not None:
-                return float(val)
-    return None
+    div = financial.dividend_paid
+    if not div:
+        return None
+    return float(div)

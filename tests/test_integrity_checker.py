@@ -33,7 +33,7 @@ def test_all_empty_yields_low_confidence_everywhere():
     assert "行情数据异常" in joined
     assert "K线数据为空" in joined
     assert "资金面数据全部获取失败" in joined
-    assert "财务数据缺失（未配置XUEQIU_TOKEN）" in joined
+    assert "财务数据缺失" in joined
     assert "舆情数据为空" in joined
 
 
@@ -157,7 +157,7 @@ def test_financial_missing_is_low():
     info = StockAnalysis(symbol="600519", financial=FinancialData())
     warnings, conf = check_data_integrity(info)
     assert conf["基本面"] == "低"
-    assert any("财务数据缺失（未配置XUEQIU_TOKEN）" in w for w in warnings)
+    assert any("财务数据缺失" in w for w in warnings)
 
 
 def test_financial_valid_scores_high():

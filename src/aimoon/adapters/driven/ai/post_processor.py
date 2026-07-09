@@ -65,8 +65,10 @@ def deduplicate_tail(text: str) -> str:
                 paragraphs = re.split(r"\n\n+", text)
 
     # Case 2: Deduplicate repeated text blocks within the response
-    # Find repeated substrings of 50+ chars at the end
-    for length in range(len(text) // 3, 50, -1):
+    # Find repeated substrings of 50+ chars at the end.
+    # Cap the scan window to avoid O(n^2) blowup on very long reports.
+    max_len = min(len(text) // 3, 400)
+    for length in range(max_len, 49, -1):
         tail = text[-length:]
         # Find where this block first appears
         first_pos = text.find(tail)

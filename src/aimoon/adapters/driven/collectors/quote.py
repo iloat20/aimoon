@@ -146,7 +146,7 @@ class QuoteCollector(DataCollector[StockQuote]):
             open=open_price,
             prev_close=prev_close,
             turnover=0.0,  # 新浪 API 不提供换手率（需要流通股本）
-            pe=-1.0,  # 新浪 API 不提供 PE
+            pe=0.0,  # 新浪 API 不提供 PE(哨兵 0,下面 _enrich_from_tencent 补真实值)
             source="新浪",
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
