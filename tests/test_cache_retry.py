@@ -125,12 +125,12 @@ class TestSilentFailure:
 
     def test_network_error_suppressed(self) -> None:
         # Should NOT raise.
-        with silent_failure("test", default_return=None):
+        with silent_failure("test"):
             raise ConnectionError("oops")
 
     def test_non_network_error_logged_not_swallowed(self) -> None:
         # Non-network errors are logged at warning level but still swallowed.
-        with silent_failure("test", default_return="fallback"):
+        with silent_failure("test"):
             raise ValueError("bad input")
 
     def test_no_exception(self) -> None:

@@ -95,9 +95,9 @@ async def execute_web_search(query: str, max_results: int = 5) -> str:
     if not result:
         result = await _search_ddg(query, max_results)
     if not result:
-        result = "搜索失败: 所有搜索引擎均不可用"
+        # 失败串不缓存: 避免临时网络抖动后 5 分钟内不再重试。
+        return "搜索失败: 所有搜索引擎均不可用"
 
-    # 缓存结果
     _set_cached_search(query, result)
     return result
 

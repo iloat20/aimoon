@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -81,7 +81,13 @@ class CninfoCollector(BaseCollector):
                 return []
 
             data = resp.json()
-            items = data.get("announcements", [])
+            # 兼容两种返回结构: 公告数组在顶层 {"announcements":[...]}
+            # 或包在 {"data":{"announcements":[...]}}。
+            items = (
+                data.get("announcements")
+                or (data.get("data") or {}).get("announcements")
+                or []
+            )
             if not items:
                 return []
 
@@ -125,7 +131,11 @@ class CninfoCollector(BaseCollector):
                         if isinstance(pub_ts, (int, float)) and pub_ts > 1000000000000:
                             pub_ts /= 1000
                         pub_date = (
-                            datetime.fromtimestamp(pub_ts).strftime("%Y-%m-%d") if pub_ts else ""
+                            datetime.fromtimestamp(
+                                pub_ts, tz=timezone(timedelta(hours=8))
+                            ).strftime("%Y-%m-%d")
+                            if pub_ts
+                            else ""
                         )
 
                     posts.append(

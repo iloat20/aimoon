@@ -10,7 +10,7 @@
 
 from .browser import browser_session
 from .mock import mock_analysis_report
-from .parsers import extract_toutiao_url, parse_chinese_count
+from .parsers import parse_chinese_count
 from .retry import retry_on_connection, silent_failure
 from .timing import logphase
 
@@ -19,7 +19,6 @@ __all__ = [
     "silent_failure",
     "retry_on_connection",
     "parse_chinese_count",
-    "extract_toutiao_url",
     "logphase",
     "mock_analysis_report",
 ]

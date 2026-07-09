@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.value_objects.collect_result import CollectResult
@@ -60,7 +60,8 @@ class WechatCollector(BaseCollector):
 
                 for pg in range(1, 3):  # pages 1-2(原 1-3, 减少一页浏览器开销)
                     try:
-                        url = f"https://weixin.sogou.com/weixin?type=2&query={keyword}%20股票&page={pg}"
+                        q = quote(f"{keyword} 股票")
+                        url = f"https://weixin.sogou.com/weixin?type=2&query={q}&page={pg}"
                         await page.goto(url, timeout=15000)
                         try:
                             # 事件驱动等待: 列表项出现即解析, 替代固定 2s sleep。
@@ -101,7 +102,7 @@ class WechatCollector(BaseCollector):
                                         content=title,
                                         url=href,
                                         author=author,
-                                        published_at=datetime.now().isoformat(),
+                                        published_at="",
                                     )
                                 )
                             except Exception as e:

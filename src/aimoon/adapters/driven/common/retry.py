@@ -11,7 +11,13 @@ _SILENT_NETWORK_ERRORS = (ConnectionError, TimeoutError, OSError)
 
 
 @contextmanager
-def silent_failure(context: str, default_return=None):
+def silent_failure(context: str):
+    """Run body, swallowing all exceptions so fallback chains don't abort.
+
+    Design intent: collectors wrap a source fetch so that a single-source
+    failure degrades to the next source instead of crashing the pipeline.
+    Network errors are logged at debug, all other exceptions at warning.
+    """
     try:
         yield
     except Exception as e:

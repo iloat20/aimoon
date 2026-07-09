@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -97,6 +96,8 @@ class GubaCollector(BaseCollector):
         """
         from aimoon.adapters.driven.common.browser import browser_session
 
+        # 市场码: 沪市(6)→"1", 深市(0/3)→"0"; 北交所(8/4/9)无对应 Guba 子列表,
+        # 落到 "0" 后该标签页拉不到数据(已知限制, 安全降级为 mock)。
         market = "1" if symbol.startswith("6") else "0" if symbol.startswith("0") else "0"
         url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
 
@@ -147,7 +148,7 @@ class GubaCollector(BaseCollector):
                                 content=title,
                                 url=href,
                                 author=author,
-                                published_at=datetime.now().isoformat(),
+                                published_at="",
                                 likes=reads,
                                 comments=comments,
                                 views=reads,
@@ -178,6 +179,8 @@ class GubaCollector(BaseCollector):
             "User-Agent": get_settings().default_user_agent,
         }
         async with (self._http or httpx.AsyncClient(headers=headers, timeout=15.0)) as client:
+            # 市场码: 沪市(6)→"1", 深市(0/3)→"0"; 北交所(8/4/9)无对应 Guba 子列表,
+            # 落到 "0" 后该标签页拉不到数据(已知限制, 安全降级为 mock)。
             market = "1" if symbol.startswith("6") else "0" if symbol.startswith("0") else "0"
             url = f"https://guba.eastmoney.com/list,{symbol},f_{market}.html"
             resp = await client.get(url)
@@ -187,8 +190,10 @@ class GubaCollector(BaseCollector):
             html = resp.text
             posts: list[SocialPost] = []
 
+            # 允许 <a> 内嵌套标签(标题常被 <span>/<em> 包裹),
+            # 内层文本在下方统一 strip 标签。
             title_pattern = re.compile(
-                r'<a[^>]*href="(/news[^"]*)"[^>]*>([^<]*)</a>', re.IGNORECASE
+                r'<a[^>]*href="(/news[^"]*)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL
             )
             matches = title_pattern.findall(html)
 
@@ -206,7 +211,7 @@ class GubaCollector(BaseCollector):
                         content=title,
                         url=f"https://guba.eastmoney.com{href}",
                         author="",
-                        published_at=datetime.now().isoformat(),
+                        published_at="",
                         likes=0,
                         comments=0,
                         shares=0,

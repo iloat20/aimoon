@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import re as _re
-from urllib.parse import unquote
-
 
 def parse_chinese_count(txt: str) -> int:
     """Parse Chinese count strings like '1.2万', '3.5亿' to int."""
@@ -23,18 +20,5 @@ def parse_chinese_count(txt: str) -> int:
         return 0
 
 
-def extract_toutiao_url(href: str) -> str:
-    """Extract actual article URL from Toutiao jump link."""
-    m = _re.search(r"group%252F(\d{15,})", href)
-    if m:
-        return f"https://www.toutiao.com/article/{m.group(1)}/"
-    m = _re.search(r"group%2[5Ff](\d{15,})", href)
-    if m:
-        return f"https://www.toutiao.com/article/{m.group(1)}/"
-    m = _re.search(r"group(?:%2F|=|/)(\d{15,})", href)
-    if m:
-        return f"https://www.toutiao.com/article/{m.group(1)}/"
-    m = _re.search(r"url=([^&]+)", href)
-    if m:
-        return unquote(m.group(1))
-    return ""
+def extract_toutiao_url(href: str) -> str:  # pragma: no cover - 头条源已移除, 死代码
+    raise NotImplementedError("toutiao source removed")
