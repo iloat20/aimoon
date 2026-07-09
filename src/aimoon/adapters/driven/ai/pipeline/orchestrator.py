@@ -19,6 +19,8 @@ from pathlib import Path
 import httpx
 
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+from aimoon.core.domain.entities.quote import StockQuote
+from aimoon.core.domain.entities.research import ResearchReportData
 
 from ..tools import TOOL_RUNNERS
 from ..xml_utils import strip_xml_tool_calls
@@ -283,14 +285,19 @@ class PipelineOrchestrator:
             )
         with logphase("tools(risk+val)"):
             risk, val = await asyncio.gather(
-                _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote),
-                _run_safe(TOOL_RUNNERS["valuation"], fin, si.quote, peer),
+                _run_safe(TOOL_RUNNERS["risk_quant"], fin, si.quote or StockQuote()),
+                _run_safe(TOOL_RUNNERS["valuation"], fin, si.quote or StockQuote(), peer),
             )
         with logphase("tools(fcf+scenario)"):
             fcf_coro = _run_safe(
-                TOOL_RUNNERS["fcf_dividend"], fin, getattr(si, "financial", None), si.quote
+                TOOL_RUNNERS["fcf_dividend"],
+                fin,
+                getattr(si, "financial", None),
+                si.quote or StockQuote(),
             )
-            scenario_coro = _run_safe(TOOL_RUNNERS["scenario_prob"], val, si.quote, fin)
+            scenario_coro = _run_safe(
+                TOOL_RUNNERS["scenario_prob"], val, si.quote or StockQuote(), fin
+            )
             fcf, scenario = await asyncio.gather(fcf_coro, scenario_coro)
 
         tool_results = {
@@ -341,7 +348,8 @@ class PipelineOrchestrator:
         )
         # 研报摘要(取标题+评级,最多 5 篇)
         research_summary = "\n".join(
-            f"- {r.title[:50]} [{r.rating}]" for r in (si.research.reports or [])[:5]
+            f"- {r.title[:50]} [{r.rating}]"
+            for r in ((si.research or ResearchReportData()).reports or [])[:5]
         )
         # 机构分歧量化摘要(近 3 月 EPS 预测变动趋势)
         research_div = research_divergence(si)
@@ -358,7 +366,8 @@ class PipelineOrchestrator:
             f"{senti_summary_txt}\n\n"
             f"# 自由现金流与股息(系统计算)\n{fcf_summary_txt}\n\n"
             f"# 情景概率与风险收益比(系统计算)\n{scenario_summary_txt}\n\n"
-            f"# 已采集机构研报(共 {si.research.total_count} 篇)\n{research_summary}\n"
+            f"# 已采集机构研报(共 "
+            f"{(si.research or ResearchReportData()).total_count} 篇)\n{research_summary}\n"
             f"{research_div}\n\n"
             f"# 输出章节结构(按此顺序,不可省略)\n{_SECTIONS_MD}"
         )

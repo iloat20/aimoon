@@ -19,6 +19,7 @@ import aimoon.adapters.driven.ai.web_search_tool as wst
 from aimoon.adapters.driven.ai.pipeline.orchestrator import PipelineOrchestrator
 from aimoon.adapters.driven.ai.pipeline.table_renderer import render_peer_comparison
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+from aimoon.core.domain.entities.financial import FinancialData
 
 
 class _FakeSettings:
@@ -44,6 +45,9 @@ class _FakeAnalyzer:
 
 _FAKE_BING_HTML = (
     '<li class="b_algo"><a>贵州茅台 PE 30 PB 10 ROE 20 净利润CAGR 15</a></li>'
+    '<li class="b_algo"><a>五粮液 PE 25 PB 7 ROE 22 净利润CAGR 12</a></li>'
+    '<li class="b_algo"><a>泸州老窖 PE 28 PB 8 ROE 24 净利润CAGR 14</a></li>'
+    '<li class="b_algo"><a>山西汾酒 PE 32 PB 9 ROE 21 净利润CAGR 18</a></li>'
 )
 
 
@@ -81,8 +85,23 @@ def _wired(monkeypatch):
         return _FAKE_BING_HTML
 
     monkeypatch.setattr(wst, "execute_web_search", _fake_search)
-    monkeypatch.setattr(ai_cache, "get_cached_report", lambda *a, **k: "")
-    monkeypatch.setattr(ai_cache, "set_cached_report", lambda *a, **k: None)
+    # 同行对比走 orchestrator._run_peer_compare → peer_compare.run(同步调用 search_fn),
+    # 直接 monkeypatch peer_compare.run,返回带 peers 的 dict,绕过真实网络搜索。
+    async def _fake_peer_run(name, self_fin, search_fn=None):
+        return {
+            "peers": [
+                {"name": "五粮液", "pe": 25.0, "pb": 7.0, "roe": 22.0, "np_cagr": 12.0},
+                {"name": "泸州老窖", "pe": 28.0, "pb": 8.0, "roe": 24.0, "np_cagr": 14.0},
+                {"name": "山西汾酒", "pe": 32.0, "pb": 9.0, "roe": 21.0, "np_cagr": 18.0},
+            ],
+            "industry": "白酒",
+        }
+
+    import aimoon.adapters.driven.ai.tools.peer_compare as peer_compare_mod
+
+    monkeypatch.setattr(peer_compare_mod, "run", _fake_peer_run)
+    monkeypatch.setattr(ai_cache, "get_analysis_cache", lambda *a, **k: "")
+    monkeypatch.setattr(ai_cache, "set_analysis_cache", lambda *a, **k: None)
 
     return calls
 
@@ -90,7 +109,7 @@ def _wired(monkeypatch):
 async def _run_phase(monkeypatch):
     orch = PipelineOrchestrator(_FakeAnalyzer())
     return await orch._phase_analysis(
-        StockAnalysis(symbol="600519", name="贵州茅台"),
+        StockAnalysis(symbol="600519", name="贵州茅台", financial=FinancialData()),
         stock_md="# 标的快照",
         prior={},
         reports=None,

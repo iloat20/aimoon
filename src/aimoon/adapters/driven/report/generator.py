@@ -10,6 +10,11 @@ from markupsafe import Markup
 
 from aimoon.core.application.ports import ReportGenerator as ReportGeneratorPort
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+from aimoon.core.domain.entities.capital_flow import CapitalFlowData
+from aimoon.core.domain.entities.financial import FinancialData
+from aimoon.core.domain.entities.kline import KlineData
+from aimoon.core.domain.entities.quote import StockQuote
+from aimoon.core.domain.entities.research import ResearchReportData
 from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 from aimoon.core.domain.value_objects.collect_result import CollectResult
 
@@ -120,7 +125,7 @@ class HtmlReportGenerator(ReportGeneratorPort):
         analysis: AnalysisReport,
         collect_results: list[CollectResult],
     ) -> dict:
-        q = stock_info.quote
+        q = stock_info.quote or StockQuote()
         # 产品决策：平盘（涨跌幅=0）归为 up 类，使用红色显示
         # 符合A股市场习惯：平盘不跌即为"不弱"，用红色表示
         change_class = "up" if q.change_pct >= 0 else "down"
@@ -148,7 +153,7 @@ class HtmlReportGenerator(ReportGeneratorPort):
             "version": __version__,
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "quote": q,
-            "financial": stock_info.financial,
+            "financial": stock_info.financial or FinancialData(),
             "change_class": change_class,
             "change_sign": "+" if q.change_pct >= 0 else "",
             "analysis": analysis,
@@ -156,9 +161,9 @@ class HtmlReportGenerator(ReportGeneratorPort):
             "collect_results": collect_results,
             "total_posts": len(all_posts),
             "total_failed": sum(1 for r in collect_results if r.status == "failed"),
-            "research": stock_info.research,
-            "capital_flow": stock_info.capital_flow,
-            "kline": stock_info.kline,
+            "research": stock_info.research or ResearchReportData(),
+            "capital_flow": stock_info.capital_flow or CapitalFlowData(),
+            "kline": stock_info.kline or KlineData(),
             "cn_number": _cn_number,
             "report_text": analysis.report_text,
             "css_content": Markup(self._css_content),

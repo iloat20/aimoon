@@ -5,7 +5,10 @@ StockAnalysis 是股票分析聚合的根，负责维护单只股票
 不能直接修改内部状态。
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import TypeVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -18,6 +21,8 @@ from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.services.symbols import resolve_market
 from aimoon.core.domain.value_objects.financial_report import FinancialReportData
 
+T = TypeVar("T", bound="BaseModel")
+
 
 class StockAnalysis(BaseModel):
     """聚合的股票分析信息（AI分析器和报告生成器的输入）。"""
@@ -25,20 +30,32 @@ class StockAnalysis(BaseModel):
     symbol: str
     name: str = ""
     market: str = ""
-    quote: StockQuote = Field(default_factory=StockQuote)
-    financial: FinancialData = Field(default_factory=FinancialData)
-    quarterly_financial: QuarterlyFinancialData = Field(default_factory=QuarterlyFinancialData)
-    kline: KlineData = Field(default_factory=KlineData)
-    capital_flow: CapitalFlowData = Field(default_factory=CapitalFlowData)
-    social_posts: list[SocialPost] = Field(default_factory=list)
-    research: ResearchReportData = Field(default_factory=ResearchReportData)
-    annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
-    semi_annual_report: FinancialReportData = Field(default_factory=FinancialReportData)
-    quarterly_report: FinancialReportData = Field(default_factory=FinancialReportData)
-    history_financial: list[FinancialData] = Field(default_factory=list)  # 近 3 年报
+    quote: StockQuote | None = None
+    financial: FinancialData | None = None
+    quarterly_financial: QuarterlyFinancialData | None = None
+    kline: KlineData | None = None
+    capital_flow: CapitalFlowData | None = None
+    social_posts: tuple[SocialPost, ...] = ()
+    research: ResearchReportData | None = None
+    annual_report: FinancialReportData | None = None
+    semi_annual_report: FinancialReportData | None = None
+    quarterly_report: FinancialReportData | None = None
+    history_financial: list[FinancialData] | None = None
+    extensions: dict[str, BaseModel] = Field(default_factory=dict)
     collected_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)  # noqa: UP017
     )
+
+    def get_extension(self, key: str, cls: type[T]) -> T | None:
+        """Safely retrieve an optional future dimension stored in ``extensions``.
+
+        Returns the stored value only when it is an instance of ``cls``,
+        otherwise ``None`` (no exception on missing or mistyped entries).
+        """
+        raw = self.extensions.get(key)
+        if isinstance(raw, cls):
+            return raw
+        return None
 
     @model_validator(mode="before")
     @classmethod

@@ -194,7 +194,7 @@ class CollectorOrchestrator:
             quarterly_financial=quarterly,
             kline=kline,
             capital_flow=capital_flow,
-            social_posts=all_posts,
+            social_posts=tuple(all_posts or []),
             research=research,
             history_financial=history if isinstance(history, list) else [],
         )

@@ -10,7 +10,7 @@ from aimoon.core.domain.entities.financial import FinancialData
 
 
 def test_history_financial_defaults_to_empty():
-    assert StockAnalysis(symbol="600519").history_financial == []
+    assert StockAnalysis(symbol="600519").history_financial is None
 
 
 def test_history_financial_accepts_list():
@@ -113,7 +113,7 @@ def _fake_analyzer(monkeypatch):
         return {"_fake": True, "tool": "peer_compare"}
 
     monkeypatch.setattr(PipelineOrchestrator, "_call_llm_with_stream", _fake_call_llm)
-    monkeypatch.setattr(PipelineOrchestrator, "_stream_llm", _fake_stream_llm)
+    monkeypatch.setattr(PipelineOrchestrator, "_stream_llm_content", _fake_stream_llm)
     import aimoon.adapters.driven.ai.pipeline.orchestrator as _orch_mod
     monkeypatch.setattr(_orch_mod, "_run_peer_compare", _fake_peer_compare_module)
     return fake

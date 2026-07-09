@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
+from aimoon.core.domain.entities.capital_flow import CapitalFlowData
+from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
+from aimoon.core.domain.entities.quote import StockQuote
 
 # 行业关键词映射
 _INDUSTRY_KEYWORDS = {
@@ -80,10 +83,10 @@ def build_data_dict(
     financial_md_path: Path | None = None,
 ) -> PromptContext:
     """Flatten a StockAnalysis into a PromptContext."""
-    quote = info.quote
-    financial = info.financial
-    quarterly = info.quarterly_financial
-    capital_flow = info.capital_flow
+    quote = info.quote or StockQuote()
+    financial = info.financial or FinancialData()
+    quarterly = info.quarterly_financial or QuarterlyFinancialData()
+    capital_flow = info.capital_flow or CapitalFlowData()
 
     capital_flow_dict = {
         "main_net_5d": capital_flow.main_net_5d,

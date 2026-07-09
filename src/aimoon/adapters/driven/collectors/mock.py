@@ -203,12 +203,14 @@ def mock_stock_analysis(symbol: str) -> StockAnalysis:
         financial=mock_financial(symbol),
         kline=mock_kline(symbol),
         capital_flow=mock_capital_flow(symbol),
-        social_posts=[
-            *mock_social_posts("雪球", symbol, name, 5),
-            *mock_social_posts("东方财富股吧", symbol, name, 5),
-            *mock_social_posts("今日头条", symbol, name, 3),
-            *mock_social_posts("微信公众号", symbol, name, 3),
-        ],
+        social_posts=tuple(
+            [
+                *mock_social_posts("雪球", symbol, name, 5),
+                *mock_social_posts("东方财富股吧", symbol, name, 5),
+                *mock_social_posts("今日头条", symbol, name, 3),
+                *mock_social_posts("微信公众号", symbol, name, 3),
+            ]
+        ),
         research=ResearchReportData(
             symbol=symbol,
             reports=[

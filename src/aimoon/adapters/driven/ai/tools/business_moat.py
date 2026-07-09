@@ -25,7 +25,7 @@ _MOAT_KEYWORDS: dict[str, list[str]] = {
 def run(
     self_fin: FinancialData | None,
     research: ResearchReportData | None,
-    social_posts: list[SocialPost] | None,
+    social_posts: list[SocialPost] | tuple[SocialPost, ...] | None,
     history_ocf: list[FinancialData] | None,
 ) -> dict[str, object]:
     try:
@@ -56,7 +56,10 @@ def run(
         return {"__partial__": "computation_error"}
 
 
-def _corpus(research: ResearchReportData, social_posts: list[SocialPost]) -> str:
+def _corpus(
+    research: ResearchReportData,
+    social_posts: list[SocialPost] | tuple[SocialPost, ...] | None,
+) -> str:
     parts: list[str] = []
     for r in research.reports or []:
         parts.append(r.title)

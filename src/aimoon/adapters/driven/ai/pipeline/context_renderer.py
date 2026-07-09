@@ -47,7 +47,7 @@ def render_stock_context(
             lines.append(f"- 舆情摘要: {sample}")
     if getattr(si, "history_financial", None):
         lines.append("- 历史财务时序(近 N 年报):")
-        for f in si.history_financial[:5]:
+        for f in (si.history_financial or [])[:5]:
             rev_str = f"{f.revenue / 1e8:.1f}亿" if f.revenue else "N/A"
             lines.append(f"  - {f.report_period}:营收 {rev_str} | "
                         f"ROE {f.roe}% | EPS {f.eps}")
