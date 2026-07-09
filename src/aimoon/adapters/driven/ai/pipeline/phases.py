@@ -28,7 +28,6 @@ _REPORT_SECTIONS = [
     ("八", "附录"),
 ]
 _SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
-_SECTIONS_MD = "\n".join(f"## {n}、{t}" for n, t in _REPORT_SECTIONS)
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"

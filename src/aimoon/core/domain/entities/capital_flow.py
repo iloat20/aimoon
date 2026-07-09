@@ -18,7 +18,6 @@ class CapitalFlowData(BaseModel):
     main_net_20d: float = 0.0
 
     northbound_chg: float = 0.0
-    northbound_net_flow: float = 0.0
     northbound_hold_shares: float = 0.0
     northbound_hold_value: float = 0.0
     northbound_hold_ratio: float = 0.0

@@ -177,7 +177,7 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
                 sources.append("eastmoney(北向持股)")
 
         # 注:原「北向整体净流入(沪深股通)」分支取的是全市场北向净买额,并非个股
-        # 北向持股变动,语义错误,且 northbound_net_flow 字段无任何消费端,故移除,
+        # 北向持股变动,语义错误;northbound_net_flow 字段已移除(无消费端),
         # 以免误导 sources 标注。个股级北向见上方 _em_northbound。
 
     async def _em_northbound(self, symbol: str) -> dict:

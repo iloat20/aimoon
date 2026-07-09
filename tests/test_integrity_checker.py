@@ -111,7 +111,13 @@ def test_kline_medium_sample_ok():
 def test_kline_tencent_source_warns():
     info = StockAnalysis(symbol="600519", kline=KlineData(bars=[_bar("2024-01-01")], source="tencent(fqkline)"))  # noqa: E501
     warnings, _ = check_data_integrity(info)
-    assert any("腾讯降级源" in w for w in warnings)
+    assert any("降级源" in w for w in warnings)
+
+
+def test_kline_eastmoney_direct_source_warns():
+    info = StockAnalysis(symbol="600519", kline=KlineData(bars=[_bar("2024-01-01")], source="eastmoney(direct)"))  # noqa: E501
+    warnings, _ = check_data_integrity(info)
+    assert any("降级源" in w for w in warnings)
 
 
 def test_kline_empty_is_low():

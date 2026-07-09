@@ -79,8 +79,8 @@ def _check_kline(info: StockAnalysis, warnings: list[str], confidence: dict[str,
         warnings.append(f"K线样本仅{n}根，数据样本有限")
         score -= 1
 
-    if k.source in ("tencent(fqkline)",):
-        warnings.append("K线数据来自腾讯降级源，数据精度可能受限")
+    if k.source in ("tencent(fqkline)", "eastmoney(direct)"):
+        warnings.append("K线数据来自降级源，数据精度可能受限")
         score -= 1
 
     confidence["K线数据"] = _score_to_level(score)

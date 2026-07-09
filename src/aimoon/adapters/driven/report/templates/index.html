@@ -34,6 +34,16 @@
   </div>
 </header>
 
+<!-- ===== DATA WARNINGS ===== -->
+{% if analysis.data_warnings %}
+<div class="data-warning-bar">
+  <div class="data-warning-title">⚠ 数据质量提示</div>
+  <ul class="data-warning-list">
+    {% for w in analysis.data_warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <!-- ===== BENTO GRID ===== -->
 <div class="bento-grid">
 
