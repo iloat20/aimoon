@@ -177,7 +177,7 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         financial_md_path: Path | None = None,
     ) -> AnalysisReport:
         if self._mock:
-            from ..collectors.mock import mock_analysis_report
+            from ..common.mock import mock_analysis_report
 
             return mock_analysis_report(stock_info.symbol, stock_info.name)
 
@@ -284,12 +284,29 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             logging.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
         text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
         if not text:
-            # v2 失败时降级到 legacy 一段式(而非数据汇总 fallback)
+            # v2 失败时降级到 legacy 一段式(而非数据汇总 fallback),并插入可见降级标记。
             logging.info("[pipeline_v2] 降级到 legacy 一段式分析")
-            return await self._legacy_analyze(stock_info, reports, financial_md_path)
+            legacy = await self._legacy_analyze(stock_info, reports, financial_md_path)
+            return self._with_degradation_notice(legacy, "降级 legacy 一段式(v2 未产出文本)")
         from .cache import set_analysis_cache
         set_analysis_cache(stock_info.symbol, text)
-        return self._build_report(stock_info, text)
+        report = self._build_report(stock_info, text)
+        # v2 部分阶段降级时,在报告插入可见降级标记(阶段名列表),避免静默丢失。
+        partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
+        if isinstance(partial, list) and partial:
+            report = self._with_degradation_notice(
+                report, "部分阶段降级: " + "、".join(partial)
+            )
+        return report
+
+    @staticmethod
+    def _with_degradation_notice(report: AnalysisReport, notice: str) -> AnalysisReport:
+        """返回新 Report,在 report_text 末尾追加可见降级标记(不可变)。"""
+        marker = f"\n\n<!-- 降级标记: {notice} -->"
+        text = report.report_text
+        if "<!-- 降级标记:" not in text:
+            text = text + marker
+        return report.model_copy(update={"report_text": text})
 
     async def _call_deepseek(self, stock_code: str, stock_name: str, collected_data: dict) -> str:
         """Call DeepSeek API with streaming + tool calling."""

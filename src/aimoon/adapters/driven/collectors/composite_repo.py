@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from aimoon.adapters.driven.ai.pipeline.timing import logphase
+from aimoon.adapters.driven.common.timing import logphase
 from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData

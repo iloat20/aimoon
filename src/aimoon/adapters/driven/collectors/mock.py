@@ -5,6 +5,9 @@ from __future__ import annotations
 import random
 from datetime import datetime, timedelta
 
+# mock_analysis_report moved to common/mock.py (audit P2.3 — cross-adapter decoupling).
+# Re-exported here for backward compatibility with existing imports.
+from aimoon.adapters.driven.common.mock import mock_analysis_report  # noqa: E402,F401
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from aimoon.core.domain.entities.financial import FinancialData
@@ -13,7 +16,6 @@ from aimoon.core.domain.entities.quote import StockQuote
 from aimoon.core.domain.entities.research import ResearchReport, ResearchReportData
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.services.symbols import resolve_market
-from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 from aimoon.core.domain.value_objects.financial_report import FinancialReportData
 from aimoon.core.domain.value_objects.kline_bar import KlineBar
 
@@ -62,6 +64,9 @@ def mock_financial(symbol: str) -> FinancialData:
         roe=round(random.uniform(5, 35), 2),
         eps=round(random.uniform(0.5, 10), 2),
         bvps=round(random.uniform(5, 50), 2),
+        accounts_receivable=round(revenue * random.uniform(0.05, 0.20), 2),
+        inventory=round(revenue * random.uniform(0.03, 0.15), 2),
+        dividend_paid=round(revenue * random.uniform(0.01, 0.08), 2),
         source="Mock数据",
     )
 
@@ -124,49 +129,6 @@ def mock_social_posts(platform: str, symbol: str, name: str, count: int = 10) ->
             )
         )
     return posts
-
-
-def mock_analysis_report(symbol: str, name: str) -> AnalysisReport:
-    """Generate mock AI analysis report."""
-    return AnalysisReport(
-        symbol=symbol,
-        name=name,
-        summary=f"综合来看，{name}({symbol})基本面表现稳健，资金面偏暖，"
-        f"建议投资者保持关注，逢低布局。",
-        data_warnings=[
-            "部分财务数据为模拟数据，仅供参考",
-            "研报数据样本量较小，统计结论可能存在偏差",
-            "社媒数据为随机生成，不代表真实市场情绪",
-        ],
-        data_confidence={
-            "行情数据": "高",
-            "财务数据": "中",
-            "资金流向": "中",
-            "研报数据": "低",
-            "社媒舆情": "低",
-        },
-        investment_advice=(
-            "【免责声明】本报告由AI自动生成，仅供参考，不构成任何投资建议。"
-            "投资有风险，入市需谨慎。请结合自身情况独立决策。"
-        ),
-        report_text=(
-            f"## 一、公司概况与业务分析\n\n"
-            f"{name}（{symbol}）是行业内的龙头企业，主营业务涵盖多个领域。"
-            f"公司在行业内具有较强的竞争优势和品牌影响力。\n\n"
-            f"## 二、财务健康度评估\n\n"
-            f"公司财务状况良好，营收和净利润保持稳定增长。ROE处于较高水平，"
-            f"现金流充裕，资产负债率在合理范围内。\n\n"
-            f"## 三、资金面分析\n\n"
-            f"近期主力资金呈净流入状态，北向资金小幅增持。"
-            f"资金面整体偏暖，有助于股价企稳回升。\n\n"
-            f"## 四、行业与市场前景\n\n"
-            f"行业整体处于稳定增长阶段，公司作为龙头企业有望持续受益。"
-            f"市场关注度适中，机构持仓比例合理。\n\n"
-            f"## 五、投资建议与风险提示\n\n"
-            f"评级：【中性持有】\n"
-            f"建议投资者保持关注，在回调时逢低布局。\n"
-        ),
-    )
 
 
 def mock_kline(symbol: str, days: int = 120) -> KlineData:

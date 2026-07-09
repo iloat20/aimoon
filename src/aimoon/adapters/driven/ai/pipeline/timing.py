@@ -1,37 +1,12 @@
-"""Per-phase timing instrumentation for pipeline v2.
+"""Re-export from common/timing.py for backward compatibility.
 
-Lightweight context manager that logs wall-clock seconds per LLM call / phase
-via the standard ``logging`` module (logger name ``aimoon.pipeline.timing``).
-No-op when logging is disabled; zero allocation on the hot path beyond a
-``time.monotonic()`` sample.
+``logphase`` was moved to ``common/timing.py`` (audit P2.3) so that
+``collectors/`` no longer crosses into ``ai/`` for this utility.
+Existing ``from .timing import logphase`` in ``orchestrator.py`` keeps working.
 """
 
 from __future__ import annotations
 
-import logging
-import time
-from collections.abc import Generator
-from contextlib import contextmanager
+from aimoon.adapters.driven.common.timing import logphase
 
-logger = logging.getLogger("aimoon.pipeline.timing")
-
-
-@contextmanager
-def logphase(label: str) -> Generator[None, None, None]:
-    """Emit a DEBUG line with elapsed seconds when ``label`` block exits.
-
-    Usage::
-
-        async with logphase("ANALYSIS llm"):
-            draft = await call(...)
-    """
-    t0 = time.monotonic()
-    try:
-        yield
-    finally:
-        elapsed = time.monotonic() - t0
-        logger.debug("[pipeline][timing] %s %.2fs", label, elapsed)
-        # 同时打到主 logger.info,方便在不开启 DEBUG 时也能看到耗时
-        logging.getLogger("aimoon.pipeline").info(
-            "[pipeline][timing] %s %.2fs", label, elapsed
-        )
+__all__ = ["logphase"]

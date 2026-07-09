@@ -5,11 +5,14 @@
 职责：
 - 重试逻辑和错误处理
 - 通用解析工具
+- 跨适配器共享工具（timing / mock）— 避免 collectors↔ai 跨层依赖
 """
 
 from .browser import browser_session
+from .mock import mock_analysis_report
 from .parsers import extract_toutiao_url, parse_chinese_count
 from .retry import retry_on_connection, silent_failure
+from .timing import logphase
 
 __all__ = [
     "browser_session",
@@ -17,4 +20,6 @@ __all__ = [
     "retry_on_connection",
     "parse_chinese_count",
     "extract_toutiao_url",
+    "logphase",
+    "mock_analysis_report",
 ]
