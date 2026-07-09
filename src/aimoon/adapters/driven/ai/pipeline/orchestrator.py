@@ -4,7 +4,7 @@
           Phase 2 (COMPILE) 基于经自检认可的初稿生成终稿长文。
 快速模式 (use_fast=True): 跳过自检和 COMPILE,ANALYSIS 初稿即终稿。
 
-总硬上限 540s(9 分钟)。每阶段独立容错:超时 / 异常 / 畸形 JSON 标 ``__partial__`` 并继续,
+总硬上限 720s(12 分钟)。每阶段独立容错:超时 / 异常 / 畸形 JSON 标 ``__partial__`` 并继续,
 绝不阻塞后续阶段(项目 CLAUDE.md 的 broad-tolerance 规则)。
 """
 
@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 import logging
+import traceback
 from pathlib import Path
-from typing import Any, Protocol
 
 import httpx
 
@@ -23,9 +22,12 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 
 from ..tools import TOOL_RUNNERS
 from ..xml_utils import strip_xml_tool_calls
+from .context_renderer import render_stock_context
+from .llm_client import PipelineLlmClient
 from .phases import _SECTIONS_MD, Phase, phase_system_prompt
 from .table_renderer import (
     render_fcf_dividend,
+    render_financial_health_ext,
     render_financial_statements,
     render_financial_temporal,
     render_peer_comparison,
@@ -34,33 +36,40 @@ from .table_renderer import (
     render_valuation_targets,
 )
 from .timing import logphase
+from .tool_summaries import (
+    extract_tool_summary,
+    fcf_summary,
+    research_divergence,
+    scenario_summary,
+)
+from .tool_summaries import (
+    senti_summary as sentiment_summary,
+)
+from .types import AnalyzerRuntime
+from .utils import (
+    is_partial as _is_partial,
+)
+from .utils import (
+    parse_self_check_json as _parse_self_check_json,
+)
+from .utils import (
+    partial as _partial,
+)
+from .utils import (
+    run_peer_compare as _run_peer_compare,
+)
+from .utils import (
+    run_safe as _run_safe,
+)
 
 logger = logging.getLogger(__name__)
 
-MAX_TOTAL_SEC = 540  # 9 min (240 ANALYSIS + 300 COMPILE + buffer)
+MAX_TOTAL_SEC = 720  # 12 min (采集+ANALYSIS 210s + COMPILE 480s + buffer)
 
 # DeepSeek 思考强度(reasoning_effort)。
 # 官方支持: low/medium→映射为 high, high, xhigh→映射为 max。
 # 默认 high;重试时保持 high(不降级,避免思考不充分)。
 _EFFORT_TWO_PHASE = "high"  # 双阶段模式(重试时仍用 high)
-
-# 报告章节结构 —— 代码侧维护,运行时格式化为 `## 一、…## 八、…` 标题块。
-# 替换 system 模板占位符 `{{ sections }}` 的同时,作为 sections_list 注入
-# 到 user message,让模型直接按自检 JSON 前的自然章节顺序输出。
-# 报告章节结构(已迁移至 phases.py 的 _SECTIONS_MD,此处保留导入)
-
-
-
-class AnalyzerRuntime(Protocol):
-    _settings: Any
-    _provided_settings: Any | None
-    _http: Any
-    api_url: str
-    api_key: str
-
-    def _build_data_dict(self, info: StockAnalysis, reports: dict | None = None,
-                         financial_md_path: Path | None = None) -> dict[str, Any]: ...
-    async def _stream_final_response(self, messages: list[dict]) -> str: ...
 
 
 @dataclasses.dataclass
@@ -71,8 +80,16 @@ class PipelineContext:
     system_tables_md: str = ""
 
     def to_dict(self) -> dict[str, object]:
+        # 把系统预渲染表(财务时序/同行对比/估值/FCFE/情景/舆情/三表)追加为「数据附录」。
+        # 这些表在 ANALYSIS 阶段已由 Python 模板渲染(0 LLM token),COMPILE 终稿仅含 AI 正文,
+        # 此处统一追加(覆盖所有 return 路径),避免算出后丢弃。
+        md = self.final_markdown or ""
+        if self.system_tables_md.strip():
+            appendix = "\n\n## 数据附录(系统预渲染)\n\n" + self.system_tables_md
+            if appendix.strip() not in md:
+                md = md + appendix
         return {
-            "final_markdown": self.final_markdown,
+            "final_markdown": md,
             "system_tables_md": self.system_tables_md,
             "phase_results": self.phase_results,
             "partial_phases": self.partial_phases,
@@ -86,29 +103,47 @@ class PipelineOrchestrator:
         self.analyzer = analyzer
         # Dedicated long-timeout client for LLM calls (300s).
         # Reuses TCP/TLS connections across ANALYSIS and COMPILE phases.
-        import httpx as _httpx
-        self._llm_http = _httpx.AsyncClient(timeout=300.0)
+        self._llm = PipelineLlmClient(analyzer)
 
-    async def run(self, si: StockAnalysis, *, reports: dict | None = None,
-                  financial_md_path: Path | None = None,
-                  use_fast: bool = False) -> dict[str, object]:
+    async def run(
+        self,
+        si: StockAnalysis,
+        *,
+        reports: dict | None = None,
+        financial_md_path: Path | None = None,
+        use_fast: bool = False,
+        use_single_call: bool = False,
+        use_ultra_fast: bool = False,
+    ) -> dict[str, object]:
         try:
             return await self._run_pipeline(
                 si, reports=reports, financial_md_path=financial_md_path,
-                use_fast=use_fast,
+                use_fast=use_fast, use_single_call=use_single_call,
+                use_ultra_fast=use_ultra_fast,
             )
         finally:
-            await self._llm_http.aclose()
+            await self._llm.aclose()
 
-    async def _run_pipeline(self, si: StockAnalysis, *, reports: dict | None = None,
-                            financial_md_path: Path | None = None,
-                            use_fast: bool = False) -> dict[str, object]:
+    async def _run_pipeline(
+        self,
+        si: StockAnalysis,
+        *,
+        reports: dict | None = None,
+        financial_md_path: Path | None = None,
+        use_fast: bool = False,
+        use_single_call: bool = False,
+        use_ultra_fast: bool = False,
+    ) -> dict[str, object]:
         ctx = PipelineContext()
-        stock_md = self._render_stock_context(si, reports, financial_md_path)
+        stock_md = render_stock_context(si, reports, financial_md_path)
         prior: dict[str, object] = {}
 
-        skip_self_check = use_fast
-        skip_compile = use_fast
+        # 阶段跳过优先级: ultra_fast > single_call > fast。
+        # ultra_fast: 初稿即终稿(跳过自检 + COMPILE); fast: 跳过自检 + 修复循环;
+        # single_call: 合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用
+        #   (此处等价于跳过 COMPILE 独立阶段)。
+        skip_self_check = use_fast or use_single_call or use_ultra_fast
+        skip_compile = use_single_call or use_ultra_fast
 
         # Phase 1: ANALYSIS — 并行工具 + LLM + (可选) 自检
         try:
@@ -123,10 +158,9 @@ class PipelineOrchestrator:
             logger.warning("[pipeline] ANALYSIS 超时 210s, 降级")
             analysis_result = _partial("timeout")
         except Exception as e:  # broad tolerance: never abort the pipeline
-            import traceback as tb_mod
             logger.error(
                 "[pipeline] ANALYSIS 异常 %s: %s\n%s",
-                type(e).__name__, e, tb_mod.format_exc()
+                type(e).__name__, e, traceback.format_exc(),
             )
             analysis_result = _partial(f"{type(e).__name__}")
 
@@ -153,7 +187,7 @@ class PipelineOrchestrator:
         draft = str(prior.get("analysis_draft", "") or "")
         if draft and not skip_self_check:
             try:
-                sc_result = await self._phase_self_check(draft)
+                sc_result = await self._phase_self_check(draft, ctx.system_tables_md)
             except Exception as e:
                 logger.warning("[pipeline] SELF_CHECK 外层异常 %s: %s", type(e).__name__, e)
                 sc_result = {"passed": True, "fixes_needed": []}
@@ -172,11 +206,13 @@ class PipelineOrchestrator:
             return ctx.to_dict()
 
         # Phase 2: COMPILE — 终稿生成(写长文)
+        # timeout=480s:7 节长文 + reasoning_effort=medium 在真实 API 下可能较慢,
+        # 300s 内屡屡超时降级,放宽到 480s (=MAX_TOTAL_SEC - ANALYSIS 210s - buffer)。
         if prior["analysis_draft"]:
             try:
                 compile_result = await asyncio.wait_for(
                     self._phase_compile(stock_md, prior),
-                    timeout=300,
+                    timeout=480,
                 )
             except TimeoutError:
                 logger.warning("[pipeline] COMPILE 超时 300s, 降级")
@@ -204,17 +240,26 @@ class PipelineOrchestrator:
 
     # ---- Phase 1: ANALYSIS ------------------------------------------------
 
-    async def _phase_analysis(self, si: StockAnalysis, stock_md: str, prior: dict,
-                              reports: dict | None, financial_md_path: Path | None,
-                              *, use_fast: bool = False) -> dict:
+    async def _phase_analysis(
+        self,
+        si: StockAnalysis,
+        stock_md: str,
+        prior: dict,
+        reports: dict | None,
+        financial_md_path: Path | None,
+        *,
+        use_fast: bool = False,
+    ) -> dict:
         """Phase 1: 并行工具 + LLM 初稿 + (可选) 自检。"""
         from ..web_search_tool import execute_web_search
 
         # 1. 并行跑 4 个纯工具 + peer_compare(web search)
         # 注:工具结果不再走 60s 短缓存——纯函数重算成本极低(<0.5s),且短缓存会
         # 掩盖修复、在重复跑时返回过期的 peer_compare(web 搜索)数据。
-        tech_coro = _run_safe(TOOL_RUNNERS["technicals"], getattr(si, "kline", None),
-                               getattr(si, "capital_flow", None))
+        tech_coro = _run_safe(
+            TOOL_RUNNERS["technicals"], getattr(si, "kline", None),
+            getattr(si, "capital_flow", None),
+        )
         fin_coro = _run_safe(TOOL_RUNNERS["financial_temporal"],
                               getattr(si, "history_financial", None))
         moat_coro = _run_safe(
@@ -261,13 +306,14 @@ class PipelineOrchestrator:
                 render_fcf_dividend(fcf),
                 render_scenario_prob(scenario),
                 render_sentiment(senti),
+                render_financial_health_ext(getattr(si, "financial", None)),
                 render_financial_statements(getattr(si, "financial", None)),
             ]
         )
         # 关键:把预渲染表写入 prior,供 COMPILE 阶段引用与终稿追加
         # (此前仅用于 ANALYSIS 局部 tool_ctx,导致表格从未进入最终报告)。
         prior["tables_md"] = tables_md
-        summary = _extract_tool_summary(
+        summary = extract_tool_summary(
             {
                 "technicals": tech,
                 "financial_temporal": fin,
@@ -293,20 +339,20 @@ class PipelineOrchestrator:
             f"- {r.title[:50]} [{r.rating}]" for r in (si.research.reports or [])[:5]
         )
         # 机构分歧量化摘要(近 3 月 EPS 预测变动趋势)
-        research_div = _research_divergence(si)
+        research_div = research_divergence(si)
         # 情感/自由现金流/情景 摘要(供模型直接引用,不重复计算)
-        senti_summary = _sentiment_summary(senti)
-        fcf_summary = _fcf_summary(fcf)
-        scenario_summary = _scenario_summary(scenario)
+        senti_summary_txt = sentiment_summary(senti)
+        fcf_summary_txt = fcf_summary(fcf)
+        scenario_summary_txt = scenario_summary(scenario)
         # user message 不再注入完整 tool JSON(这是旧架构的主要浪费)。
         user_content = (
             f"{stock_md}\n\n"
             f"# 已渲染表格\n{tables_md}\n\n"
             f"# 工具摘要\n{summary}\n\n"
             f"# 已采集社交媒体舆情(共 {len(si.social_posts)} 条)\n{social_summary}\n"
-            f"{senti_summary}\n\n"
-            f"# 自由现金流与股息(系统计算)\n{fcf_summary}\n\n"
-            f"# 情景概率与风险收益比(系统计算)\n{scenario_summary}\n\n"
+            f"{senti_summary_txt}\n\n"
+            f"# 自由现金流与股息(系统计算)\n{fcf_summary_txt}\n\n"
+            f"# 情景概率与风险收益比(系统计算)\n{scenario_summary_txt}\n\n"
             f"# 已采集机构研报(共 {si.research.total_count} 篇)\n{research_summary}\n"
             f"{research_div}\n\n"
             f"# 输出章节结构(按此顺序,不可省略)\n{_SECTIONS_MD}"
@@ -317,9 +363,9 @@ class PipelineOrchestrator:
         ]
 
         # 短期跨 run 缓存
-        from ..cache import fingerprint, get_cached_report, set_cached_report
-        rsp_cache_key_fp = fingerprint(si)
-        cached_report = get_cached_report(si.symbol, rsp_cache_key_fp) or ""
+        from ..cache import get_analysis_cache, set_analysis_cache
+
+        cached_report = get_analysis_cache(si.symbol) or ""
 
         # LLM 产出 Markdown。仅当传输层 / 网络层 / HTTP 状态异常(连接重置、
         # 超时、DNS、以及 DeepSeek 瞬时 429/500/503 等)时才重试——模型正常
@@ -342,7 +388,7 @@ class PipelineOrchestrator:
                 draft = (message.get("content") or "").strip()
                 break
             if draft:
-                set_cached_report(si.symbol, rsp_cache_key_fp, draft)
+                set_analysis_cache(si.symbol, draft)
         if draft:
             logger.info("[pipeline] ANALYSIS draft len=%d%s", len(draft),
                         " (response cache HIT)" if cached_report else "")
@@ -354,17 +400,17 @@ class PipelineOrchestrator:
         return {"output": draft, "tool_results": tool_results,
                 "partial": partial, "checks": {}}
 
-
-
     # ---- Phase 1.5: SELF_CHECK ------------------------------------------------
 
-    async def _phase_self_check(self, draft: str) -> dict[str, object]:
+    async def _phase_self_check(self, draft: str, tables_md: str = "") -> dict[str, object]:
         """Lightweight self-check: single short LLM call, never blocks pipeline.
 
         Returns ``{"passed": bool, "fixes_needed": list[str]}``.
         On any failure (timeout, parse error, exception) defaults to passed.
         """
-        system = phase_system_prompt(Phase.SELF_CHECK, "", {"analysis_draft": draft})
+        system = phase_system_prompt(Phase.SELF_CHECK, "", {
+            "analysis_draft": draft, "tables_md": tables_md,
+        })
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": f"# ANALYSIS 初稿\n\n{draft}"},
@@ -383,12 +429,10 @@ class PipelineOrchestrator:
         except Exception as e:
             logger.warning("[pipeline] SELF_CHECK 异常 %s: %s", type(e).__name__, e)
             return {"passed": True, "fixes_needed": []}
-
         parsed, fixes = _parse_self_check_json(text)
         if parsed is None:
             logger.warning("[pipeline] SELF_CHECK JSON 解析失败, 跳过")
             return {"passed": True, "fixes_needed": []}
-
         passed = bool(parsed.get("passed", True))
         logger.info("[pipeline] SELF_CHECK passed=%s fixes=%d", passed, len(fixes))
         return {"passed": passed, "fixes_needed": fixes}
@@ -437,404 +481,26 @@ class PipelineOrchestrator:
         stripped = strip_xml_tool_calls(text)
         return {"output": stripped, "tool_results": {}, "partial": False}
 
-    async def _call_llm_with_stream(self, messages: list[dict], *,
-                                     max_tokens: int | None = None,
-                                     reasoning_effort: str = "max") -> dict:
-        """单次 LLM 调用 wrapper,带 DeepSeek 思考模式 + 300s timeout。
+    # ---- LLM transport delegates (kept as methods so tests can monkeypatch) ----
 
-        使用 reasoning_effort 控制思考强度(max = 最深思考)。
-        思考模式下 temperature/top_p 等参数无效,不传。
-        """
-        analyzer = self.analyzer
-        settings = analyzer._provided_settings or analyzer._settings
-        body: dict[str, object] = {
-            "model": settings.deepseek_model, "messages": messages,
-            "max_tokens": max_tokens or settings.deepseek_max_tokens,
-            "reasoning_effort": reasoning_effort,
-        }
-        with logphase(f"llm(effort={reasoning_effort}, mt={body['max_tokens']})"):
-            resp = await self._llm_http.post(
-                analyzer.api_url,
-                headers={"Authorization": f"Bearer {analyzer.api_key}",
-                         "Content-Type": "application/json"},
-                json=body,
-            )
-        if resp.status_code >= 400:
-            logger.error("[pipeline] LLM HTTP %d: %s", resp.status_code, resp.text[:500])
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]
+    async def _call_llm_with_stream(
+        self,
+        messages: list[dict],
+        *,
+        max_tokens: int | None = None,
+        reasoning_effort: str = "max",
+    ) -> dict:
+        return await self._llm.call_llm_with_stream(
+            messages, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
+        )
 
     async def _stream_llm_content(
-        self, messages: list[dict], *, max_tokens: int | None = None,
+        self,
+        messages: list[dict],
+        *,
+        max_tokens: int | None = None,
         reasoning_effort: str = "high",
     ) -> str:
-        """流式 LLM 调用,实时打印 `##` 章节进度,返回拼接后的完整正文。
-
-        与 ``_call_llm_with_stream``(非流式、返回 message dict)不同,本方法面向
-        长文生成场景(COMPILE),用 SSE 流持续输出进度并只回收 content 文本。
-        """
-        analyzer = self.analyzer
-        settings = analyzer._provided_settings or analyzer._settings
-        body: dict[str, object] = {
-            "model": settings.deepseek_model,
-            "messages": messages,
-            "max_tokens": max_tokens or settings.deepseek_max_tokens,
-            "reasoning_effort": reasoning_effort,
-            "stream": True,
-        }
-        with logphase(f"llm-stream(effort={reasoning_effort})"):
-            async with self._llm_http.stream(
-                "POST",
-                analyzer.api_url,
-                headers={
-                    "Authorization": f"Bearer {analyzer.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            ) as resp:
-                resp.raise_for_status()
-                return await self._collect_content_stream(resp)
-
-    @staticmethod
-    async def _collect_content_stream(resp: httpx.Response) -> str:
-        """读取 SSE 流,实时打印 ``##`` 章节标题,返回拼接后的正文文本。
-
-        仅回收 ``delta.content``(忽略 reasoning 中间过程),逻辑与 legacy
-        ``_collect_stream`` 对齐。使用 splitlines() 做 O(n) 缓冲处理。
-        """
-        import re as _re
-
-        full: list[str] = []
-        buf = ""
-        current_section = ""
-        async for line in resp.aiter_lines():
-            if not line.startswith("data: "):
-                continue
-            payload = line[6:]
-            if payload.strip() == "[DONE]":
-                break
-            try:
-                chunk = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
-            choices = chunk.get("choices") or []
-            if not choices:
-                continue
-            delta = choices[0].get("delta", {})
-            content = delta.get("content") or ""
-            if not content:
-                continue
-            full.append(content)
-            buf += content
-            *lines, buf = buf.splitlines()
-            for line_text in lines:
-                line_text = line_text + "\n"
-                header_match = _re.match(r"^##\s+(.+)", line_text)
-                if header_match:
-                    if current_section:
-                        print()
-                    section_name = header_match.group(1).strip()
-                    current_section = section_name
-                    print(f"\n{'─' * 40}\n  {section_name}\n{'─' * 40}")
-                elif current_section and line_text.strip():
-                    stripped = line_text.rstrip()
-                    if len(stripped) > 120:
-                        stripped = stripped[:117] + "..."
-                    print(f"  {stripped}")
-        if buf.strip():
-            full.append(buf)
-        return "".join(full)
-
-    def _render_stock_context(self, si: StockAnalysis, reports: dict | None,
-                              financial_md_path: Path | None) -> str:
-        data = self.analyzer._build_data_dict(si, reports, financial_md_path)
-        lines: list[str] = [f"# 标的快照 {si.name or si.symbol}"]
-        quote = data.get("quote") or {}
-        if quote.get("price"):
-            lines.append(
-                f"- 最新价: {quote.get('price')} | "
-                f"涨跌: {quote.get('change_pct')}% | PE: {quote.get('pe')}"
-            )
-        # 注意:报告期/营收/净利/ROE 等财务字段不再在此重复列出 —— 工具结果
-        # `financial_temporal` 已注入同字段,这里只保留跨维度事实(K 线/资金/行业)
-        # 与 snapshot 独有的舆情,避免 input token 重复。
-        cf = data.get("capital_flow") or {}
-        if cf.get("main_net_5d"):
-            lines.append(f"- 近5日主力净流入: {cf['main_net_5d'] / 1e8:.2f} 亿元")
-        kline = data.get("kline_summary") or {}
-        if kline.get("bar_count"):
-            lines.append(
-                f"- K线: {kline.get('bar_count')}根,"
-                f"最新 {kline.get('latest_close')} ({kline.get('latest_date')})"
-            )
-        if data.get("industry"):
-            lines.append(f"- 行业: {data['industry']}")
-        # 舆情雪球/头条近 N 条标题摘要(跨维度事实,不在工具结果里)
-        posts = getattr(si, "social_posts", None)
-        if posts:
-            sample = "；".join(
-                (p.title or p.content or "")[:30] for p in posts[:3]
-            )
-            if sample:
-                lines.append(f"- 舆情摘要: {sample}")
-        if getattr(si, "history_financial", None):
-            lines.append("- 历史财务时序(近 N 年报):")
-            for f in si.history_financial[:5]:
-                rev_str = f"{f.revenue / 1e8:.1f}亿" if f.revenue else "N/A"
-                lines.append(f"  - {f.report_period}:营收 {rev_str} | "
-                             f"ROE {f.roe}% | EPS {f.eps}")
-        return "\n".join(lines)
-
-
-# ---- module-level helpers -------------------------------------------------
-
-def _partial(reason: str) -> dict[str, object]:
-    return {"output": "", "tool_results": {}, "partial": True, "reason": reason}
-
-
-def _is_partial(tool_value: object) -> bool:
-    return isinstance(tool_value, dict) and "__partial__" in tool_value
-
-
-def _sentiment_summary(senti: object) -> str:
-    """Format sentiment tool output into a compact bullet summary."""
-    if not isinstance(senti, dict) or _is_partial(senti):
-        return "- 社媒情感分析: 数据缺失(无可用舆情文本)"
-    total = senti.get("total") or 0
-    if not total:
-        return "- 社媒情感分析: 样本为空"
-    lines = [
-        f"- 整体情绪: {senti.get('label', 'N/A')}"
-        f"(指数 {senti.get('sentiment_index', 0)},引擎 {senti.get('engine', 'N/A')})",
-        f"- 分布: 正面 {senti.get('pos', 0)} / 负面 {senti.get('neg', 0)}"
-        f"/ 中性 {senti.get('neu', 0)}(共 {total} 条)",
-    ]
-    kws = senti.get("top_keywords") or []
-    if kws:
-        lines.append("- 高频词: " + "、".join(f"{k['word']}({k['count']})" for k in kws[:8]))
-    nw = senti.get("neg_words") or []
-    if nw:
-        lines.append("- 负面词: " + "、".join(f"{w}({c})" for w, c in nw[:5]))
-    return "\n".join(lines)
-
-
-def _fmt_yi(v: object) -> str:
-    """Format a yuan amount: 亿 if large, else raw 2-decimal; N/A on None."""
-    if v is None:
-        return "N/A"
-    if isinstance(v, (int, float)) and abs(v) >= 1e8:
-        return f"{v / 1e8:.1f}亿"
-    return f"{v:.2f}"
-
-
-def _fcf_summary(fcf: object) -> str:
-    """Format FCF/dividend tool output into a compact bullet summary."""
-    if not isinstance(fcf, dict) or _is_partial(fcf):
-        return "- 自由现金流与股息: 数据缺失(缺 OCF 或分红科目)"
-    ocf = fcf.get("ocf")
-    fcf_v = fcf.get("fcf")
-    lines = [
-        f"- 经营现金流 OCF: {_fmt_yi(ocf)} | 自由现金流 FCF: {_fmt_yi(fcf_v)}",
-    ]
-    pay = fcf.get("payout_ratio")
-    dy = fcf.get("dividend_yield")
-    if pay is not None:
-        if dy is not None:
-            lines.append(f"- 股息支付率: {pay * 100:.1f}% | 股息率: {dy * 100:.1f}%")
-        else:
-            lines.append(f"- 股息支付率: {pay * 100:.1f}%")
-    cover = fcf.get("fcf_cover")
-    if cover is not None:
-        note = "可持续" if cover >= 1.0 else f"⚠️ 不可持续(FCF 仅覆盖 {cover:.2f} 倍)"
-        lines.append(f"- FCF 覆盖分红: {cover:.2f} 倍 → {note}")
-    return "\n".join(lines)
-
-
-def _scenario_summary(scenario: object) -> str:
-    """Format scenario probability / risk-reward tool output into a summary."""
-    if not isinstance(scenario, dict) or _is_partial(scenario):
-        return "- 情景概率与风险收益比: 数据缺失(缺估值目标价)"
-    exp = scenario.get("expected_target")
-    rr = scenario.get("risk_reward_ratio")
-    down = scenario.get("downside_neutral_pct")
-    up = scenario.get("upside_optimistic_pct")
-    lines = []
-    if exp is not None:
-        lines.append(f"- 加权期望目标价: {exp} 元(期望 PE {scenario.get('expected_pe')})")
-    if down is not None or up is not None:
-        d = f"{down:+.1f}%" if isinstance(down, (int, float)) else "N/A"
-        u = f"{up:+.1f}%" if isinstance(up, (int, float)) else "N/A"
-        rr_txt = f" → 非对称比 {rr:.2f}" if rr is not None else ""
-        lines.append(f"- 风险收益比: 中性下行 {d} / 乐观上行 {u}{rr_txt}")
-    targets = scenario.get("targets") or {}
-    if targets:
-        parts = []
-        name_map = {"conservative": "保守", "neutral": "中性", "optimistic": "乐观"}
-        for tier in ("conservative", "neutral", "optimistic"):
-            t = targets.get(tier) or {}
-            p = t.get("probability")
-            if p is not None:
-                parts.append(f"{name_map.get(tier, tier)}{t.get('price')}({p}%)")
-        if parts:
-            lines.append("- 三档情景: " + " / ".join(parts))
-    return "\n".join(lines) if lines else "- 情景概率与风险收益比: 数据缺失"
-
-
-def _research_divergence(si: object) -> str:
-    """量化机构研报分歧:EPS 预测区间 + 评级分布。"""
-    research = getattr(si, "research", None)
-    reports = (research.reports if research else None) or []
-    if not reports:
-        return "- 机构研报分歧: 数据缺失(无研报)"
-    buys = sum(1 for r in reports if "买入" in (r.rating or "") or "推荐" in (r.rating or ""))
-    holds = sum(1 for r in reports if "增持" in (r.rating or ""))
-    neutrals = sum(1 for r in reports if "中性" in (r.rating or "") or "持有" in (r.rating or ""))
-    eps_list = [float(r.eps_this_yr) for r in reports if getattr(r, "eps_this_yr", 0)]
-    lines = [
-        f"- 评级分布: 买入 {buys} / 增持 {holds} / 中性 {neutrals}(共 {len(reports)} 篇)",
-    ]
-    if eps_list:
-        lo, hi = min(eps_list), max(eps_list)
-        avg = sum(eps_list) / len(eps_list)
-        spread = (hi - lo) / lo * 100 if lo else 0.0
-        lines.append(
-            f"- 当年 EPS 预测: 区间 [{lo:.2f}, {hi:.2f}], 均值 {avg:.2f}, "
-            f"分歧幅度 {spread:.1f}%(分歧>15% 视为预期差大)"
+        return await self._llm.stream_llm_content(
+            messages, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
         )
-    return "\n".join(lines)
-
-
-async def _run_safe(fn, *args) -> dict[str, object]:
-    try:
-        result = fn(*args)
-        return result if isinstance(result, dict) else {"__partial__": "bad_return"}
-    except Exception as e:
-        logger.warning("[pipeline] 工具 %s 异常 %s: %s",
-                       getattr(fn, "__name__", fn), type(e).__name__, e)
-        return {"__partial__": f"{type(e).__name__}"}
-
-
-async def _run_peer_compare(si: object, search_fn) -> dict:
-    """委托 ``peer_compare.run`` 单一入口,保持 ``{peers, industry}`` 返回形状。
-
-    ``search_fn`` 直接透传给工具,避免 orchestrator 层进入
-    ``build_search_query``/``parse`` 的实现细节;
-    所有未预期错误由工具内部 try/except 兜底为 ``{"__partial__": "no_data"}``。
-    """
-    from ..tools.peer_compare import run as peer_run
-
-    name = str(getattr(si, "name", "") or getattr(si, "symbol", "") or "")
-    self_fin = getattr(si, "financial", None)
-    return peer_run(name=name, self_fin=self_fin, search_fn=search_fn)
-
-
-def _parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
-    """Parse self-check JSON from LLM response text.
-
-    Tries ``json`` code fence first, then falls back to finding any JSON
-    object containing a ``passed`` key.  Returns ``(parsed_dict, fixes_list)``
-    or ``(None, [])`` on failure.
-    """
-    import re
-
-    # 1. Prefer ```json fence
-    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if m:
-        try:
-            parsed = json.loads(m.group(1).strip())
-            if isinstance(parsed, dict):
-                fixes = parsed.get("fixes_needed", [])
-                return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-        except (json.JSONDecodeError, ValueError):
-            pass
-    # 2. Fallback: find any { ... } containing "passed"
-    for match in re.finditer(r"\{[^{}]*\}", text):
-        try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict) and "passed" in parsed:
-                fixes = parsed.get("fixes_needed", [])
-                return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-        except (json.JSONDecodeError, ValueError):
-            continue
-    # 3. Last resort: find outermost braces
-    last_brace = text.rfind("}")
-    if last_brace > 0:
-        first_brace = text.rfind("{", 0, last_brace)
-        if first_brace >= 0:
-            try:
-                parsed = json.loads(text[first_brace:last_brace + 1])
-                if isinstance(parsed, dict):
-                    fixes = parsed.get("fixes_needed", [])
-                    return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-            except (json.JSONDecodeError, ValueError):
-                pass
-    return None, []
-
-
-def _extract_tool_summary(results: dict) -> str:
-    """Generate a short (~200 chars) text summary of non-tabular tool outputs.
-
-    Helps the LLM produce analysis without needing the full tool JSON.
-    """
-    parts: list[str] = []
-    t = results.get("technicals") or {}
-    if isinstance(t, dict):
-        trend = t.get("trend") or ""
-        rsi = t.get("rsi14")
-        main = t.get("main_net_5d")
-        if trend:
-            parts.append(f"趋势={trend}")
-        if rsi is not None:
-            parts.append(f"RSI={rsi:.1f}" if isinstance(rsi, (int, float)) else f"RSI={rsi}")
-        if main is not None:
-            if isinstance(main, (int, float)):
-                parts.append(f"主力5日={main / 1e8:.2f}亿")
-            else:
-                parts.append(f"主={main}")
-    r = results.get("risk_quant") or {}
-    if isinstance(r, dict) and isinstance(r.get("bears"), list):
-        nb = len(r["bears"])
-        if nb:
-            parts.append(f"看空={nb}条")
-    m = results.get("business_moat") or {}
-    if isinstance(m, dict):
-        moat = m.get("moat_sources") or []
-        if isinstance(moat, list) and moat:
-            parts.append(f"护城河={','.join(str(x) for x in moat[:3])}")
-        ocf_q = m.get("ocf_quality")
-        if ocf_q:
-            parts.append(f"OCF质量={ocf_q}")
-    # 自由现金流 / 股息
-    f = results.get("fcf_dividend") or {}
-    if isinstance(f, dict) and not _is_partial(f):
-        fcf = f.get("fcf")
-        pay = f.get("payout_ratio")
-        dy = f.get("dividend_yield")
-        if fcf is not None:
-            parts.append(f"FCF={fcf/1e8:.1f}亿" if abs(fcf) >= 1e8 else f"FCF={fcf:.1f}")
-        if pay is not None:
-            parts.append(f"股息支付率={pay*100:.1f}%")
-        if dy is not None:
-            parts.append(f"股息率={dy*100:.1f}%")
-    # 情景概率 / 风险收益比
-    s = results.get("scenario_prob") or {}
-    if isinstance(s, dict) and not _is_partial(s):
-        exp = s.get("expected_target")
-        rr = s.get("risk_reward_ratio")
-        if exp is not None:
-            parts.append(f"加权期望目标价={exp}")
-        if rr is not None:
-            parts.append(f"风险收益比={rr}")
-    # 舆情情感
-    senti = results.get("sentiment") or {}
-    if isinstance(senti, dict) and not _is_partial(senti):
-        label = senti.get("label")
-        idx = senti.get("sentiment_index")
-        if label:
-            parts.append(f"舆情情绪={label}(指数{idx})")
-    return ", ".join(parts) if parts else "N/A"
-
-
-
-
-

@@ -7,6 +7,7 @@ of silently substituting a legacy/empty analysis.
 
 import pytest
 
+from aimoon.adapters.driven.ai import prompt_builder as prompt_builder_mod
 from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
 from aimoon.adapters.driven.ai.pipeline.orchestrator import PipelineOrchestrator
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
@@ -38,10 +39,9 @@ async def _fake_legacy(*a, **k) -> AnalysisReport:
 
 @pytest.fixture
 def _analyzer(monkeypatch):
-    import aimoon.adapters.driven.ai.analyzer as analyzer_mod
     import aimoon.adapters.driven.ai.cache as ai_cache
 
-    monkeypatch.setattr(analyzer_mod, "_detect_industry", lambda s, n: "测试")
+    monkeypatch.setattr(prompt_builder_mod, "detect_industry", lambda s, n: "测试")
     monkeypatch.setattr(ai_cache, "set_analysis_cache", lambda *a, **k: None)
     a = DeepSeekAIAnalyzer(settings=_FakeSettings(), api_key="k", api_url="http://x")
     return a

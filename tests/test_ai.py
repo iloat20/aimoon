@@ -2,6 +2,8 @@
 
 import pytest
 
+from aimoon.adapters.driven.ai.post_processor import sanitize_support_resistance
+
 
 class TestDeepSeekAIAnalyzer:
     """Test DeepSeekAIAnalyzer in mock mode."""
@@ -66,24 +68,20 @@ class TestDeepSeekAIAnalyzer:
         assert len(result.summary) <= 203  # 200 + "..."
 
     def test_sanitize_support_resistance_no_price(self):
-        from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
         from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
-        analyzer = DeepSeekAIAnalyzer(mock=True)
         report = AnalysisReport(
             symbol="600519",
             name="贵州茅台",
             summary="test",
             report_text="AI分析暂不可用，以下为基础数据汇总。",
         )
-        result = analyzer._sanitize_support_resistance(report, None)
+        result = sanitize_support_resistance(report, None)
         assert result.report_text == report.report_text
 
     def test_sanitize_support_resistance(self):
-        from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
         from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
-        analyzer = DeepSeekAIAnalyzer(mock=True)
         report = AnalysisReport(
             symbol="600519",
             name="贵州茅台",
@@ -92,15 +90,13 @@ class TestDeepSeekAIAnalyzer:
         )
         # support 1900 >= current 1800 -> should be overridden to 1800*0.92=1656
         # resistance 1700 <= current 1800 -> should be overridden to 1800*1.08=1944
-        result = analyzer._sanitize_support_resistance(report, 1800.0)
+        result = sanitize_support_resistance(report, 1800.0)
         assert "1656" in result.report_text
         assert "1944" in result.report_text
 
     def test_sanitize_support_normal(self):
-        from aimoon.adapters.driven.ai.analyzer import DeepSeekAIAnalyzer
         from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
-        analyzer = DeepSeekAIAnalyzer(mock=True)
         report = AnalysisReport(
             symbol="600519",
             name="贵州茅台",
@@ -109,7 +105,7 @@ class TestDeepSeekAIAnalyzer:
         )
         # support 1500 < current 1800 (OK)
         # resistance 2000 > current 1800 (OK)
-        result = analyzer._sanitize_support_resistance(report, 1800.0)
+        result = sanitize_support_resistance(report, 1800.0)
         assert result.report_text == report.report_text
 
 
