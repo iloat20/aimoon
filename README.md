@@ -154,7 +154,7 @@ CACHE_DIR=./cache                             # 数据缓存目录
   - `aggregates/stock_analysis.py` — StockAnalysis 聚合根
   - `entities/` — 实体：quote, financial, kline, capital_flow, social, research
   - `value_objects/` — 不可变值对象：KlineBar, DimensionScore, AnalysisReport, CollectResult, FinancialReport
-  - `services/` — 纯领域服务：scoring（评分规则）、symbol resolution
+  - `services/` — 纯领域服务：symbol resolution（注：文档曾描述的 `scoring.py` 评分模块实际并不存在）
   - `repositories/` — 资源库接口（数据访问输入端口）
 
 - **`core/application/`** — 应用层（仅编排）
@@ -243,7 +243,6 @@ src/aimoon/
     │   ├── entities/              # 实体（quote, financial, kline 等）
     │   ├── value_objects/         # 值对象（DimensionScore, AnalysisReport 等）
     │   ├── services/              # 领域服务
-    │   │   ├── scoring.py         # 11 因子评分模型
     │   │   └── symbols.py         # 股票代码解析
     │   └── repositories/          # 资源库接口（端口）
     │       └── stock_analysis_repo.py

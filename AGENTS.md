@@ -57,7 +57,7 @@ aimoon 600519 --mock                       # no API keys needed
   - `aggregates/stock_analysis.py` — StockAnalysis aggregate root
   - `entities/` — Entities with identity: quote, financial, kline, capital_flow, social, research
   - `value_objects/` — Immutable value objects: KlineBar, DimensionScore, AnalysisReport, CollectResult, FinancialReport
-  - `services/` — Pure domain services: scoring, symbol resolution
+  - `services/` — Pure domain services: symbol resolution（注：`scoring.py` 评分模块实际并不存在）
   - `repositories/` — Repository interface (input port for data access)
 
 - **`core/application/`** — Application layer (orchestration only)
@@ -132,5 +132,5 @@ uv run mypy src/aimoon/      # ignore_missing_imports, warn_unused_ignores
 - **East Money guba market code**: SZ stocks use `"0"` not `"2"` in guba URLs. Playwright and HTML fallback must match.
 - **Theme toggle script placement**: Must precede external CDN scripts (chart.js, html2canvas, jspdf) for click handler to attach in time.
 - **Debug scripts in project root**: `debug_toutiao*.py`, `test_fund_flow*.py` are one-shot artifacts, not part of the package.
-- **Tests exist but minimal**: `tests/test_pipeline.py`, `tests/test_scoring.py`. No CI, no pre-commit.
+- **Tests exist but minimal**: `tests/test_pipeline.py`, `tests/test_orchestrator_wiring.py`. No CI, no pre-commit.
 - **Testing domain logic**: All domain services (`core/domain/services/`) are pure functions — test directly without any mocks or IO.
