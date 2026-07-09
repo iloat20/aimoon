@@ -5,7 +5,6 @@ Extracted to eliminate cross-module DRY duplication (audit P2.2):
 - ``_first_year_ocf``           (was duplicated in valuation.py + fcf_dividend.py)
 - ``_first_year_investing``     (was duplicated in valuation.py + fcf_dividend.py)
 - ``_capex``                   (was duplicated in valuation.py + fcf_dividend.py)
-- ``_hist_pe_anchor``          (was duplicated in risk_quant.py + scenario_prob.py)
 """
 from __future__ import annotations
 
@@ -38,16 +37,3 @@ def _capex(ocf: float, investing_cf: float) -> float:
     if ocf > 0:
         return ocf * INDUSTRIAL_CAPEX_OCF_RATIO
     return 0.0
-
-
-def _hist_pe_anchor(fin_temporal: dict | None) -> float:
-    """近 N 年 PE 均值 (估值历史锚); 缺失返 0.0。"""
-    if not fin_temporal:
-        return 0.0
-    years = fin_temporal.get("years") or []
-    vals: list[float] = []
-    for y in years:
-        pe = float((y.get("pe") if isinstance(y, dict) else 0) or 0.0)
-        if pe > 0:
-            vals.append(pe)
-    return sum(vals) / len(vals) if vals else 0.0

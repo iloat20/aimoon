@@ -10,13 +10,10 @@ import math
 
 from aimoon.core.domain.entities.quote import StockQuote
 
-from ._common import _hist_pe_anchor
-
 logger = logging.getLogger(__name__)
 
 # 风险量化阈值与系数 (extracted from inline magic numbers, audit P2.5)
 ROE_DROP_TRIGGER_PP = 0.03       # ROE 压缩触发阈值 (3pp)
-PE_OVERHIST_MULT = 1.3            # PE 超历史均值 30% 视为偏高
 PE_ABS_HIGH = 40                  # PE 绝对高位阈值
 PB_ABS_HIGH = 10                  # PB 绝对高位阈值
 OCF_RATIO_WARN = 0.6             # OCF/净利 含金量预警线
@@ -28,7 +25,6 @@ NP_CAGR_IMPACT_COEF = 25          # 净利CAGR 影响系数
 NP_CAGR_IMPACT_CAP = 8.0          # 净利下滑 impact 上限
 ROE_DROP_IMPACT_COEF = 200        # ROE 压缩影响系数
 ROE_IMPACT_CAP = 20.0            # ROE 压缩 impact 上限
-PE_OVERHIST_IMPACT_COEF = 30       # PE 超历史影响系数
 PE_IMPACT_CAP = 30.0             # PE 偏高 impact 上限
 PB_ABS_IMPACT_COEF = 3.0          # PB 偏高影响系数
 PB_IMPACT_CAP = 25.0            # PB 偏高 impact 上限
@@ -126,25 +122,10 @@ def _build_bears(fin: dict, quote: StockQuote) -> list[dict[str, object]]:
                 }
             )
 
-    # ③ 估值偏高 (PE 绝对值 + 历史分位)
-    # 注:_hist_pe_anchor 依赖逐年 PE 序列,但 PE 是行情快照、未随财报采集,
-    # 故当前恒返回 0(历史分位分支按设计不触发),仅保留 PE>40 绝对值兜底。
-    if pe > 0:
-        hist_anchor = _hist_pe_anchor(fin)
-        if hist_anchor > 0 and pe > hist_anchor * PE_OVERHIST_MULT:
-            bears.append(
-                {
-                    "theme": "估值偏高(PE)",
-                    "trigger_condition": (
-                        f"当前 PE {pe:.1f} 超过近三年均值上轨 {hist_anchor * 1.3:.1f};"
-                        f"若 PE 回落至 {hist_anchor:.1f} 以下区间则看空压力释放"
-                    ),
-                    "impact_pct": round(
-                        min((pe / hist_anchor - 1) * PE_OVERHIST_IMPACT_COEF, PE_IMPACT_CAP), 1
-                    ),
-                }
-            )
-        elif pe > 40:
+    # ③ 估值偏高 (PE 绝对值兜底)
+    # 注:历史 PE 分位比较依赖逐年 PE 序列,但 PE 是行情快照、未随财报采集,
+    # 该信号不可得,故仅保留 PE>40 绝对值兜底。
+    if pe > 40:
             bears.append(
                 {
                     "theme": "估值偏高(PE)",

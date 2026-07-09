@@ -24,8 +24,6 @@ import logging
 from aimoon.adapters.driven.ai.tools._safe import tool_safe
 from aimoon.core.domain.entities.quote import StockQuote
 
-from ._common import _hist_pe_anchor
-
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +126,6 @@ def _assign_probs(
     rev_cagr = float(fin_temporal.get("revenue_cagr") or 0.0) if fin_temporal else 0.0
     ocf_ratio = float(fin_temporal.get("ocf_profit_ratio") or 0.0) if fin_temporal else 0.0
     roe_trend = (fin_temporal.get("roe_trend") or []) if fin_temporal else []
-    pe = float(quote.pe or 0.0)
 
     # 乐观驱动分:增长 + 盈利质量
     growth_score = max(0.0, min(1.0, (rev_cagr + 0.05) / 0.20))  # cagr -5%~15% → 0~1
@@ -142,10 +139,7 @@ def _assign_probs(
         latest = roe_trend[0]
         drop = max(0.0, peak - latest)
         cons_w += min(0.25, drop * 3.0)
-    # 历史 PE 分位:依赖逐年 PE 序列(未采集,恒为 0),该分支按设计不触发。
-    hist_anchor = _hist_pe_anchor(fin_temporal)
-    if hist_anchor > 0 and pe > hist_anchor * 1.15:
-        cons_w += min(0.20, (pe / hist_anchor - 1.0) * 0.6)
+    # 历史 PE 分位信号依赖逐年 PE 序列(未采集),此处不再评估。
 
     cons_w = max(0.05, min(0.6, cons_w))
     opt_w = max(0.05, min(0.6, opt_w))

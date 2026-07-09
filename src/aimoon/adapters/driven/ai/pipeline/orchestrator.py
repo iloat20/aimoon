@@ -223,7 +223,7 @@ class PipelineOrchestrator:
                     timeout=COMPILE_TIMEOUT,
                 )
             except TimeoutError:
-                logger.warning("[pipeline] COMPILE 超时 300s, 降级")
+                logger.warning("[pipeline] COMPILE 超时 480s, 降级")
                 compile_result = _partial("timeout")
             except Exception as e:
                 logger.warning("[pipeline] COMPILE 异常 %s: %s", type(e).__name__, e)

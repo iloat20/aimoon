@@ -227,7 +227,8 @@ class AkshareFinancialAdapter:
 
     def _parse_income_statement(self, result: FinancialData, df: pd.DataFrame) -> None:
         """Parse income statement DataFrame into FinancialData."""
-        result.report_period = str(_get_col(df, "REPORT_DATE"))[:10]
+        _rp = _get_col(df, "REPORT_DATE")
+        result.report_period = str(_rp)[:10] if pd.notna(_rp) else ""
 
         revenue = _safe_float(_get_col(df, "TOTAL_OPERATE_INCOME"))
         if revenue > 0:
@@ -396,9 +397,10 @@ class AkshareFinancialAdapter:
     @staticmethod
     def _parse_quarterly(df: pd.DataFrame, symbol: str, report_type: str) -> QuarterlyFinancialData:
         """Parse quarterly DataFrame into QuarterlyFinancialData."""
+        _rp = _get_col(df, "REPORT_DATE")
         result = QuarterlyFinancialData(
             symbol=symbol,
-            report_period=str(_get_col(df, "REPORT_DATE"))[:10],
+            report_period=str(_rp)[:10] if pd.notna(_rp) else "",
             report_type=report_type,
             source="akshare(东方财富)",
         )

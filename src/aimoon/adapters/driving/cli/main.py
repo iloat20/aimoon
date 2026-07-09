@@ -86,7 +86,8 @@ def main() -> None:
     try:
         use_v2 = not bool(args.legacy)
         # 默认 single_call(跳过自检与 COMPILE,仅 ANALYSIS);--two-phase 显式保留全部阶段
-        use_two_phase = bool(args.two_phase)
+        # --single-call 显式覆盖 --two-phase;两者都未给时默认 single_call
+        use_two_phase = bool(args.two_phase) and not args.single_call
         use_single_call = not use_two_phase
         orchestrator = PipelineOrchestrator(
             output_dir=args.output, mock_mode=mock_mode, use_v2=use_v2,

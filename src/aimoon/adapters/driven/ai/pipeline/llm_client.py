@@ -13,7 +13,7 @@ from .types import AnalyzerRuntime
 logger = logging.getLogger(__name__)
 
 # Dedicated long-timeout client for LLM calls (analyzer path uses short-timeout).
-LLM_CLIENT_TIMEOUT = 300.0
+LLM_CLIENT_TIMEOUT = 500.0  # > COMPILE_TIMEOUT(480), 让 orchestrator 的 asyncio.wait_for 先触发
 
 # reasoning_effort 仅 DeepSeek 思考(reasoner)模型支持; 普通 chat 模型传此参数
 # 会被 API 拒绝。据此守卫,既保证 reasoner 质量,又允许用户用 DEEPSEEK_MODEL=deepseek-chat
