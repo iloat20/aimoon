@@ -90,3 +90,44 @@ def parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
             except (json.JSONDecodeError, ValueError):
                 pass
     return None, []
+
+
+def parse_skeleton_json(text: str) -> dict | None:
+    """Extract a JSON object from LLM output text.
+
+    Tries (in order):
+    1. ```json code fence
+    2. First { ... } block (greedy outermost)
+    3. json.loads on the whole text
+
+    Returns parsed dict or None on failure.
+    """
+    if not text or not text.strip():
+        return None
+    # 1. Prefer ```json fence
+    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    if m:
+        try:
+            parsed = json.loads(m.group(1).strip())
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # 2. Outermost braces
+    first = text.find("{")
+    last = text.rfind("}")
+    if first >= 0 and last > first:
+        try:
+            parsed = json.loads(text[first : last + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # 3. Whole text
+    try:
+        parsed = json.loads(text.strip())
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
