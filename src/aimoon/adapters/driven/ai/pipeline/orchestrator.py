@@ -167,7 +167,8 @@ class PipelineOrchestrator:
 
         ctx.phase_results[Phase.ANALYSIS.value] = analysis_result
         ctx.system_tables_md = str(prior.get("tables_md") or "")
-        ctx.skeleton = prior.get("skeleton") if isinstance(prior.get("skeleton"), dict) else None
+        _skel = prior.get("skeleton")
+        ctx.skeleton = _skel if isinstance(_skel, dict) else None
 
         if analysis_result.get("empty_analysis"):
             ctx.partial_phases.append(Phase.ANALYSIS.value)
@@ -187,6 +188,8 @@ class PipelineOrchestrator:
 
         # Phase 1.5: SELF_CHECK — 程序化校验(0 LLM)
         skeleton = prior.get("skeleton")
+        if not isinstance(skeleton, dict):
+            skeleton = None
         if skeleton and not skip_self_check:
             try:
                 sc_result = await self._phase_self_check(
