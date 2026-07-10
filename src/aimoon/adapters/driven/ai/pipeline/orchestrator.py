@@ -813,7 +813,8 @@ def _verify_and_fix(
 
         if res.mismatches and get_settings().self_check_rewrite_enabled:
             fixed = self_check_rewrite(report_md, res.mismatches, facts, llm=llm)
-            summary["corrected"] = len(res.mismatches)
+            actually_fixed = sum(1 for m in res.mismatches if m.snippet not in fixed)
+            summary["corrected"] = actually_fixed
             report_md = fixed
         elif res.mismatches:
             summary["uncertain"] = [m.snippet for m in res.mismatches]
