@@ -42,3 +42,12 @@ class StockAnalysisRepository(ABC):
         Returns:
             各平台采集结果列表
         """
+
+    async def close(self) -> None:
+        """释放底层资源（浏览器、连接池等）。
+
+        默认空操作；实现类（如 CompositeStockAnalysisRepository）应在
+        **同一事件循环内**关闭 Playwright 浏览器等资源，避免进程退出时
+        asyncio transport 收尾噪声（Windows ProactorEventLoop 的已知坑）。
+        """
+        return None

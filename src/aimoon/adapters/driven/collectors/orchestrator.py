@@ -85,6 +85,15 @@ class CollectorOrchestrator:
     def last_results(self) -> tuple[CollectResult, ...]:
         return self._last_results
 
+    async def close(self) -> None:
+        """释放资源：关闭共享 Playwright 浏览器。
+
+        必须在创建浏览器所用的**同一事件循环**内调用，否则其 asyncio
+        transport 会在循环关闭后被 GC，于进程退出时打印无害但刺眼的
+        ``Exception ignored ... unclosed transport`` 噪声（Windows Proactor）。
+        """
+        await self._social_collector.shutdown()
+
     async def orchestrate(self, symbol: str, name: str = "") -> CollectPayload:
         """执行完整编排流程，返回不可变 CollectPayload。"""
         t0 = time.monotonic()

@@ -56,3 +56,7 @@ class CompositeStockAnalysisRepository(StockAnalysisRepository):
     async def get_collect_results(self) -> list[CollectResult]:
         """获取各数据源的采集结果详情（向后兼容）。"""
         return list(self._orchestrator.last_results)
+
+    async def close(self) -> None:
+        """关闭底层采集器资源（浏览器等），应在同一事件循环内调用。"""
+        await self._orchestrator.close()

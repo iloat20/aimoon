@@ -73,6 +73,7 @@ class PipelineOrchestrator:
             elapsed = int((time.monotonic() - t0) * 1000)
             results = await repo.get_collect_results()
             print(render_run_summary(list(results), total_elapsed_ms=elapsed, skip_ai=skip_ai))
+            await repo.close()
             return report_path
 
     async def run_mock(self, symbol: str, name: str) -> Path:
@@ -98,4 +99,5 @@ class PipelineOrchestrator:
         elapsed = int((time.monotonic() - t0) * 1000)
         results = await repo.get_collect_results()
         print(render_run_summary(list(results), total_elapsed_ms=elapsed, skip_ai=False))
+        await repo.close()
         return report_path
