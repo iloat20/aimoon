@@ -39,6 +39,11 @@ _ALIASES_SORTED: list[str] = sorted(
     reverse=True,
 )
 
+# 当前架构下无法抽取、缺失时不判虚构的指标。
+# 例：现价 price —— _ToolContext 不含 quote 实体，price 取不到，缺失属预期，
+# 不应把报告里的「现价 XXX 元」误判为虚构指标。
+_OPTIONAL_METRICS: frozenset[str] = frozenset({"price"})
+
 # 中文指标词 / 英文缩写 -> facts 键。
 _METRIC_ALIASES: dict[str, str] = {
     # 市盈率
@@ -109,7 +114,7 @@ def _normalize_metric(word: str) -> str | None:
 def _parse_number(num_str: str, unit: str) -> float | None:
     """解析抽出数字 × 单位系数；失败返回 None。"""
     try:
-        value = float(num_str)
+        value = float(num_str.replace(",", ""))
     except (TypeError, ValueError, AttributeError):
         return None
     factor = _UNIT_FACTORS.get(unit, 1.0)
@@ -120,10 +125,11 @@ def _parse_number(num_str: str, unit: str) -> float | None:
 # 例："PE 为 21.3" / "市盈率21.3" / "PE21.3" / "营收200亿" / "营收达 200 万元"
 # metric 用惰性匹配 + 显式连接词集合，避免把"达"等连接动词吞进指标词。
 # conn 设为可选（*）以便匹配指标词与数字直接相邻、无分隔符的写法（如"市盈率21.3"）。
+_NUM_RE = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 _CLAIM_RE = re.compile(
     r"(?P<metric>[A-Za-z\u4e00-\u9fff]+?)"
-    r"(?P<conn>(?:为|达|约|是|有|共|至|到|：|:|，|。|、|\(|（|\s)*)"
-    r"(?P<num>\d+(?:\.\d+)?)"
+    r"(?P<conn>(?:为|达|约|是|有|共|至|到|：|:|=|，|。|、|\(|（|\s)*)"
+    r"(?P<num>" + _NUM_RE + r")"
     r"\s*"
     r"(?P<unit>亿|万元|万|元)?"
 )
@@ -172,6 +178,8 @@ def reconcile(report_md: str, facts: dict) -> ReconcileResult:
             occurrences.setdefault(key, []).append((claimed_value, snippet, num_str))
 
             if key not in facts:
+                if key in _OPTIONAL_METRICS:
+                    continue  # 取不到即跳过，不误判虚构（如现价 price）
                 # facts 里不存在该指标却被断言 => 虚构指标
                 result.mismatches.append(
                     Mismatch(

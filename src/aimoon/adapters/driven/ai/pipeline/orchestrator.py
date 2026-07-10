@@ -811,13 +811,24 @@ def _verify_and_fix(
             "checked": res.checked, "corrected": 0, "uncertain": [],
         }
 
-        if res.mismatches and get_settings().self_check_rewrite_enabled:
-            fixed = self_check_rewrite(report_md, res.mismatches, facts, llm=llm)
-            actually_fixed = sum(1 for m in res.mismatches if m.snippet not in fixed)
+        # critical（虚构指标）永不自动重写，仅标记 uncertain 让用户可见。
+        uncertain: list[str] = []
+        critical = [m for m in res.mismatches if m.severity == "critical"]
+        fixable = [m for m in res.mismatches if m.severity != "critical"]
+        if critical:
+            uncertain.extend(m.snippet for m in critical)
+
+        if fixable and get_settings().self_check_rewrite_enabled:
+            fixed = self_check_rewrite(report_md, fixable, facts, llm=llm)
+            actually_fixed = sum(1 for m in fixable if m.snippet not in fixed)
             summary["corrected"] = actually_fixed
             report_md = fixed
-        elif res.mismatches:
-            summary["uncertain"] = [m.snippet for m in res.mismatches]
+        elif fixable:
+            # 重写关闭时，可修复疑点也标记 uncertain 让用户知悉。
+            uncertain.extend(m.snippet for m in fixable)
+
+        if uncertain:
+            summary["uncertain"] = uncertain
 
         return (report_md, summary)
     except Exception as e:  # noqa: BLE001 - 任何异常都保底返回原报告

@@ -43,8 +43,8 @@
   - `pipeline/prompts/domain_knowledge.md`：A股领域知识包（涨跌停规则/北向停披/估值锚/幻觉陷阱/引用纪律），在 `phases.phase_system_prompt` 的 `Phase.DIRECT` 分支用 `load_prompt("domain_knowledge.md")` 前置拼进系统提示（静态前缀，不影响 DeepSeek 前缀缓存）。
   - `direct_web_search_enabled=False`（默认关）：DIRECT 前接 `execute_web_search` 拉近期催化注入 user message；关时行为不变。
 - 护栏层（`_verify_and_fix`，在 orchestrator 内，全程 try/except 不阻断报告）：
-  - `report_reconciler.reconcile(report_md, facts)`：0-LLM 数字对账。从正文抽「指标词+数字(+单位)」，与 `facts` 字典对账。分级 critical(虚构指标=表内无此键) / medium(数值超容差5%或单位混淆亿/万) / 跨节矛盾(同指标两值超容差)。facts 由 `_build_assertable_facts(tool_ctx)` 从 `_ToolContext.tool_results` 抽（pe_ttm/pb/target_base/roe/revenue）；**注意 `_ToolContext` 无 quote 实体，price 暂未进 facts**。
-  - `self_check_rewrite(report_md, mismatches, facts, llm)`：疑点非空时调一次 LLM（`thinking=False` 非流式，独立线程 asyncio.run）只回改正句；安全护栏——改正句须含系统表正确值才替换，否则保留原文。**critical(虚构指标 expected="<absent>") 永不自动重写**（无正确值可验证），留待页脚标注。
+  - `report_reconciler.reconcile(report_md, facts)`：0-LLM 数字对账。从正文抽「指标词+数字(+单位)」，与 `facts` 字典对账。分级 critical(虚构指标=表内无此键) / medium(数值超容差5%或单位混淆亿/万) / 跨节矛盾(同指标两值超容差)。facts 由 `_build_assertable_facts(tool_ctx)` 从 `_ToolContext.tool_results` 抽（pe_ttm/pb/target_base/roe/revenue）；**price 因 `_ToolContext` 无 quote 实体而缺失，已在 reconcile 端列入 `_OPTIONAL_METRICS` 跳过（不误判 fiction，第二十二轮）**。正则覆盖 `=` 等号写法与千分位 `1,680`。
+  - `self_check_rewrite(report_md, mismatches, facts, llm)`：疑点非空时调一次 LLM（`thinking=False` 非流式，独立线程 asyncio.run）只回改正句；安全护栏——改正句须含系统表正确值才替换，否则保留原文。**critical(虚构指标 expected="<absent>") 永不自动重写**（无正确值可验证），由 `_verify_and_fix` 显式过滤进 credibility 页脚 `uncertain` 列表让用户可见（第二十二轮加固，不再依赖 `<absent>` 侥幸拦截）。
   - 成本：对账 0-LLM；自检仅疑点非空时触发且关思考。
 - 可追溯层：direct.md 加「引用纪律」段（关键数字内联标注来源表名）；报告末尾「数据可信度」页脚（`report/templates/index.html`，amber 调），显示 checked/corrected/uncertain；credibility 透传链：`orchestrator ctx.credibility` → `analyzer.model_copy(credibility=...)`（frozen 模型须 model_copy）→ `AnalysisReport.credibility` 字段（默认 `{}`）→ `generate(credibility=...)`。
 - 三开关（settings，`aimoon.adapters.driven.config.settings`，`get_settings()`）：`direct_web_search_enabled=False` / `reconcile_enabled=True` / `self_check_rewrite_enabled=True`。
