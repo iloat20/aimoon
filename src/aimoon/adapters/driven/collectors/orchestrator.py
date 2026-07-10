@@ -142,6 +142,7 @@ class CollectorOrchestrator:
             ok=lambda d: d and d.report_period,
             msg=lambda d: f"   财务: 报告期 {d.report_period} | ROE: {d.roe}% [来源: {d.source}]",
             fail="   财务: 获取失败。", elapsed_ms=elapsed_ms, results=results,
+            count=lambda d: 1 if (d and d.report_period) else 0,
         )
         quarterly = self._unwrap(
             gathered[1], QuarterlyFinancialData, symbol=symbol, platform="财务数据(季报)",
@@ -151,6 +152,7 @@ class CollectorOrchestrator:
                 f" [来源: {d.source}]"
             ),
             fail="   季报: 获取失败。", elapsed_ms=elapsed_ms, results=results,
+            count=lambda d: 1 if (d and d.report_period) else 0,
         )
         kline = self._unwrap(
             gathered[2], KlineData, symbol=symbol, platform="K线数据",
@@ -164,6 +166,7 @@ class CollectorOrchestrator:
             ok=lambda d: d and d.source and d.source != "all_failed",
             msg=lambda d: f"   资金流: 主力5日 {d.main_net_5d / 1e8:.2f}亿 [{d.source}]",
             fail="   资金流: 获取失败。", elapsed_ms=elapsed_ms, results=results,
+            count=lambda d: 1 if (d and d.source and d.source != "all_failed") else 0,
         )
         research = self._unwrap(
             gathered[4], ResearchReportData, symbol=symbol, platform="研报数据",
@@ -254,8 +257,15 @@ class CollectorOrchestrator:
     def _unwrap(
         self, result, factory, *, symbol, platform, ok, msg, fail,
         elapsed_ms: int = 0, results: list[CollectResult] | None = None,
+        count: object = None,
     ):
-        """解包 gather 结果：检查成功、报告状态、返回数据。"""
+        """解包 gather 结果：检查成功、报告状态、返回数据。
+
+        ``count`` 可覆盖默认条数计算(默认: bars 长度 / total_count)。
+        对年报/季报/资金流这类"单份快照"型数据,传入
+        ``lambda d: 1 if (d and d.report_period) else 0`` 使成功时显示
+        1 而非误导性的 0。
+        """
         data = factory(symbol=symbol)
         status = "success"
         error = ""
@@ -270,15 +280,21 @@ class CollectorOrchestrator:
         label = msg(data) if is_ok else fail
         self._reporter.report(label)
         if results is not None:
+            if callable(count):
+                item_count = count(data)
+            elif isinstance(count, int):
+                item_count = count
+            else:
+                item_count = (
+                    len(getattr(data, "bars", []))
+                    if hasattr(data, "bars")
+                    else getattr(data, "total_count", 0)
+                )
             results.append(
                 CollectResult(
                     platform=platform,
                     status=status,
-                    count=(
-                        len(getattr(data, "bars", []))
-                        if hasattr(data, "bars")
-                        else getattr(data, "total_count", 0)
-                    ),
+                    count=item_count,
                     elapsed_ms=elapsed_ms,
                     error=error,
                 )
