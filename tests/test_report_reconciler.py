@@ -42,3 +42,18 @@ def test_no_separator_claim_matched():
     # 反例：虚构指标应判 critical
     res2 = reconcile("市盈率99.9明显高估。", {"price": 1685.0})
     assert any(m.severity == "critical" for m in res2.mismatches)
+
+
+def test_cross_section_target_price_conflict():
+    facts = {"target_base": 32.74}
+    report = "保守目标价 32.74。\n\n综合判断目标价 45.00。"  # 同指标两值矛盾
+    res = reconcile(report, facts)
+    assert any(m.metric == "target_base" for m in res.mismatches)
+
+
+def test_reconcile_never_raises_on_garbage():
+    res = reconcile("### 无数字段落 @#$%", {})
+    assert res.checked == 0
+    # 更狠的脏输入也不该抛
+    res2 = reconcile("营收 @#$% 元，PE 为 None。", {"revenue": 200.0})
+    assert isinstance(res2, object)  # 没抛即可

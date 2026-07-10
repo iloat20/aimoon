@@ -3,7 +3,7 @@
 纯函数 reconcile(report_md, facts) 从研报文本中抽出「指标 + 数字」声明，
 与给定的事实表 facts 对账，识别：
 - critical：报告中断言了 facts 里不存在的指标（虚构指标）。
-- medium：数值不符或单位混淆（在容差之外）。
+- medium：数值不符、单位混淆（在容差之外），或同一指标在报告内跨节矛盾。
 
 本模块不依赖任何 LLM，也不抛异常；脏输入在内部兜底。
 """
@@ -28,8 +28,18 @@ class ReconcileResult:
     mismatches: list[Mismatch] = field(default_factory=list)
     checked: int = 0
 
+# 已知别名按长度降序（子串匹配时优先选最长别名）。
+_ALIASES_SORTED: list[str] = sorted(
+    [
+        "市盈率", "pe_ttm", "pettm", "价格", "现价", "股价", "price",
+        "营收", "收入", "revenue", "roe", "净资产收益率", "pb", "市净率",
+        "目标价", "target_base", "target", "pe", "ttm",
+    ],
+    key=len,
+    reverse=True,
+)
 
-# 中文指标词 / 英文缩写 -> facts 键。顺序即别名覆盖优先级（靠前的优先匹配）。
+# 中文指标词 / 英文缩写 -> facts 键。
 _METRIC_ALIASES: dict[str, str] = {
     # 市盈率
     "市盈率": "pe_ttm",
@@ -66,18 +76,41 @@ _UNIT_FACTORS: dict[str, float] = {
     "元": 1.0,
 }
 
+# 数值容差：相对 5% 或绝对 1e-6 取较大者。
+_TOLERANCE_REL = 0.05
+_TOLERANCE_ABS = 1e-6
+
+
+def _tolerance(expected: float) -> float:
+    return max(abs(expected) * _TOLERANCE_REL, _TOLERANCE_ABS)
+
 
 def _normalize_metric(word: str) -> str | None:
-    """将抽取到的指标词归一化为 facts 键；无法识别返回 None。"""
+    """将抽取到的指标词归一化为 facts 键；无法识别返回 None。
+
+    先尝试精确匹配；失败再退化为「子串包含」匹配，以容纳被前后文中文
+    字符吞入的指标词（例如「保守目标价」中含「目标价」）。子串匹配优先
+    取最长别名，避免短别名误吞（如「价」不会单独命中）。
+    """
     key = word.strip().lower()
-    return _METRIC_ALIASES.get(key)
+    exact = _METRIC_ALIASES.get(key)
+    if exact is not None:
+        return exact
+    best: str | None = None
+    for alias in _ALIASES_SORTED:
+        if alias in key:
+            best = alias
+            break  # _ALIASES_SORTED 已按长度降序，首个即最长
+    if best is None:
+        return None
+    return _METRIC_ALIASES[best]
 
 
 def _parse_number(num_str: str, unit: str) -> float | None:
     """解析抽出数字 × 单位系数；失败返回 None。"""
     try:
         value = float(num_str)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
         return None
     factor = _UNIT_FACTORS.get(unit, 1.0)
     return value * factor
@@ -96,6 +129,14 @@ _CLAIM_RE = re.compile(
 )
 
 
+def _to_float(value: object) -> float | None:
+    """把 facts 值安全转成 float；任何异常返回 None。"""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def reconcile(report_md: str, facts: dict) -> ReconcileResult:
     """对研报文本与事实表做数字对账，返回纯数据结果。
 
@@ -109,49 +150,78 @@ def reconcile(report_md: str, facts: dict) -> ReconcileResult:
     if not isinstance(report_md, str) or not isinstance(facts, dict):
         return result
 
-    for match in _CLAIM_RE.finditer(report_md):
-        metric_word = match.group("metric")
-        num_str = match.group("num")
-        unit = match.group("unit") or ""
+    # key -> [(claimed_value, snippet, num_str), ...]：记录每节抽取到的声明，供跨节矛盾复用。
+    occurrences: dict[str, list[tuple[float, str, str]]] = {}
 
-        key = _normalize_metric(metric_word)
-        if key is None:
-            continue  # 不是已知指标词，跳过
+    try:
+        for match in _CLAIM_RE.finditer(report_md):
+            metric_word = match.group("metric")
+            num_str = match.group("num")
+            unit = match.group("unit") or ""
 
-        claimed_value = _parse_number(num_str, unit)
-        if claimed_value is None:
-            continue  # 数字解析失败，跳过
+            key = _normalize_metric(metric_word)
+            if key is None:
+                continue  # 不是已知指标词，跳过
 
-        result.checked += 1
+            claimed_value = _parse_number(num_str, unit)
+            if claimed_value is None:
+                continue  # 数字解析失败，跳过
 
-        if key not in facts:
-            # facts 里不存在该指标却被断言 => 虚构指标
-            result.mismatches.append(
-                Mismatch(
-                    snippet=match.group(0),
-                    claimed=num_str,
-                    expected="<absent>",
-                    metric=key,
-                    severity="critical",
+            snippet = match.group(0)
+            result.checked += 1
+            occurrences.setdefault(key, []).append((claimed_value, snippet, num_str))
+
+            if key not in facts:
+                # facts 里不存在该指标却被断言 => 虚构指标
+                result.mismatches.append(
+                    Mismatch(
+                        snippet=snippet,
+                        claimed=num_str,
+                        expected="<absent>",
+                        metric=key,
+                        severity="critical",
+                    )
                 )
-            )
-            continue
+                continue
 
-        try:
-            expected_value = float(facts[key])
-        except (TypeError, ValueError):
-            continue
+            expected_value = _to_float(facts[key])
+            if expected_value is None:
+                continue  # facts 值无法转成数字，跳过
 
-        tolerance = max(abs(expected_value) * 0.05, 1e-6)
-        if abs(claimed_value - expected_value) > tolerance:
-            result.mismatches.append(
-                Mismatch(
-                    snippet=match.group(0),
-                    claimed=f"{claimed_value:g}",
-                    expected=f"{expected_value:g}",
-                    metric=key,
-                    severity="medium",
+            if abs(claimed_value - expected_value) > _tolerance(expected_value):
+                result.mismatches.append(
+                    Mismatch(
+                        snippet=snippet,
+                        claimed=f"{claimed_value:g}",
+                        expected=f"{expected_value:g}",
+                        metric=key,
+                        severity="medium",
+                    )
                 )
-            )
+    except Exception:
+        # 极端脏输入兜底：主体异常也不外抛，返回已收集结果。
+        return result
+
+    # 跨节矛盾检测：同一指标键在报告内被抽取到 ≥2 个相互超容差的不同数值。
+    # 仅对 facts 中存在的指标触发（虚构指标已由 critical 处理，不再叠加）。
+    try:
+        for key, occs in occurrences.items():
+            if key not in facts or len(occs) < 2:
+                continue
+            first_value = occs[0][0]
+            for value, snippet, _num_str in occs[1:]:
+                if abs(value - first_value) > _tolerance(first_value):
+                    result.mismatches.append(
+                        Mismatch(
+                            snippet=f"跨节矛盾：{snippet}",
+                            claimed=f"{value:g}",
+                            expected=f"{first_value:g}",
+                            metric=key,
+                            severity="medium",
+                        )
+                    )
+    except Exception:
+        # 跨节检测异常同样不外抛。
+        pass
 
     return result
