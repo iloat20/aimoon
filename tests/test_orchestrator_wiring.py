@@ -114,7 +114,6 @@ async def _run_phase(monkeypatch):
         prior={},
         reports=None,
         financial_md_path=None,
-        use_fast=False,
     )
 
 

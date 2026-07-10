@@ -51,47 +51,6 @@ async def run_peer_compare(si: object, search_fn: Callable[..., Any]) -> dict:
     return await peer_run(name=name, self_fin=self_fin, search_fn=search_fn)
 
 
-def parse_self_check_json(text: str) -> tuple[dict | None, list[str]]:
-    """Parse self-check JSON from LLM response text.
-
-    Tries ``json`` code fence first, then falls back to finding any JSON
-    object containing a ``passed`` key.  Returns ``(parsed_dict, fixes_list)``
-    or ``(None, [])`` on failure.
-    """
-    # 1. Prefer ```json fence
-    m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if m:
-        try:
-            parsed = json.loads(m.group(1).strip())
-            if isinstance(parsed, dict):
-                fixes = parsed.get("fixes_needed", [])
-                return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-        except (json.JSONDecodeError, ValueError):
-            pass
-    # 2. Fallback: find any { ... } containing "passed"
-    for match in re.finditer(r"\{[^{}]*\}", text):
-        try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict) and "passed" in parsed:
-                fixes = parsed.get("fixes_needed", [])
-                return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-        except (json.JSONDecodeError, ValueError):
-            continue
-    # 3. Last resort: find outermost braces
-    last_brace = text.rfind("}")
-    if last_brace > 0:
-        first_brace = text.rfind("{", 0, last_brace)
-        if first_brace >= 0:
-            try:
-                parsed = json.loads(text[first_brace : last_brace + 1])
-                if isinstance(parsed, dict):
-                    fixes = parsed.get("fixes_needed", [])
-                    return parsed, [str(f) for f in fixes if isinstance(f, (str, int, float))]
-            except (json.JSONDecodeError, ValueError):
-                pass
-    return None, []
-
-
 def parse_skeleton_json(text: str) -> dict | None:
     """Extract a JSON object from LLM output text.
 

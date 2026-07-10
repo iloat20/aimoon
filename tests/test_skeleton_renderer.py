@@ -51,6 +51,16 @@ def test_renders_all_sections():
     assert "1800" in md
 
 
+def test_dupont_partial_none_does_not_crash():
+    # 回归：杜邦只给 net_margin、漏掉 turnover/leverage（"无值写 null"）时
+    # 渲染器不得抛 TypeError，否则 0-LLM 降级会退化为"数据不可用"兜底。
+    data = _valid()
+    data["forensic_audit"]["dupont"] = {"net_margin": 0.52}
+    md = render_skeleton_md(data)
+    assert "杜邦拆解" in md
+    assert "N/A" in md  # 缺失字段安全兜底
+
+
 def test_renders_empty_skeleton():
     md = render_skeleton_md(None)
     assert "数据缺失" in md or "暂不可用" in md
@@ -60,3 +70,14 @@ def test_includes_probabilities():
     md = render_skeleton_md(_valid())
     assert "70%" in md or "0.7" in md
     assert "42%" in md or "0.42" in md
+
+
+def test_renders_data_inference():
+    # 降级路径应展开 data_inference（compile.md 要求，原遗漏）
+    data = _valid()
+    data["data_inference"] = [
+        {"field": "fcf", "formula": "fcf≈经营现金流", "price_impact": "±5%"},
+    ]
+    md = render_skeleton_md(data)
+    assert "缺失数据反推" in md
+    assert "fcf" in md

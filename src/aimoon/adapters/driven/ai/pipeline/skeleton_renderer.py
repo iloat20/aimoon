@@ -12,6 +12,13 @@ from typing import Any
 from .skeleton_schema import AnalysisSkeleton
 
 
+def _fmt2(x: Any) -> str:
+    """格式化两位小数；None 或非数字返回 N/A（安全兜底，避免降级渲染崩溃）。"""
+    if isinstance(x, (int, float)):
+        return f"{x:.2f}"
+    return "N/A"
+
+
 def render_skeleton_md(raw: Any) -> str:
     """Render a skeleton dict (or None) into a readable Markdown report."""
     if raw is None:
@@ -32,6 +39,14 @@ def render_skeleton_md(raw: Any) -> str:
     except Exception:
         return _render_raw(data)
 
+    try:
+        return _build_skeleton_md(sk)
+    except Exception:
+        # 安全网：渲染任何异常都不得中断降级报告（0-LLM 降级保证）
+        return _render_raw(data)
+
+
+def _build_skeleton_md(sk: AnalysisSkeleton) -> str:
     lines: list[str] = ["# 分析报告（骨架渲染）\n"]
 
     # Narratives
@@ -52,8 +67,8 @@ def render_skeleton_md(raw: Any) -> str:
     d = fa.dupont
     if d.net_margin is not None:
         lines.append(
-            f"\n**杜邦拆解**：净利率 {d.net_margin:.2f}"
-            f" * 周转率 {d.turnover:.2f} * 杠杆 {d.leverage:.2f}"
+            f"\n**杜邦拆解**：净利率 {_fmt2(d.net_margin)}"
+            f" * 周转率 {_fmt2(d.turnover)} * 杠杆 {_fmt2(d.leverage)}"
         )
     lines.append(f"\n**盈利质量评分：{fa.quality_score}/10**")
     if fa.red_flags:
@@ -63,7 +78,10 @@ def render_skeleton_md(raw: Any) -> str:
     v = sk.valuation
     t = v.targets
     lines.append("## 估值与目标价\n")
-    lines.append(f"- 保守：{t.conservative} | 中性：{t.neutral} | 乐观：{t.optimistic}")
+    lines.append(
+        f"- 保守：{_fmt2(t.conservative)} | 中性：{_fmt2(t.neutral)}"
+        f" | 乐观：{_fmt2(t.optimistic)}"
+    )
     if v.implied_g is not None:
         lines.append(f"- 隐含增长率 g*：{v.implied_g:.2%}")
     lines.append(f"- 预期差判断：{v.expectation_gap}\n")
@@ -92,6 +110,21 @@ def render_skeleton_md(raw: Any) -> str:
                 f"-> {br.action_triggered} / 否则 {br.action_else}"
             )
         lines.append("")
+
+    # Missing-data audit & inference (compile.md 要求展开，降级路径不得丢失)
+    if sk.data_inference:
+        lines.append("## 缺失数据反推\n")
+        for di in sk.data_inference:
+            _base = _fmt2(di.base) if di.base is not None else "N/A"
+            lines.append(
+                f"- {di.field}：{di.formula}（基准 {_base}，影响：{di.price_impact}）"
+            )
+        lines.append("")
+    if sk.data_audit:
+        lines.append("## 数据审计\n")
+        lines.append("```json")
+        lines.append(json.dumps(sk.data_audit, ensure_ascii=False, indent=2)[:1500])
+        lines.append("```\n")
 
     lines.append(
         "> WARNING: 本报告由 AI 自动生成（骨架渲染模式），"

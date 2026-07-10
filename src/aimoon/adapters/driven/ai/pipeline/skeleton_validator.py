@@ -68,6 +68,19 @@ def validate_skeleton(raw: Any, tables_md: str = "") -> dict[str, Any]:
                 f"但 ({k.b}*{k.p}-{k.q})/{k.b}={expected_f}"
             )
 
+    # 4b. 半凯利仓位 ≈ f_star * 0.5
+    expected_pos = round(k.f_star * 0.5, 4)
+    if abs(k.position - expected_pos) > _KELLY_TOLERANCE:
+        fixes.append(
+            f"半凯利仓位不一致：position={k.position}，但 f*×0.5={expected_pos}"
+        )
+
+    # 4c. Kelly 概率 p 应与复合看多概率一致
+    if abs(k.p - sk.composite_prob) > _PROB_TOLERANCE:
+        fixes.append(
+            f"Kelly 概率 p 与复合看多概率不一致：p={k.p}，复合概率={sk.composite_prob}"
+        )
+
     # 5. Completeness: valuation targets
     t = sk.valuation.targets
     missing_targets = []

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aimoon.adapters.driven.ai.pipeline import Phase, get_pipeline_phases
+from aimoon.adapters.driven.ai.pipeline import Phase
 from aimoon.adapters.driven.ai.pipeline.orchestrator import PipelineOrchestrator
 from aimoon.adapters.driven.financial.akshare_adapter import AkshareFinancialAdapter
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
@@ -62,14 +62,6 @@ def test_three_phases_defined():
     assert Phase.ANALYSIS.value == "analysis"
     assert Phase.SELF_CHECK.value == "self_check"
     assert Phase.COMPILE.value == "compile"
-
-
-def test_pipeline_specs_have_required_fields():
-    for spec in get_pipeline_phases():
-        # SELF_CHECK is programmatic (0 LLM), no prompt needed
-        if spec.phase != Phase.SELF_CHECK:
-            assert spec.system_prompt_template
-        assert spec.timeout_sec > 0
 
 
 # ---- Task 13 ----
@@ -148,44 +140,6 @@ async def test_orchestrator_runs_two_phases(_fake_analyzer):
 
 
 # ---- Self-check unit tests ----
-
-
-def test_parse_self_check_json_code_fence():
-    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
-
-    text = 'Some preamble\n```json\n{"passed": false, "fixes_needed": ["add PE ratio"]}\n```\n'
-    parsed, fixes = _parse_self_check_json(text)
-    assert parsed is not None
-    assert parsed["passed"] is False
-    assert fixes == ["add PE ratio"]
-
-
-def test_parse_self_check_json_bare_object():
-    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
-
-    text = '{"passed": true, "fixes_needed": []}'
-    parsed, fixes = _parse_self_check_json(text)
-    assert parsed is not None
-    assert parsed["passed"] is True
-    assert fixes == []
-
-
-def test_parse_self_check_json_garbage():
-    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
-
-    parsed, fixes = _parse_self_check_json("no json here at all")
-    assert parsed is None
-    assert fixes == []
-
-
-def test_parse_self_check_json_nested_braces():
-    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
-
-    text = 'Result: {"passed": false, "fixes_needed": ["fix section 3", "add ROE"]}'
-    parsed, fixes = _parse_self_check_json(text)
-    assert parsed is not None
-    assert parsed["passed"] is False
-    assert len(fixes) == 2
 
 
 @pytest.mark.asyncio

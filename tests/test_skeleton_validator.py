@@ -61,3 +61,21 @@ def test_missing_valuation_targets():
     result = validate_skeleton(data, tables_md="")
     assert result["passed"] is False
     assert any("目标价" in f for f in result["fixes_needed"])
+
+
+def test_half_kelly_position_mismatch():
+    # position 应为 f_star × 0.5（半凯利），不一致应被判出问题
+    data = _valid()
+    data["kelly"]["position"] = 0.0  # 漏算半凯利
+    result = validate_skeleton(data, tables_md="")
+    assert result["passed"] is False
+    assert any("半凯利" in f for f in result["fixes_needed"])
+
+
+def test_kelly_p_must_match_composite_prob():
+    # Kelly 概率 p 应与复合看多概率一致
+    data = _valid()
+    data["kelly"]["p"] = 0.90
+    result = validate_skeleton(data, tables_md="")
+    assert result["passed"] is False
+    assert any("p 与复合" in f for f in result["fixes_needed"])

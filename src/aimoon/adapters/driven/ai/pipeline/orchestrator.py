@@ -151,7 +151,6 @@ class PipelineOrchestrator:
             analysis_result = await asyncio.wait_for(
                 self._phase_analysis(
                     si, stock_md, prior, reports, financial_md_path,
-                    use_fast=skip_self_check,
                 ),
                 timeout=ANALYSIS_TIMEOUT,
             )
@@ -192,8 +191,9 @@ class PipelineOrchestrator:
             skeleton = None
         if skeleton and not skip_self_check:
             try:
-                sc_result = await self._phase_self_check(
-                    skeleton, ctx.system_tables_md,
+                sc_result = await asyncio.wait_for(
+                    self._phase_self_check(skeleton, ctx.system_tables_md),
+                    timeout=SELF_CHECK_TIMEOUT,
                 )
             except Exception as e:
                 logger.warning("[pipeline] SELF_CHECK 异常 %s: %s", type(e).__name__, e)
@@ -251,8 +251,6 @@ class PipelineOrchestrator:
         prior: dict,
         reports: dict | None,
         financial_md_path: Path | None,
-        *,
-        use_fast: bool = False,
     ) -> dict:
         """Phase 1: 并行工具 + LLM 输出 JSON 骨架 + (可选) 程序化自检。"""
         from ..web_search_tool import execute_web_search
@@ -380,7 +378,7 @@ class PipelineOrchestrator:
                     )
                 except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
                     logger.error(
-                        "[pipeline] ANALYSIS LLM 传输异常 %s: %s (重试 %d/2)",
+                        "[pipeline] ANALYSIS LLM 传输异常 %s: %s (重试 %d/3)",
                         type(e).__name__, e, _attempt + 1,
                     )
                     skeleton_text = ""
@@ -467,7 +465,7 @@ class PipelineOrchestrator:
                     text = await self._stream_llm_content(messages, reasoning_effort="medium")
                 except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
                     logger.error(
-                        "[pipeline] COMPILE 传输异常 %s: %s (重试 %d/1)",
+                        "[pipeline] COMPILE 传输异常 %s: %s (重试 %d/2)",
                         type(e).__name__, e, _attempt + 1,
                     )
                     text = ""
