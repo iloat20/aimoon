@@ -21,12 +21,20 @@
 - 财务三表（利润/资产/现金）在 `AkshareFinancialAdapter` 内进程级单次拉取记忆化（fetch/quarterly/history 共享）+ 季报(24h)/历史(7d) 磁盘缓存；重复跑不再重拉。
 - 报告 JS 依赖（chart.js/html2canvas/jspdf）已 vendored 到 `report/static/vendor/`，生成时复制到输出 `vendor/`，模板本地引用（离线、零外部请求）。
 - 成本开关：`guba_playwright_enabled=False`（股吧默认 HTML 优先，不启浏览器）、`kline_eastmoney_direct_enabled=True`（K线 L4 回退可关，防 push2his 死链空耗）。
-- AI 成本杠杆（v2 pipeline 默认激活，`cli/pipeline.py` `use_v2=True` → `_pipeline_analyze`）：`deepseek_analysis_effort`（默认 `high`，ANALYSIS 阶段思考强度，可设 `medium`/`low` 省思考 token）+ `deepseek_analysis_max_tokens`（默认 `8192`，ANALYSIS 输出上限，旧默认 16384 余量过大）。COMPILE 固定 `medium`、SELF_CHECK 固定 `low`/2048。`orchestrator.py` 内对此两项的 import 是 `from ...config.settings`（**三个点**，退回 `driven.config`；写两个点是回归 `ModuleNotFoundError: ai.config`）。
-- DeepSeek 前缀缓存自动生效：系统提示（analysis.md/compile.md/self_check.md 固定文本）位于消息最前 = 稳定缓存前缀，同标的复跑天然命中省输入 token，无需额外参数。
+- AI pipeline（2026-07-10 重构为「骨架+扩写」，`cli/pipeline.py` `use_v2=True` → `_pipeline_analyze`）。成本杠杆：`deepseek_analysis_effort`（默认 `high`，ANALYSIS 思考强度，可 `medium`/`low` 省 token）+ `deepseek_analysis_max_tokens`（**默认 `4096`**，ANALYSIS JSON 骨架输出上限，原 8192/16384 余量过大）。`orchestrator.py` 内对此两项 import 是 `from ...config.settings`（**三个点**；写两个点是回归 `ModuleNotFoundError: ai.config`）。
+- DeepSeek 前缀缓存自动生效：系统提示（analysis.md/compile.md 固定文本）位于消息最前 = 稳定缓存前缀，同标的复跑天然命中省输入 token，无需额外参数。
+
+## AI 分析 pipeline（骨架+扩写架构，2026-07-10 重构）
+- 三阶段：`ANALYSIS`（DeepSeek reasoner 输出结构化 JSON 骨架：推理结论+数字+逻辑链，不写完整文章）→ `SELF_CHECK`（**纯 Python 0-LLM** 校验：Kelly 公式 / 概率乘积 / 数字比对 / 必填，见 `skeleton_validator.py`）→ `COMPILE`（基于骨架纯扩写，禁止重新推理，固定 `medium`）。
+- 新增 3 文件：`ai/pipeline/skeleton_schema.py`（Pydantic 骨架模型）/ `skeleton_validator.py`（0-LLM 校验）/ `skeleton_renderer.py`（骨架→MD 降级渲染）。`self_check.md` 提示词已删（校验改程序化）。
+- 降级：任何阶段失败都**不再调 LLM**，改 `skeleton_renderer` 骨架+表格模板渲染（删除了旧 v2 失败→legacy 再调一次的双重成本）。
+- 工具批次：3 批→2 批（`asyncio.create_task` 依赖触发，fcf 提前到批 2）。
+- 预期收益：token -45%、耗时 -40%、降级 0-LLM；实测 pytest 190 passed（6 个 ERROR 属 `.pytest-tmp/` 沙箱环境问题）。
 
 ## 工作区隐患（本机）
 - 持久化钩子在每次写入后篡改文件：`tuple(`→`tuble(`、async 函数前插 `@pytest.mark.asyncio`、import 排序。规避：Write 整文件重写绕过 Edit 守卫；sed 精确替换后立刻跑 pytest 不留间隙；`grep -rc "tuble("` 验证还原。
 
 ## Git
-- 2026-07-10 已将九轮审查全部 14 个提交推上 `origin/main`（`b595497..386cb18`），main 与远端已同步。
-- 推送前确保工作区仅留刻意排除项（`.pytest-tmp/`、`docs/screenshots/`、`src/aimoon/adapters/driven/ai/pipeline/compile.md` 死副本）。
+- 仓库 `git@github.com:iloat20/aimoon.git`（main）。
+- 2026-07-10 十轮审查 + AI pipeline 重构（骨架+扩写，Task 1-10）已落地，本地 main 领先 `origin/main` 多个提交，**待 `git push origin main`**。
+- 刻意排除项（不入库、untracked）：`.pytest-tmp/`、`docs/screenshots/`、`src/aimoon/adapters/driven/ai/pipeline/compile.md` 死副本。`.gitignore` 已加 `.pytest-tmp/`、`docs/screenshots/`。
