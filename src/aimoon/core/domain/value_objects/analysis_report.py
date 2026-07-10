@@ -24,6 +24,8 @@ class AnalysisReport(BaseModel):
     data_warnings: list[str] = Field(default_factory=list)
     data_confidence: dict[str, str] = Field(default_factory=dict)
 
+    credibility: dict[str, object] = Field(default_factory=dict)
+
     investment_advice: str = ""
 
     report_text: str = ""

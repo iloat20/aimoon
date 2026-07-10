@@ -188,6 +188,11 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             md=text,
             current_price=stock_info.quote.price if stock_info.quote else None,
         )
+        # 透传质量护栏产出的可信度摘要(orchestrator 经 to_dict 返回)。
+        # frozen 模型必须用 model_copy,不能就地赋值。
+        credibility = ctx.get("credibility") or {} if isinstance(ctx, dict) else {}
+        if credibility:
+            report = report.model_copy(update={"credibility": credibility})
         # v2 部分阶段降级时,在报告插入可见降级标记(阶段名列表),避免静默丢失。
         partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
         if isinstance(partial, list) and partial:

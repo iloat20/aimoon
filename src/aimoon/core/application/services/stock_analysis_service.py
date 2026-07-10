@@ -81,7 +81,8 @@ async def collect_and_analyze(
     logging.info("生成报告...")
     try:
         report_path = report_generator.generate(
-            stock_analysis, analysis, collect_results, output_dir
+            stock_analysis, analysis, collect_results, output_dir,
+            credibility=analysis.credibility,
         )
     except Exception as e:
         raise RuntimeError(f"生成报告失败: {type(e).__name__}: {e}") from e
