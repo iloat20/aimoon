@@ -17,19 +17,20 @@
 - `FinancialData` 无 `statements` 字段；`_dividend_from_statements` 原依赖 `statements` 恒 None，F1 已改为读 `financial.dividend_paid`，当前正确（无真实 gap）。
 - `scoring.py` 不存在（评分在 `validation/integrity_checker.py`），四文档统一"不存在"口径。
 - 提示词从 `pipeline/prompts/` 加载；根目录 `pipeline/compile.md` 是死副本不被加载。
-- **DeepSeek 模型默认 `deepseek-reasoner`**（旧默认 `deepseek-v4-flash` 是占位符、非公开模型，会 API 400 + 重试 + 静默降级）。`reasoning_effort` 仅 reasoner 发送；`DEEPSEEK_MODEL=deepseek-chat` 可作低成本档位。
-- **本运行环境（`.env`）已锁定**：`DEEPSEEK_MODEL=deepseek-v4-flash` + `DEEPSEEK_ANALYSIS_EFFORT=max` + `DEEPSEEK_REASONER_ENABLED=true`。`deepseek-v4-flash` 是网关对 reasoner 的别名重命名；因名不含 `reasoner`，靠 `deepseek_reasoner_enabled=True` 强制发 `reasoning_effort`（否则 `effort=max` 被静默丢弃）。若实跑出现 API 400 重试降级，先试把该开关改 `false`。
+- **DeepSeek 模型（2026-07 官方口径）**：当前主模型 `deepseek-v4-flash`（**官方真实模型，非网关别名**），`deepseek-v4-pro` 更强（3× 单价、并发 500）；`deepseek-reasoner`/`deepseek-chat` **已于 2026/07/24 弃用**，二者分别等价 v4-flash 的思考/非思考模式。settings 默认 `deepseek_model=deepseek-v4-flash`。
+- **思考模式（`thinking` 参数，默认 enabled）**：`{"thinking":{"type":"enabled/disabled"}}` + `reasoning_effort`(仅思考模式生效)。`reasoning_effort` **官方只有 high/max 两档真实**，`low`/`medium` 被静默映射为 `high`、`xhigh`→`max`——故「降 effort 省 token」只有 high→max 一档；**大幅省钱应直接关思考**。`deepseek_analysis_effort=max` 是真实最深档。思考模式下 `temperature` 被忽略。
+- **本运行环境（`.env`）锁定**：`DEEPSEEK_MODEL=deepseek-v4-flash` + `DEEPSEEK_ANALYSIS_EFFORT=max` + `DEEPSEEK_REASONER_ENABLED=true`（`deepseek_reasoner_enabled` 是 `deepseek_thinking_enabled` 的兼容别名，=true 即强制开启思考+发 effort）。DIRECT/ANALYSIS 走思考+max；COMPILE 已改为**关思考**（纯扩写无需推理，省全部思考 token）。实跑若 API 400 重试降级，先试把思考开关改 `false`。
 - 财务三表（利润/资产/现金）在 `AkshareFinancialAdapter` 内进程级单次拉取记忆化（fetch/quarterly/history 共享）+ 季报(24h)/历史(7d) 磁盘缓存；重复跑不再重拉。
 - 报告 JS 依赖（chart.js/html2canvas/jspdf）已 vendored 到 `report/static/vendor/`，生成时复制到输出 `vendor/`，模板本地引用（离线、零外部请求）。
 - 成本开关：`guba_playwright_enabled=False`（股吧默认 HTML 优先，不启浏览器）、`kline_eastmoney_direct_enabled=True`（K线 L4 回退可关，防 push2his 死链空耗）。
-- AI pipeline（2026-07-10 重构为「骨架+扩写」，`cli/pipeline.py` `use_v2=True` → `_pipeline_analyze`）。成本杠杆：`deepseek_analysis_effort`（默认 `high`，ANALYSIS 思考强度，可 `medium`/`low` 省 token）+ `deepseek_analysis_max_tokens`（**默认 `4096`**，ANALYSIS JSON 骨架输出上限）。`orchestrator.py` 内对此两项 import 是 `from ...config.settings`（**三个点**；写两个点是回归 `ModuleNotFoundError: ai.config`）。
-- DeepSeek 前缀缓存自动生效：系统提示（analysis.md/compile.md 固定文本）位于消息最前 = 稳定缓存前缀，同标的复跑天然命中省输入 token，无需额外参数。
+- AI pipeline（2026-07-10 重构为「骨架+扩写」，`cli/pipeline.py` `use_v2=True` → `_pipeline_analyze`）。成本杠杆：`deepseek_analysis_effort`（默认 `high`，仅 high/max 真实、low/medium 被映射为 high 无降本；DIRECT/ANALYSIS 用 `max`）+ `deepseek_analysis_max_tokens`（**默认 `4096`**，ANALYSIS JSON 骨架上限）+ `deepseek_max_tokens`（DIRECT 完整报告上限，默认 `24576` 防截断）。`orchestrator.py` 内对此两项 import 是 `from ...config.settings`（**三个点**；写两个点是回归 `ModuleNotFoundError: ai.config`）。
+- DeepSeek 前缀缓存（**最大免费杠杆，缓存命中输入 ¥0.02/百万 vs 未命中 ¥1.0/百万 = 50×**）：系统提示（analysis.md/compile.md/direct.md 固定长文本）位于消息最前 = 稳定缓存前缀，同标的复跑天然命中省输入 token，无需额外参数。思考 token(reasoning_content)按**输出**计价(¥2/百万 flash)是主要成本，想省钱优先降 effort(high→max)或关思考。
 
 ## AI 分析 pipeline（两条流：DIRECT 直出 vs 骨架+扩写；DIRECT 为默认，2026-07-10 第十八轮）
 - **DIRECT 流（默认，"完整报告但不扩写"）**：`_gather_tool_context()`（9 工具并行 + 0-LLM 权威表格/摘要）→ **一次 LLM 直出**完整 8 节报告（`_phase_direct`，提示词 `prompts/direct.md`，effort=`deepseek_analysis_effort`、max_tokens=`deepseek_max_tokens`）。不经 JSON 骨架、不做 COMPILE 扩写。`Phase.DIRECT="direct"`，`DIRECT_TIMEOUT=600`。空产出→0-LLM 表格兜底。
   - 触发：`_run_pipeline` 顶部 `direct_mode = use_single_call or use_ultra_fast` → early-return `_run_direct`。CLI 默认 `use_single_call=True` = DIRECT。orchestrator `run()` 默认 flag 全 False（裸 `.run()` = 两阶段骨架流，测试据此）。
   - 为何存在：用户要"完整报告"但"不要扩写"。骨架把丰富推理压扁、COMPILE 再注水 = 两头不讨好；DIRECT 让完整性来自那一次真实推理本身。
-- **骨架+扩写流（`--two-phase` opt-in）**：`ANALYSIS`（reasoner 出 JSON 骨架）→ `SELF_CHECK`（纯 Python 0-LLM 校验，见 `skeleton_validator.py`）→ `COMPILE`（基于骨架纯扩写，固定 `medium`）。
+- **骨架+扩写流（`--two-phase` opt-in）**：`ANALYSIS`（reasoner 出 JSON 骨架，思考+effort）→ `SELF_CHECK`（纯 Python 0-LLM 校验，见 `skeleton_validator.py`）→ `COMPILE`（基于骨架纯扩写，**关思考** `thinking=False` 省全部思考 token，temperature 恢复生效）。
 - `skeleton_renderer.render_skeleton_md()` 曾漏渲染 self_critique/stress_test/valuation.sensitivity/peer_pe，已补全（第十七轮）。
 - 新增 3 文件：`ai/pipeline/skeleton_schema.py`（Pydantic 骨架模型）/ `skeleton_validator.py`（0-LLM 校验）/ `skeleton_renderer.py`（骨架→MD 降级渲染）。`self_check.md` 提示词已删（校验改程序化）。
 - 降级：任何阶段失败都**不再调 LLM**，改 `skeleton_renderer` 骨架+表格模板渲染（删除了旧 v2 失败→legacy 再调一次的双重成本）。

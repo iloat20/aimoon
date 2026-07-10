@@ -98,7 +98,7 @@ class _FakeAnalyzer:
 def _fake_analyzer(monkeypatch):
     fake = _FakeAnalyzer()
 
-    async def _fake_call_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
+    async def _fake_call_llm(self, messages, *, max_tokens=None, reasoning_effort="max", thinking=None):
         import json as _json
         skeleton = {
             "narratives": {
@@ -113,7 +113,7 @@ def _fake_analyzer(monkeypatch):
         }
         return {"role": "assistant", "content": f"```json\n{_json.dumps(skeleton)}\n```"}
 
-    async def _fake_stream_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
+    async def _fake_stream_llm(self, messages, *, max_tokens=None, reasoning_effort="max", thinking=None):
         return "[compiled fake markdown]"
 
     async def _fake_peer_compare_module(si, search_fn):

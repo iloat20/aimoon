@@ -76,7 +76,7 @@ def _wired(monkeypatch):
     }
     monkeypatch.setattr(orch_mod, "TOOL_RUNNERS", fake_runners)
 
-    async def _fake_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
+    async def _fake_llm(self, messages, *, max_tokens=None, reasoning_effort="max", thinking=None):
         return {"role": "assistant", "content": "## 一、概况\n\n(fake draft)"}
 
     monkeypatch.setattr(PipelineOrchestrator, "_call_llm_with_stream", _fake_llm)
@@ -166,7 +166,7 @@ async def test_analysis_retries_on_http_status_error(monkeypatch, _wired):
 
     state = {"calls": 0}
 
-    async def _flaky_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
+    async def _flaky_llm(self, messages, *, max_tokens=None, reasoning_effort="max", thinking=None):
         state["calls"] += 1
         if state["calls"] < 3:
             raise httpx.HTTPStatusError(

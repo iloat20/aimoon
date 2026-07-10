@@ -448,6 +448,7 @@ class PipelineOrchestrator:
                     messages,
                     max_tokens=settings.deepseek_max_tokens,
                     reasoning_effort=effort,
+                    thinking=True,
                 )
             except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
                 logger.error(
@@ -574,9 +575,10 @@ class PipelineOrchestrator:
     async def _phase_compile(self, stock_md: str, prior: dict) -> dict:
         """Phase 2: 基于骨架扩写终稿。
 
-        使用流式调用(reasoning_effort=medium):ANALYSIS 阶段已完成深度推理,
-        终稿阶段只做扩写/格式化,无需再次深邃推理。
-        骨架 JSON 通过 {{ skeleton }} 占位符注入 system prompt。
+        纯扩写/格式化,不做二次推理 —— 关闭思考模式(thinking=disabled)以省下
+        全部思考 token(思考 token 按输出计价,是主要成本)。关闭后 temperature
+        恢复生效(默认 0.3,保证行文自然)。骨架 JSON 通过 {{ skeleton }} 占位符
+        注入 system prompt。
         """
         skeleton = prior.get("skeleton") or {}
         if not skeleton:
@@ -594,7 +596,7 @@ class PipelineOrchestrator:
         try:
             for _attempt in range(2):
                 try:
-                    text = await self._stream_llm_content(messages, reasoning_effort="medium")
+                    text = await self._stream_llm_content(messages, thinking=False)
                 except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
                     logger.error(
                         "[pipeline] COMPILE 传输异常 %s: %s (重试 %d/2)",
@@ -623,9 +625,11 @@ class PipelineOrchestrator:
         *,
         max_tokens: int | None = None,
         reasoning_effort: str = "max",
+        thinking: bool | None = None,
     ) -> dict:
         return await self._llm.call_llm_with_stream(
             messages, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
+            thinking=thinking,
         )
 
     async def _stream_llm_content(
@@ -634,7 +638,9 @@ class PipelineOrchestrator:
         *,
         max_tokens: int | None = None,
         reasoning_effort: str = "high",
+        thinking: bool | None = None,
     ) -> str:
         return await self._llm.stream_llm_content(
             messages, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
+            thinking=thinking,
         )
