@@ -106,7 +106,19 @@ def _fake_analyzer(monkeypatch):
     fake = _FakeAnalyzer()
 
     async def _fake_call_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
-        return {"role":"assistant","content":"# 分析草稿\n\n(fake draft content)"}
+        import json as _json
+        skeleton = {
+            "narratives": {
+                "macro": {"probability": 0.7, "consensus": "x", "our_view": "y", "falsify": "z"},
+                "industry": {"probability": 0.8, "consensus": "x", "our_view": "y", "falsify": "z"},
+                "alpha": {"probability": 0.75, "consensus": "x", "our_view": "y", "falsify": "z"},
+            },
+            "composite_prob": 0.42,
+            "forensic_audit": {"items": [], "dupont": {}, "quality_score": 7, "red_flags": []},
+            "valuation": {"targets": {"conservative": 100, "neutral": 120, "optimistic": 150}},
+            "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},
+        }
+        return {"role": "assistant", "content": f"```json\n{_json.dumps(skeleton)}\n```"}
 
     async def _fake_stream_llm(self, messages, *, max_tokens=None, reasoning_effort="max"):
         return "[compiled fake markdown]"
@@ -118,6 +130,10 @@ def _fake_analyzer(monkeypatch):
     monkeypatch.setattr(PipelineOrchestrator, "_stream_llm_content", _fake_stream_llm)
     import aimoon.adapters.driven.ai.pipeline.orchestrator as _orch_mod
     monkeypatch.setattr(_orch_mod, "_run_peer_compare", _fake_peer_compare_module)
+    # Mock cache to prevent stale data from previous test runs
+    import aimoon.adapters.driven.ai.cache as _cache_mod
+    monkeypatch.setattr(_cache_mod, "get_analysis_cache", lambda s: None)
+    monkeypatch.setattr(_cache_mod, "set_analysis_cache", lambda s, t: None)
     return fake
 
 
@@ -135,7 +151,7 @@ async def test_orchestrator_runs_two_phases(_fake_analyzer):
 
 
 def test_parse_self_check_json_code_fence():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
 
     text = 'Some preamble\n```json\n{"passed": false, "fixes_needed": ["add PE ratio"]}\n```\n'
     parsed, fixes = _parse_self_check_json(text)
@@ -145,7 +161,7 @@ def test_parse_self_check_json_code_fence():
 
 
 def test_parse_self_check_json_bare_object():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
 
     text = '{"passed": true, "fixes_needed": []}'
     parsed, fixes = _parse_self_check_json(text)
@@ -155,7 +171,7 @@ def test_parse_self_check_json_bare_object():
 
 
 def test_parse_self_check_json_garbage():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
 
     parsed, fixes = _parse_self_check_json("no json here at all")
     assert parsed is None
@@ -163,7 +179,7 @@ def test_parse_self_check_json_garbage():
 
 
 def test_parse_self_check_json_nested_braces():
-    from aimoon.adapters.driven.ai.pipeline.orchestrator import _parse_self_check_json
+    from aimoon.adapters.driven.ai.pipeline.utils import parse_self_check_json as _parse_self_check_json
 
     text = 'Result: {"passed": false, "fixes_needed": ["fix section 3", "add ROE"]}'
     parsed, fixes = _parse_self_check_json(text)
