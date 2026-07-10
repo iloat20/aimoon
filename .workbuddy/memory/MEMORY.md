@@ -37,10 +37,23 @@
 - 工具批次：3 批→2 批（`asyncio.create_task` 依赖触发，fcf 提前到批 2）。
 - 预期收益：token -45%、耗时 -40%、降级 0-LLM；实测 pytest 190 passed（6 个 ERROR 属 `.pytest-tmp/` 沙箱环境问题）。
 
+## 质量护栏（输出质量深度优化，2026-07-10 第二十一轮 brainstorming→子代理实施）
+- 目标：给默认 DIRECT 流补 深度层 + 护栏层 + 可追溯层，系统性提升抗幻觉/一致性/专业度/可追溯。设计+计划见 `docs/plans/2026-07-10-ai-output-quality-design.md` / `-plan.md`。
+- 深度层：
+  - `pipeline/prompts/domain_knowledge.md`：A股领域知识包（涨跌停规则/北向停披/估值锚/幻觉陷阱/引用纪律），在 `phases.phase_system_prompt` 的 `Phase.DIRECT` 分支用 `load_prompt("domain_knowledge.md")` 前置拼进系统提示（静态前缀，不影响 DeepSeek 前缀缓存）。
+  - `direct_web_search_enabled=False`（默认关）：DIRECT 前接 `execute_web_search` 拉近期催化注入 user message；关时行为不变。
+- 护栏层（`_verify_and_fix`，在 orchestrator 内，全程 try/except 不阻断报告）：
+  - `report_reconciler.reconcile(report_md, facts)`：0-LLM 数字对账。从正文抽「指标词+数字(+单位)」，与 `facts` 字典对账。分级 critical(虚构指标=表内无此键) / medium(数值超容差5%或单位混淆亿/万) / 跨节矛盾(同指标两值超容差)。facts 由 `_build_assertable_facts(tool_ctx)` 从 `_ToolContext.tool_results` 抽（pe_ttm/pb/target_base/roe/revenue）；**注意 `_ToolContext` 无 quote 实体，price 暂未进 facts**。
+  - `self_check_rewrite(report_md, mismatches, facts, llm)`：疑点非空时调一次 LLM（`thinking=False` 非流式，独立线程 asyncio.run）只回改正句；安全护栏——改正句须含系统表正确值才替换，否则保留原文。**critical(虚构指标 expected="<absent>") 永不自动重写**（无正确值可验证），留待页脚标注。
+  - 成本：对账 0-LLM；自检仅疑点非空时触发且关思考。
+- 可追溯层：direct.md 加「引用纪律」段（关键数字内联标注来源表名）；报告末尾「数据可信度」页脚（`report/templates/index.html`，amber 调），显示 checked/corrected/uncertain；credibility 透传链：`orchestrator ctx.credibility` → `analyzer.model_copy(credibility=...)`（frozen 模型须 model_copy）→ `AnalysisReport.credibility` 字段（默认 `{}`）→ `generate(credibility=...)`。
+- 三开关（settings，`aimoon.adapters.driven.config.settings`，`get_settings()`）：`direct_web_search_enabled=False` / `reconcile_enabled=True` / `self_check_rewrite_enabled=True`。
+- 实测：pytest **244 passed**（较 221 +23 质量护栏测试），ruff/mypy 干净，mock 端到端 EXIT=0，无 tuble( 篡改。
+
 ## 工作区隐患（本机）
 - 持久化钩子在每次写入后篡改文件：`tuple(`→`tuble(`、async 函数前插 `@pytest.mark.asyncio`、import 排序。规避：Write 整文件重写绕过 Edit 守卫；sed 精确替换后立刻跑 pytest 不留间隙；`grep -rc "tuble("` 验证还原。
 
 ## Git
 - 仓库 `git@github.com:iloat20/aimoon.git`（main）。
-- 2026-07-10 十轮审查 + AI pipeline 重构（骨架+扩写，Task 1-10）已落地，本地 main 领先 `origin/main` 多个提交，**待 `git push origin main`**。
+- 2026-07-10 十轮审查 + AI pipeline 重构（骨架+扩写，Task 1-10）+ 质量护栏深度优化（Task 1-9，12 提交）已落地，本地 main 领先 `origin/main` 多个提交，**待 `git push origin main`**。
 - 刻意排除项（不入库、untracked）：`.pytest-tmp/`、`docs/screenshots/`、`src/aimoon/adapters/driven/ai/pipeline/compile.md` 死副本。`.gitignore` 已加 `.pytest-tmp/`、`docs/screenshots/`。
