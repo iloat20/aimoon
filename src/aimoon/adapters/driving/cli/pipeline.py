@@ -9,6 +9,7 @@ The orchestrator acts as a composer:
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import httpx
@@ -22,6 +23,7 @@ from aimoon.adapters.driven.config.settings import get_settings
 from aimoon.adapters.driven.financial.akshare_adapter import AkshareFinancialAdapter
 from aimoon.adapters.driven.report.generator import HtmlReportGenerator
 from aimoon.adapters.driven.validation import IntegrityDataValidator
+from aimoon.adapters.driving.cli.run_summary import render_run_summary
 from aimoon.core.application.services import collect_and_analyze
 
 
@@ -53,7 +55,8 @@ class PipelineOrchestrator:
             ai_analyzer = DeepSeekAIAnalyzer(mock=self._mock_mode, http_client=http)
             data_validator = IntegrityDataValidator()
             report_generator = HtmlReportGenerator()
-            return await collect_and_analyze(
+            t0 = time.monotonic()
+            report_path = await collect_and_analyze(
                     symbol=symbol,
                     name=name,
                     repo=repo,
@@ -67,6 +70,10 @@ class PipelineOrchestrator:
                     use_single_call=self._use_single_call,
                     use_ultra_fast=self._use_ultra_fast,
                 )
+            elapsed = int((time.monotonic() - t0) * 1000)
+            results = await repo.get_collect_results()
+            print(render_run_summary(list(results), total_elapsed_ms=elapsed, skip_ai=skip_ai))
+            return report_path
 
     async def run_mock(self, symbol: str, name: str) -> Path:
         """Run full pipeline with mock data."""
@@ -77,7 +84,8 @@ class PipelineOrchestrator:
         data_validator = IntegrityDataValidator()
         report_generator = HtmlReportGenerator()
 
-        return await collect_and_analyze(
+        t0 = time.monotonic()
+        report_path = await collect_and_analyze(
             symbol=symbol,
             name=name,
             repo=repo,
@@ -87,3 +95,7 @@ class PipelineOrchestrator:
             output_dir=self._output_dir,
             skip_ai=False,
         )
+        elapsed = int((time.monotonic() - t0) * 1000)
+        results = await repo.get_collect_results()
+        print(render_run_summary(list(results), total_elapsed_ms=elapsed, skip_ai=False))
+        return report_path
