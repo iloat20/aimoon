@@ -178,7 +178,8 @@ class GubaCollector(BaseCollector):
             **_HEADERS,
             "User-Agent": get_settings().default_user_agent,
         }
-        async with (self._http or httpx.AsyncClient(headers=headers, timeout=15.0)) as client:
+        client = self._http or httpx.AsyncClient(headers=headers, timeout=15.0)
+        try:
             # 市场码: 沪市(6)→"1", 深市(0/3)→"0"; 北交所(8/4/9)无对应 Guba 子列表,
             # 落到 "0" 后该标签页拉不到数据(已知限制, 安全降级为 mock)。
             market = "1" if symbol.startswith("6") else "0" if symbol.startswith("0") else "0"
@@ -220,3 +221,6 @@ class GubaCollector(BaseCollector):
                 )
 
             return posts[:20]
+        finally:
+            if self._http is None:
+                await client.aclose()

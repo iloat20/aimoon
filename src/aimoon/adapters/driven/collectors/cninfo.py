@@ -61,7 +61,8 @@ class CninfoCollector(BaseCollector):
             **_HEADERS,
             "User-Agent": get_settings().default_user_agent,
         }
-        async with (self._http or httpx.AsyncClient(timeout=15.0)) as client:
+        client = self._http or httpx.AsyncClient(timeout=15.0)
+        try:
             search_key = stock_name if stock_name else symbol
             payload = {
                 "stock": "",
@@ -156,3 +157,6 @@ class CninfoCollector(BaseCollector):
                     continue
 
             return posts
+        finally:
+            if self._http is None:
+                await client.aclose()

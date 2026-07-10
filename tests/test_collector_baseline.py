@@ -305,5 +305,73 @@ class TestCollectorTimeoutHandling:
         _run(_run_test())
 
 
+# ---------------------------------------------------------------------------
+# Shared HTTP client — must not be double-opened / closed by collectors
+# ---------------------------------------------------------------------------
+
+
+class TestSharedHttpClientLifecycle:
+    """回归: collector 不得对共享 httpx.AsyncClient 做 async with。
+
+    pipeline.py 创建【一个】共享 client 传给所有并发 collector。若 collector
+    对其做 `async with`，第二次进入会抛 'Cannot open a client instance more
+    than once'，并会把共享 client 从其它 collector 底下关掉。collector 必须直接
+    复用传入的 client、仅在自己创建时才关闭。
+    """
+
+    def test_cninfo_does_not_close_shared_client(self):
+        from aimoon.adapters.driven.collectors.cninfo import CninfoCollector
+
+        async def _run_test():
+            client = httpx.AsyncClient(timeout=5.0)
+
+            async def _fake_post(url, **kw):
+                class _R:
+                    status_code = 200
+
+                    def json(self):
+                        return {"announcements": []}
+
+                return _R()
+
+            client.post = _fake_post  # 桩掉真实网络
+            try:
+                collector = CninfoCollector(http_client=client)
+                await collector.collect("600519", "贵州茅台")
+                await collector.collect("600519", "贵州茅台")
+                # 共享 client 应由 owner(pipeline) 关闭, collector 不得关
+                assert client.is_closed is False
+            finally:
+                await client.aclose()
+
+        _run(_run_test())
+
+    def test_guba_does_not_close_shared_client(self):
+        from aimoon.adapters.driven.collectors.eastmoney_playwright import (
+            GubaCollector,
+        )
+
+        async def _run_test():
+            client = httpx.AsyncClient(timeout=5.0)
+
+            async def _fake_get(url, **kw):
+                class _R:
+                    status_code = 200
+                    text = "<html></html>"
+
+                return _R()
+
+            client.get = _fake_get
+            try:
+                collector = GubaCollector(http_client=client)
+                await collector._fetch_guba_html("600519")
+                await collector._fetch_guba_html("600519")
+                assert client.is_closed is False
+            finally:
+                await client.aclose()
+
+        _run(_run_test())
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
