@@ -31,3 +31,14 @@ def test_unit_confusion_flagged():
     report = "营收达 200 万元。"  # 单位混淆
     res = reconcile(report, facts)
     assert any(m.severity == "medium" for m in res.mismatches)
+
+
+def test_no_separator_claim_matched():
+    # 无分隔符声明应能被抽取到：21.3 == facts，无 pe_ttm 疑点
+    facts = {"pe_ttm": 21.3}
+    report = "当前市盈率21.3，估值中性。"
+    res = reconcile(report, facts)
+    assert not any(m.metric == "pe_ttm" for m in res.mismatches)
+    # 反例：虚构指标应判 critical
+    res2 = reconcile("市盈率99.9明显高估。", {"price": 1685.0})
+    assert any(m.severity == "critical" for m in res2.mismatches)
