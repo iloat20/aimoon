@@ -62,9 +62,9 @@ def get_pipeline_phases() -> list[PhaseSpec]:
         ),
         PhaseSpec(
             Phase.SELF_CHECK,
-            _load(Phase.SELF_CHECK),
-            timeout_sec=60,    # 1 min: 轻量 JSON 自检
-            required_outputs=["自检 JSON: passed + fixes_needed"],
+            "",  # No prompt - programmatic validation, 0 LLM
+            timeout_sec=5,     # seconds - pure Python
+            required_outputs=["validation result: passed + fixes_needed"],
         ),
         PhaseSpec(
             Phase.COMPILE,
@@ -107,6 +107,13 @@ def phase_system_prompt(phase: Phase, stock_md: str, prior: dict) -> str:
     if "{{ summary }}" in template:
         tools_summary = prior.get("summary") or prior.get("tools_summary") or ""
         replacements.append(("{{ summary }}", str(tools_summary)))
+    if "{{ skeleton }}" in template:
+        import json
+        skeleton_json = json.dumps(
+            prior.get("skeleton") or prior.get("analysis_skeleton") or {},
+            ensure_ascii=False, default=str,
+        )
+        replacements.append(("{{ skeleton }}", skeleton_json))
     if "{{ sections }}" in template:
         replacements.append(("{{ sections }}", _SECTIONS_MD))
     compiled = template

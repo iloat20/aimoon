@@ -66,7 +66,9 @@ def test_three_phases_defined():
 
 def test_pipeline_specs_have_required_fields():
     for spec in get_pipeline_phases():
-        assert spec.system_prompt_template
+        # SELF_CHECK is programmatic (0 LLM), no prompt needed
+        if spec.phase != Phase.SELF_CHECK:
+            assert spec.system_prompt_template
         assert spec.timeout_sec > 0
 
 
