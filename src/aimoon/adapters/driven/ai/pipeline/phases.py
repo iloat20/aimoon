@@ -5,6 +5,8 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
+from .prompts import load_prompt
+
 
 class Phase(StrEnum):
     """Pipeline phases.
@@ -46,6 +48,13 @@ def _load(phase: Phase) -> str:
 
 def phase_system_prompt(phase: Phase, stock_md: str, prior: dict) -> str:
     template = _load(phase)
+    # DIRECT 流: 把领域知识包(domain_knowledge.md)动态拼进系统提示,
+    # 让直出报告自带 A 股领域约束(涨跌停/北向停披/估值锚/幻觉陷阱/引用纪律)。
+    # 用 load_prompt 动态读取,不硬编码知识文本。
+    if phase == Phase.DIRECT:
+        domain_knowledge = load_prompt("domain_knowledge.md")
+        if domain_knowledge.strip():
+            template = domain_knowledge + "\n\n" + template
     # 仅当模板含对应占位符时才注入,避免向 hybrid prompt 注入冗余 JSON
     replacements: list[tuple[str, str]] = []
     if "{{ stock_info }}" in template:
