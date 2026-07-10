@@ -51,9 +51,9 @@ class Settings(BaseSettings):
     # 默认 "high"(最深推理,质量最高); 设为 "medium"/"low" 可直降思考 token 约 50%+。
     # COMPILE 阶段已固定用 "medium"(见 ai/pipeline/orchestrator.py)。
     deepseek_analysis_effort: str = "high"
-    # 成本杠杆: ANALYSIS 阶段输出 token 上限。初稿系统要求 1500-2000 字,
-    # 8192 已留约 3 倍余量,远低于默认的 16384,避免模型失控时 burning 巨额输出 token。
-    deepseek_analysis_max_tokens: int = 8192
+    # 成本杠杆: ANALYSIS 阶段输出 token 上限。骨架 JSON 比旧初稿短得多
+    # (800-1200 token vs 2500-3500 token),4096 已留充足余量。
+    deepseek_analysis_max_tokens: int = 4096
 
     # 成本开关: 是否启用股吧 Playwright 渲染(重算力)。默认 False = 先用轻量
     # HTML 抓取,仅在 HTML 为空/被 WAF 时才升级到浏览器。设 True 可恢复旧行为。

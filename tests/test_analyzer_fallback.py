@@ -49,19 +49,18 @@ def _analyzer(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_v2_empty_text_marks_degraded(monkeypatch, _analyzer):
-    """v2 未产出文本 -> 降级 legacy,且报告带可见降级标记。"""
+    """v2 未产出文本 -> 骨架渲染降级,且报告带可见降级标记。"""
 
     async def _fake_run(self, *a, **k):
         return {}
 
     monkeypatch.setattr(PipelineOrchestrator, "run", _fake_run)
-    monkeypatch.setattr(_analyzer, "_legacy_analyze", _fake_legacy)
 
     report = await _analyzer.analyze(
         StockAnalysis(symbol="600519"), use_pipeline_v2=True
     )
     assert "降级" in report.report_text
-    assert "legacy 一段式" in report.report_text
+    # 不再降级到 legacy,改为骨架渲染/数据汇总(0 LLM)
 
 
 @pytest.mark.asyncio

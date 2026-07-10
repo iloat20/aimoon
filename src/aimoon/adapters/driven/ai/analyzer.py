@@ -171,10 +171,14 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             logger.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
         text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
         if not text:
-            # v2 失败时降级到 legacy 一段式(而非数据汇总 fallback),并插入可见降级标记。
-            logger.info("[pipeline_v2] 降级到 legacy 一段式分析")
-            legacy = await self._legacy_analyze(stock_info, reports, financial_md_path)
-            return with_degradation_notice(legacy, "降级 legacy 一段式(v2 未产出文本)")
+            # v2 失败时用骨架渲染(0 LLM),不再降级到 legacy
+            from .pipeline.skeleton_renderer import render_skeleton_md
+            skeleton = ctx.get("skeleton") if isinstance(ctx, dict) else None
+            if skeleton:
+                text = render_skeleton_md(skeleton)
+                logger.info("[pipeline_v2] 降级到骨架渲染(0 LLM)")
+            else:
+                text = "# 分析报告（降级）\n\n数据采集或分析暂不可用。"
         from .cache import set_analysis_cache
 
         set_analysis_cache(stock_info.symbol, text)

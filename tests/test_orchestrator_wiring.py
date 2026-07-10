@@ -174,7 +174,19 @@ async def test_analysis_retries_on_http_status_error(monkeypatch, _wired):
                 request=httpx.Request("POST", "http://fake"),
                 response=httpx.Response(429),
             )
-        return {"role": "assistant", "content": "## 一、概况\n\n(重试成功草稿)"}
+        import json as _json
+        _sk = {
+            "narratives": {
+                "macro": {"probability": 0.7, "consensus": "x", "our_view": "y", "falsify": "z"},
+                "industry": {"probability": 0.8, "consensus": "x", "our_view": "y", "falsify": "z"},
+                "alpha": {"probability": 0.75, "consensus": "x", "our_view": "y", "falsify": "z"},
+            },
+            "composite_prob": 0.42,
+            "forensic_audit": {"items": [], "dupont": {}, "quality_score": 7, "red_flags": []},
+            "valuation": {"targets": {"conservative": 100, "neutral": 120, "optimistic": 150}},
+            "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},
+        }
+        return {"role": "assistant", "content": f"```json\n{_json.dumps(_sk)}\n```"}
 
     # 覆盖 fixture 中的固定 _fake_llm,注入「前 2 次失败、第 3 次成功」行为
     monkeypatch.setattr(PipelineOrchestrator, "_call_llm_with_stream", _flaky_llm)
