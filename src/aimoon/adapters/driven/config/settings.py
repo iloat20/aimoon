@@ -88,6 +88,18 @@ class Settings(BaseSettings):
     # 若该子域在部署网络被 WAF 拦截(连接重置),建议设 False 以省去约 14s 空耗重试。
     kline_eastmoney_direct_enabled: bool = True
 
+    # 质量护栏开关: DIRECT 直出流(完整报告)前是否做实时网络检索补充催化信息。
+    # 默认 False = 控成本、不主动联网;设 True 可在写报告前抓最新催化,提升时效性。
+    direct_web_search_enabled: bool = False
+
+    # 质量护栏开关: 0-LLM 数字对账总开关(校验报告中的关键数字与源数据一致)。
+    # 默认 True = 开启;设 False 可跳过对账(省 token,牺牲数字可靠性)。
+    reconcile_enabled: bool = True
+
+    # 质量护栏开关: 疑点非空时 LLM 定点重写的开关(针对对账/自查暴露的问题局部改写)。
+    # 默认 True = 开启;设 False 可跳过定点重写(只暴露疑点、不做修正)。
+    self_check_rewrite_enabled: bool = True
+
     # 东方财富数据(akshare)的代理补丁配置。
     # 配置后 akshare-proxy-patch 会注入代理认证头,绕过部分 WAF 限制。
     # 留空则不走代理(默认)。代理 IP 需向商业代理服务商(芝麻/快代理等)购买。
