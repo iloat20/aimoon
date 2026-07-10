@@ -17,6 +17,8 @@ import dataclasses
 import json
 import logging
 import traceback
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -31,6 +33,8 @@ from ..xml_utils import strip_xml_tool_calls
 from .context_renderer import render_stock_context
 from .llm_client import PipelineLlmClient
 from .phases import Phase, phase_system_prompt
+from .report_reconciler import reconcile
+from .self_check_rewrite import self_check_rewrite
 from .skeleton_renderer import render_skeleton_md
 from .skeleton_validator import validate_skeleton
 from .table_renderer import (
@@ -98,6 +102,7 @@ class PipelineContext:
     final_markdown: str = ""
     system_tables_md: str = ""
     skeleton: dict | None = None
+    credibility: dict[str, object] = dataclasses.field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         # 把系统预渲染表(财务时序/同行对比/估值/FCFE/情景/舆情/三表)追加为「数据附录」。
@@ -112,6 +117,7 @@ class PipelineContext:
             "phase_results": self.phase_results,
             "partial_phases": self.partial_phases,
             "skeleton": self.skeleton,
+            "credibility": self.credibility,
         }
 
 
@@ -378,6 +384,24 @@ class PipelineOrchestrator:
             tables_md=tables_md, summary=summary, body=body,
         )
 
+    async def _gather_catalysts(self, si: StockAnalysis) -> str:
+        """尝试拉取近期催化并注入 DIRECT user message(实时检索)。
+
+        仅在 ``direct_web_search_enabled=True`` 时由调用方触发。任何失败都安全
+        降级为空串(不注入),绝不影响报告生成。
+        """
+        try:
+            from ..web_search_tool import execute_web_search
+
+            name = getattr(si, "name", "") or getattr(si, "symbol", "")
+            query = f"{name} 最新 催化 利好 利空 公告 研报"
+            raw = await execute_web_search(query, max_results=5)
+            if raw and "搜索失败" not in raw:
+                return f"# 实时检索到的近期催化(网络)\n{raw}\n\n"
+        except Exception as e:  # noqa: BLE001 - 安全降级
+            logger.debug("[pipeline] 实时检索催化失败(安全跳过): %s", e)
+        return ""
+
     # ---- DIRECT 流: 工具 + 一次 LLM 直出完整报告 (无骨架、无扩写) --------
 
     async def _run_direct(
@@ -400,6 +424,8 @@ class PipelineOrchestrator:
             result = _partial(f"{type(e).__name__}")
 
         ctx.phase_results[Phase.DIRECT.value] = result
+        # 透传可信度摘要到报告上下文(Task 8 将渲染 credibility 页脚)
+        ctx.credibility = result.get("credibility") or {}
         ctx.system_tables_md = str(prior.get("tables_md") or "")
         text = str(result.get("output") or "")
         if text:
@@ -426,11 +452,23 @@ class PipelineOrchestrator:
 
         使用 ``deepseek_analysis_effort`` 思考强度 + ``deepseek_max_tokens``
         输出上限(长文需要充足额度)。不产出 JSON 骨架,不做二次扩写。
+
+        直出完成后做 0-LLM 数字对账 + 可选 LLM 定点重写(非阻断护栏),
+        并把可信度摘要随结果透传。
         """
         tc = await self._gather_tool_context(si, stock_md, prior)
+
+        # 可选: 实时检索近期催化注入(默认关,开启才有行为变化)
+        user_body = tc.body
+        settings = get_settings()
+        if settings.direct_web_search_enabled:
+            catalyst = await self._gather_catalysts(si)
+            if catalyst:
+                user_body = catalyst + user_body
+
         system = phase_system_prompt(Phase.DIRECT, stock_md, {**prior})
         user_content = (
-            tc.body
+            user_body
             + "# 输出要求\n直接输出完整、深入的投资分析报告(Markdown),"
             + "严格按系统提示的 8 节结构,每一节充分论述。不要输出 JSON、不要输出骨架。"
         )
@@ -439,7 +477,6 @@ class PipelineOrchestrator:
             {"role": "user", "content": user_content},
         ]
 
-        settings = get_settings()
         effort = settings.deepseek_analysis_effort
         text = ""
         for _attempt in range(2):
@@ -465,8 +502,20 @@ class PipelineOrchestrator:
         if not text:
             logger.warning("[pipeline] DIRECT 输出为空,标记降级")
             return {"output": "", "tool_results": tc.tool_results, "partial": True}
+
         stripped = strip_xml_tool_calls(text)
-        return {"output": stripped, "tool_results": tc.tool_results, "partial": tc.partial}
+
+        # 数字对账 + 定点重写(非阻断护栏): 任何异常都保底返回原文。
+        facts = _build_assertable_facts(tc)
+        llm = self._make_rewrite_llm()
+        fixed_text, credibility_summary = _verify_and_fix(stripped, facts, llm=llm)
+
+        return {
+            "output": fixed_text,
+            "tool_results": tc.tool_results,
+            "partial": tc.partial,
+            "credibility": credibility_summary,
+        }
 
     # ---- Phase 1: ANALYSIS ------------------------------------------------
 
@@ -644,3 +693,132 @@ class PipelineOrchestrator:
             messages, max_tokens=max_tokens, reasoning_effort=reasoning_effort,
             thinking=thinking,
         )
+
+    def _make_rewrite_llm(self) -> Callable[[str, str], str]:
+        """构造供 ``_verify_and_fix`` 使用的同步 llm 封装 ``(system, user) -> str``。
+
+        底层走 ``PipelineLlmClient.call_llm_with_stream`` 非流式单发,并强制
+        ``thinking=False``(纯修正场景,省思考 token)。为不与主事件循环冲突,
+        实际 HTTP 调用在独立线程的新事件循环里执行(见 ``_run_rewrite_llm``)。
+        """
+        client = self._llm
+
+        def _call(system: str, user: str) -> str:
+            return _run_rewrite_llm(client, system, user)
+
+        return _call
+
+
+def _is_number(v: object) -> bool:
+    """安全判断是否为可用数字(排除 bool,因其是 int 子类)。"""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _build_assertable_facts(tool_ctx: _ToolContext) -> dict[str, object]:
+    """从 ``_ToolContext.tool_results`` 抽『可断言事实』(基准单位),供数字对账。
+
+    只读真实存在的字段;取不到的跳过(不硬编码不存在的字段)。
+
+    单位约定(对齐 report_reconciler 的 facts 语义):
+      - pe_ttm / pb : 比率原值(来自 valuation 工具的 quote.pe / quote.pb)
+      - roe         : 百分数原值(financial_temporal 以小数存储,×100)
+      - revenue     : 元(financial_temporal.years[0].revenue)
+      - target_base : 元(valuation.fcfe_targets.neutral.price)
+
+    注: 当前 ``_ToolContext`` 不含 quote 实体,现价 ``price`` 无法抽取,故跳过。
+    """
+    facts: dict[str, object] = {}
+    tr = tool_ctx.tool_results
+    if not isinstance(tr, dict):
+        return facts
+
+    valuation = tr.get("valuation")
+    if isinstance(valuation, dict):
+        pe = valuation.get("pe")
+        if _is_number(pe):
+            facts["pe_ttm"] = float(pe)  # type: ignore[arg-type]
+        pb = valuation.get("pb")
+        if _is_number(pb):
+            facts["pb"] = float(pb)  # type: ignore[arg-type]
+        fcfe = valuation.get("fcfe_targets") or {}
+        if isinstance(fcfe, dict):
+            neutral = fcfe.get("neutral") or {}
+            tgt = neutral.get("price") if isinstance(neutral, dict) else None
+            if _is_number(tgt):
+                facts["target_base"] = float(tgt)  # type: ignore[arg-type]
+
+    fin = tr.get("financial_temporal")
+    if isinstance(fin, dict):
+        roe_trend = fin.get("roe_trend")
+        if isinstance(roe_trend, list) and roe_trend:
+            latest_roe = roe_trend[0]
+            if _is_number(latest_roe):
+                facts["roe"] = float(latest_roe) * 100.0
+        years = fin.get("years")
+        if isinstance(years, list) and years:
+            latest_year = years[0]
+            if isinstance(latest_year, dict):
+                rev = latest_year.get("revenue")
+                if _is_number(rev):
+                    facts["revenue"] = float(rev)  # type: ignore[arg-type]
+
+    return facts
+
+
+def _run_rewrite_llm(client: PipelineLlmClient, system: str, user: str) -> str:
+    """同步执行一次非流式 LLM 调用(thinking=False),用于定点重写。
+
+    在独立线程里跑新事件循环 ``asyncio.run``,既不阻塞主事件循环、也不与主循环
+    的 ``run_until_complete`` 冲突。任何异常返回空串,交给 ``self_check_rewrite``
+    的安全护栏决定保留原文。
+    """
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    def _work() -> str:
+        async def _go() -> str:
+            msg = await client.call_llm_with_stream(messages, thinking=False)
+            return (msg.get("content") or "").strip()
+
+        try:
+            return asyncio.run(_go())
+        except Exception as e:  # noqa: BLE001 - 安全降级返回空串
+            logger.warning("[verify] rewrite llm 异常 %s: %s", type(e).__name__, e)
+            return ""
+
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(_work).result()
+
+
+def _verify_and_fix(
+    report_md: str,
+    facts: dict[str, object],
+    *,
+    llm: Callable[[str, str], str],
+) -> tuple[str, dict[str, object]]:
+    """0-LLM 数字对账 + 可选 LLM 定点重写。全程 try/except,绝不阻断报告。
+
+    返回 ``(最终报告文本, 可信度摘要)``。任何异常都保底返回原报告文本 + 跳过标记。
+    """
+    try:
+        if not get_settings().reconcile_enabled:
+            return (report_md, {"skipped": "reconcile disabled"})
+
+        res = reconcile(report_md, facts)
+        summary: dict[str, object] = {
+            "checked": res.checked, "corrected": 0, "uncertain": [],
+        }
+
+        if res.mismatches and get_settings().self_check_rewrite_enabled:
+            fixed = self_check_rewrite(report_md, res.mismatches, facts, llm=llm)
+            summary["corrected"] = len(res.mismatches)
+            report_md = fixed
+        elif res.mismatches:
+            summary["uncertain"] = [m.snippet for m in res.mismatches]
+
+        return (report_md, summary)
+    except Exception as e:  # noqa: BLE001 - 任何异常都保底返回原报告
+        logger.warning("[verify] _verify_and_fix 异常 %s: %s", type(e).__name__, e)
+        return (report_md, {"skipped": "verify crashed"})
