@@ -300,6 +300,34 @@
   <div class="ai-report">{{ report_text|md_to_html|safe }}</div>
 </div>
 
+<!-- ===== DATA CREDIBILITY FOOTER ===== -->
+{% if credibility %}
+<div class="card credibility-card" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 11H9V9h2v4zm0-6H9V5h2v2z" opacity="0.8"/></svg>
+    <span class="title">数据可信度</span>
+  </div>
+  {% if credibility.skipped is defined %}
+  <div class="credibility-skipped">数据自检未执行：{{ credibility.skipped }}</div>
+  {% else %}
+  <div class="credibility-stats">
+    <div class="cred-item"><span class="cred-num">{{ credibility.checked }}</span><span class="cred-label">核对事实数</span></div>
+    <div class="cred-item"><span class="cred-num">{{ credibility.corrected }}</span><span class="cred-label">自动修正数</span></div>
+  </div>
+  <div class="credibility-uncertain">
+    <span class="cred-uncertain-label">仍存疑：</span>
+    {% if credibility.uncertain %}
+    <ul class="credibility-list">
+      {% for u in credibility.uncertain %}<li>{{ u }}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <span class="credibility-none">无</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <!-- ===== FOOTER ===== -->
 <footer class="footer">
   <div class="sources">

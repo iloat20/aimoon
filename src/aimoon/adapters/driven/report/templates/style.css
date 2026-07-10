@@ -331,3 +331,24 @@ a:hover { text-decoration: underline; }
 .data-warning-title { font-size: 13px; font-weight: 700; color: var(--amber); margin-bottom: var(--space-1); }
 .data-warning-list { margin: 0; padding-left: var(--space-4); }
 .data-warning-list li { font-size: 12.5px; color: var(--text-secondary); line-height: 1.7; }
+
+/* ===== Data Credibility Footer ===== */
+.credibility-card {
+  border-left: 3px solid var(--amber);
+}
+.credibility-skipped {
+  font-size: 13px; color: var(--amber); font-weight: 600; line-height: 1.7;
+}
+.credibility-stats {
+  display: flex; gap: var(--space-5); margin-bottom: var(--space-3);
+}
+.cred-item { display: flex; flex-direction: column; gap: 2px; }
+.cred-num {
+  font-size: 22px; font-weight: 800; color: var(--text); font-feature-settings: "tnum";
+}
+.cred-label { font-size: 12px; color: var(--text-muted); }
+.credibility-uncertain { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.cred-uncertain-label { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.credibility-list { margin: 0; padding-left: var(--space-4); }
+.credibility-list li { font-size: 12.5px; color: var(--text-secondary); line-height: 1.7; }
+.credibility-none { font-size: 12.5px; color: var(--text-muted); }

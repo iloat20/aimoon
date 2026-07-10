@@ -102,10 +102,15 @@ class HtmlReportGenerator(ReportGeneratorPort):
         analysis: AnalysisReport,
         collect_results: list[CollectResult],
         output_dir: str | None = None,
+        credibility: dict | None = None,
     ) -> Path:
         """Generate HTML report and save to output directory.
 
         Implements ReportGenerator port. Accepts domain entities as input.
+
+        Args:
+            credibility: 可选的数据可信度摘要（经 Task 5 的 pipeline 透传），
+                形状为 {"checked", "corrected", "uncertain"} 或 {"skipped": "..."}。
         """
         settings = get_settings()
 
@@ -116,7 +121,7 @@ class HtmlReportGenerator(ReportGeneratorPort):
         out = Path(output_dir) / f"{stock_info.symbol}_{ts}.html"
         out.parent.mkdir(parents=True, exist_ok=True)
 
-        ctx = self._build_context(stock_info, analysis, collect_results)
+        ctx = self._build_context(stock_info, analysis, collect_results, credibility=credibility)
 
         template = self._env.get_template("index.html")
         html = template.render(**ctx)
@@ -144,6 +149,7 @@ class HtmlReportGenerator(ReportGeneratorPort):
         stock_info: StockAnalysis,
         analysis: AnalysisReport,
         collect_results: list[CollectResult],
+        credibility: dict | None = None,
     ) -> dict:
         q = stock_info.quote or StockQuote()
         # 产品决策：平盘（涨跌幅=0）归为 up 类，使用红色显示
@@ -187,4 +193,5 @@ class HtmlReportGenerator(ReportGeneratorPort):
             "cn_number": _cn_number,
             "report_text": analysis.report_text,
             "css_content": Markup(self._css_content),
+            "credibility": credibility or {},
         }

@@ -23,6 +23,7 @@ class ReportGenerator(ABC):
         analysis: AnalysisReport,
         collect_results: list[CollectResult],
         output_dir: str | None = None,
+        credibility: dict | None = None,
     ) -> Path:
         """生成 HTML 分析报告。
 
@@ -31,6 +32,8 @@ class ReportGenerator(ABC):
             analysis: AI 分析结果实体
             collect_results: 各数据源采集结果
             output_dir: 输出目录，可选
+            credibility: 可选的数据可信度摘要，形状为
+                {"checked", "corrected", "uncertain"} 或 {"skipped": "..."}
 
         Returns:
             生成的 HTML 报告文件路径
