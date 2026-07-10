@@ -12,7 +12,11 @@ logger = logging.getLogger(__name__)
 
 # 已知可用的 DeepSeek 公开模型。其它名称(如历史占位符)在官方 API 会返回 400,
 # 触发整条重试 + 静默降级,既浪费 token 又严重拉低报告质量。
-_KNOWN_DEEPSEEK_MODELS = frozenset({"deepseek-chat", "deepseek-reasoner"})
+# 已知可用的 DeepSeek 模型。其它名称(如历史占位符)在官方 API 会返回 400,
+# 触发整条重试 + 静默降级,既浪费 token 又严重拉低报告质量。
+# 注: "deepseek-v4-flash" 非官方公开名,多为网关对 reasoner 的别名重命名,
+# 本环境以此名暴露推理模型,故列入已知集合以避免误告警。
+_KNOWN_DEEPSEEK_MODELS = frozenset({"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"})
 
 
 def _find_project_root() -> Path:
@@ -54,6 +58,13 @@ class Settings(BaseSettings):
     # 成本杠杆: ANALYSIS 阶段输出 token 上限。骨架 JSON 比旧初稿短得多
     # (800-1200 token vs 2500-3500 token),4096 已留充足余量。
     deepseek_analysis_max_tokens: int = 4096
+
+    # 推理能力开关: 是否向 API 发送 reasoning_effort。
+    # None(默认) = 按模型名自动判断(含 "reasoner" 子串则发);
+    # True  = 强制发送(用于被重命名的推理模型,如某些网关把 reasoner 暴露为
+    #         "deepseek-v4-flash" 等非标准名,否则 effort 会被静默丢弃);
+    # False = 永不发送(纯 chat/flash 模型,传该参数会被 API 拒绝)。
+    deepseek_reasoner_enabled: bool | None = None
 
     # 成本开关: 是否启用股吧 Playwright 渲染(重算力)。默认 False = 先用轻量
     # HTML 抓取,仅在 HTML 为空/被 WAF 时才升级到浏览器。设 True 可恢复旧行为。
@@ -115,7 +126,7 @@ class Settings(BaseSettings):
                 self.deepseek_model,
                 ", ".join(sorted(_KNOWN_DEEPSEEK_MODELS)),
             )
-        _valid_efforts = {"low", "medium", "high"}
+        _valid_efforts = {"low", "medium", "high", "max"}
         if self.deepseek_analysis_effort and self.deepseek_analysis_effort not in _valid_efforts:
             logger.warning(
                 "[settings] deepseek_analysis_effort=%r 不在允许集合 %s,将被原样发给 API"

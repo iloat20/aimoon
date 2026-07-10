@@ -7,11 +7,18 @@ from pathlib import Path
 
 
 class Phase(StrEnum):
-    """Pipeline v2 phases: ANALYSIS → SELF_CHECK → COMPILE."""
+    """Pipeline phases.
 
-    ANALYSIS = "analysis"     # 规划+采集+分析
+    Two flows share the tool-gathering stage:
+    - skeleton flow (``--two-phase``): ANALYSIS → SELF_CHECK → COMPILE
+    - direct flow (default): DIRECT — 工具采集后一次 LLM 直出完整报告,
+      不经 JSON 骨架、不做二次扩写。
+    """
+
+    ANALYSIS = "analysis"     # 规划+采集+分析(输出 JSON 骨架)
     SELF_CHECK = "self_check" # 轻量自检
-    COMPILE = "compile"       # 终稿
+    COMPILE = "compile"       # 终稿(骨架扩写)
+    DIRECT = "direct"         # 一次直出完整报告(无骨架、无扩写)
 
 
 # 报告章节结构 —— 代码侧维护,运行时格式化为

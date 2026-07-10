@@ -117,6 +117,10 @@ def render_valuation_targets(data: Any) -> str:
         tg_s = f"{tg * 100:.1f}%" if tg is not None else "N/A"
         lines.append(f"*假设:折现率={disc_s},永续增速封顶={tg_s}*")
         lines.append("")
+    method = assumptions.get("method")
+    if method == "ddm_fallback":
+        lines.append("*估值方法:分红折现(Gordon)DDM 回退 —— FCFE 为负时 DCF 退化*")
+        lines.append("")
     lines.extend(
         [
             "| 档位 | PE | 目标价(元) | 概率(%) |",

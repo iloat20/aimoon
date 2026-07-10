@@ -146,7 +146,8 @@ async def test_valuation_called_with_correct_arg_order(monkeypatch, _wired):
 
     args = captured.get("args")
     assert args is not None, "valuation 未被调用"
-    fin_temporal, quote, peer_comp = args
+    assert len(args) == 4, "valuation 应接收 4 个参数 (fin_temporal, quote, peer_comp, financial)"
+    fin_temporal, quote, peer_comp, financial = args
     # 第 2 个参数必须是 quote(StockQuote,带 pe),第 3 个必须是 peer dict(带 peers)
     assert hasattr(quote, "pe"), "第 2 参数应为 quote(StockQuote)"
     assert isinstance(peer_comp, dict) and "peers" in peer_comp, (

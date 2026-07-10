@@ -77,6 +77,18 @@ MAX_TOTAL_SEC = 720  # 12 min (采集+ANALYSIS 210s + COMPILE 480s + buffer)
 ANALYSIS_TIMEOUT = 210
 COMPILE_TIMEOUT = 480
 SELF_CHECK_TIMEOUT = 5  # 程序化校验,秒级(纯 Python,0 LLM)
+DIRECT_TIMEOUT = 600    # 直出模式: 工具采集 + 一次长文 LLM,给足预算(< 720 硬顶)
+
+
+@dataclasses.dataclass
+class _ToolContext:
+    """工具采集 + 表格渲染 + 摘要的共享产物(skeleton 与 direct 两条流复用)。"""
+
+    tool_results: dict[str, object]
+    partial: bool
+    tables_md: str
+    summary: str
+    body: str  # user 消息主体(不含各阶段各自的「# 输出要求」尾巴)
 
 
 @dataclasses.dataclass
@@ -145,6 +157,13 @@ class PipelineOrchestrator:
 
         skip_self_check = use_fast or use_single_call or use_ultra_fast
         skip_compile = use_single_call or use_ultra_fast
+
+        # ---- DIRECT 流(默认): 工具采集 + 一次 LLM 直出完整报告 ----
+        # 不经 JSON 骨架、不做二次扩写。two-phase(use_single_call=False,
+        # use_ultra_fast=False)才走下方 skeleton+compile 流。
+        direct_mode = use_single_call or use_ultra_fast
+        if direct_mode:
+            return await self._run_direct(si, stock_md, prior, ctx)
 
         # Phase 1: ANALYSIS — 并行工具 + LLM 输出 JSON 骨架
         try:
@@ -242,17 +261,16 @@ class PipelineOrchestrator:
 
         return ctx.to_dict()
 
-    # ---- Phase 1: ANALYSIS ------------------------------------------------
+    # ---- 共享: 工具采集 + 表格 + 摘要 (skeleton 与 direct 复用) ----------
 
-    async def _phase_analysis(
-        self,
-        si: StockAnalysis,
-        stock_md: str,
-        prior: dict,
-        reports: dict | None,
-        financial_md_path: Path | None,
-    ) -> dict:
-        """Phase 1: 并行工具 + LLM 输出 JSON 骨架 + (可选) 程序化自检。"""
+    async def _gather_tool_context(
+        self, si: StockAnalysis, stock_md: str, prior: dict,
+    ) -> _ToolContext:
+        """并行跑 9 个工具 → 0-LLM 渲染表格 + 摘要 → 拼 user 消息主体。
+
+        无任何 LLM 调用。产物同时供 ANALYSIS(骨架)与 DIRECT(直出)两条流。
+        会写入 ``prior['tables_md']`` / ``prior['summary']``。
+        """
         from ..web_search_tool import execute_web_search
 
         quote = si.quote or StockQuote()
@@ -285,7 +303,13 @@ class PipelineOrchestrator:
                 _run_safe(TOOL_RUNNERS["risk_quant"], fin, quote)
             )
             val_task = asyncio.create_task(
-                _run_safe(TOOL_RUNNERS["valuation"], fin, quote, peer)
+                _run_safe(
+                    TOOL_RUNNERS["valuation"],
+                    fin,
+                    quote,
+                    peer,
+                    getattr(si, "financial", None),
+                )
             )
             fcf_task = asyncio.create_task(
                 _run_safe(
@@ -301,7 +325,7 @@ class PipelineOrchestrator:
             fcf = await fcf_task
             scenario = await scenario_task
 
-        tool_results = {
+        tool_results: dict[str, object] = {
             "technicals": tech, "financial_temporal": fin, "peer_compare": peer,
             "risk_quant": risk, "valuation": val, "business_moat": moat,
             "sentiment": senti, "fcf_dividend": fcf, "scenario_prob": scenario,
@@ -322,11 +346,7 @@ class PipelineOrchestrator:
         )
         prior["tables_md"] = tables_md
         summary = extract_tool_summary(tool_results)
-        tool_ctx: dict[str, object] = {
-            **prior, "tables_md": tables_md, "summary": summary,
-        }
         prior["summary"] = summary
-        system = phase_system_prompt(Phase.ANALYSIS, stock_md, tool_ctx)
 
         # 舆情/研报/工具摘要(供模型直接引用)
         social_summary = "\n".join(
@@ -341,7 +361,7 @@ class PipelineOrchestrator:
         fcf_summary_txt = fcf_summary(fcf)
         scenario_summary_txt = scenario_summary(scenario)
 
-        user_content = (
+        body = (
             f"{stock_md}\n\n"
             f"# 已渲染表格\n{tables_md}\n\n"
             f"# 工具摘要\n{summary}\n\n"
@@ -352,8 +372,120 @@ class PipelineOrchestrator:
             f"# 已采集机构研报(共 "
             f"{(si.research or ResearchReportData()).total_count} 篇)\n{research_summary}\n"
             f"{research_div}\n\n"
-            f"# 输出要求\n请输出结构化 JSON 骨架(放在 ```json 代码块内),"
-            f"包含全部推理结论。骨架字段结构见系统提示。"
+        )
+        return _ToolContext(
+            tool_results=tool_results, partial=partial,
+            tables_md=tables_md, summary=summary, body=body,
+        )
+
+    # ---- DIRECT 流: 工具 + 一次 LLM 直出完整报告 (无骨架、无扩写) --------
+
+    async def _run_direct(
+        self, si: StockAnalysis, stock_md: str, prior: dict, ctx: PipelineContext,
+    ) -> dict[str, object]:
+        """直出流入口: 采集 → 一次 LLM 直出完整报告 → 填充 ctx。"""
+        try:
+            result = await asyncio.wait_for(
+                self._phase_direct(si, stock_md, prior),
+                timeout=DIRECT_TIMEOUT,
+            )
+        except TimeoutError:
+            logger.warning("[pipeline] DIRECT 超时 %ds, 降级", DIRECT_TIMEOUT)
+            result = _partial("timeout")
+        except Exception as e:
+            logger.error(
+                "[pipeline] DIRECT 异常 %s: %s\n%s",
+                type(e).__name__, e, traceback.format_exc(),
+            )
+            result = _partial(f"{type(e).__name__}")
+
+        ctx.phase_results[Phase.DIRECT.value] = result
+        ctx.system_tables_md = str(prior.get("tables_md") or "")
+        text = str(result.get("output") or "")
+        if text:
+            ctx.final_markdown = text
+            if result.get("partial"):
+                ctx.partial_phases.append(Phase.DIRECT.value)
+        else:
+            # 降级: 无 LLM 产出时用系统预渲染表格兜底(0 LLM)
+            ctx.partial_phases.append(Phase.DIRECT.value)
+            if ctx.system_tables_md.strip():
+                ctx.final_markdown = (
+                    "# 分析报告（降级）\n\n"
+                    "AI 直出阶段未产出正文,以下为系统预渲染数据。\n\n"
+                    + ctx.system_tables_md
+                )
+            else:
+                ctx.final_markdown = "# 分析报告（降级）\n\n数据采集或分析暂不可用。"
+        return ctx.to_dict()
+
+    async def _phase_direct(
+        self, si: StockAnalysis, stock_md: str, prior: dict,
+    ) -> dict:
+        """采集工具上下文后,一次流式 LLM 调用直出完整 Markdown 报告。
+
+        使用 ``deepseek_analysis_effort`` 思考强度 + ``deepseek_max_tokens``
+        输出上限(长文需要充足额度)。不产出 JSON 骨架,不做二次扩写。
+        """
+        tc = await self._gather_tool_context(si, stock_md, prior)
+        system = phase_system_prompt(Phase.DIRECT, stock_md, {**prior})
+        user_content = (
+            tc.body
+            + "# 输出要求\n直接输出完整、深入的投资分析报告(Markdown),"
+            + "严格按系统提示的 8 节结构,每一节充分论述。不要输出 JSON、不要输出骨架。"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+
+        settings = get_settings()
+        effort = settings.deepseek_analysis_effort
+        text = ""
+        for _attempt in range(2):
+            try:
+                text = await self._stream_llm_content(
+                    messages,
+                    max_tokens=settings.deepseek_max_tokens,
+                    reasoning_effort=effort,
+                )
+            except (httpx.TransportError, httpx.HTTPStatusError, OSError, TimeoutError) as e:
+                logger.error(
+                    "[pipeline] DIRECT 传输异常 %s: %s (重试 %d/2)",
+                    type(e).__name__, e, _attempt + 1,
+                )
+                text = ""
+                if _attempt < 1:
+                    await asyncio.sleep(1)
+                continue
+            text = (text or "").strip()
+            break
+
+        if not text:
+            logger.warning("[pipeline] DIRECT 输出为空,标记降级")
+            return {"output": "", "tool_results": tc.tool_results, "partial": True}
+        stripped = strip_xml_tool_calls(text)
+        return {"output": stripped, "tool_results": tc.tool_results, "partial": tc.partial}
+
+    # ---- Phase 1: ANALYSIS ------------------------------------------------
+
+    async def _phase_analysis(
+        self,
+        si: StockAnalysis,
+        stock_md: str,
+        prior: dict,
+        reports: dict | None,
+        financial_md_path: Path | None,
+    ) -> dict:
+        """Phase 1: 并行工具 + LLM 输出 JSON 骨架。"""
+        tc = await self._gather_tool_context(si, stock_md, prior)
+        tool_results = tc.tool_results
+        partial = tc.partial
+        system = phase_system_prompt(Phase.ANALYSIS, stock_md, {**prior})
+        user_content = (
+            tc.body
+            + "# 输出要求\n请输出结构化 JSON 骨架(放在 ```json 代码块内),"
+            + "包含全部推理结论。骨架字段结构见系统提示。"
         )
         messages = [
             {"role": "system", "content": system},

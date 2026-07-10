@@ -57,11 +57,12 @@ async def test_collect_all_populates_history_financial():
 # ---- Task 4 ----
 
 
-def test_three_phases_defined():
-    assert len(Phase) == 3
+def test_four_phases_defined():
+    assert len(Phase) == 4
     assert Phase.ANALYSIS.value == "analysis"
     assert Phase.SELF_CHECK.value == "self_check"
     assert Phase.COMPILE.value == "compile"
+    assert Phase.DIRECT.value == "direct"
 
 
 # ---- Task 13 ----
@@ -137,6 +138,33 @@ async def test_orchestrator_runs_two_phases(_fake_analyzer):
     # ANALYSIS + COMPILE 两阶段都登记在 phase_results 里
     assert "analysis" in ctx["phase_results"]
     assert "compile" in ctx["phase_results"]
+
+
+# ---- DIRECT mode (无骨架、无扩写:一次 LLM 直出完整报告) ----
+
+
+@pytest.mark.asyncio
+async def test_direct_mode_single_llm_no_skeleton_no_compile(_fake_analyzer):
+    """use_single_call=True 走 DIRECT 流:一次 LLM 直出,不经骨架、不做扩写。"""
+    ctx = await PipelineOrchestrator(_fake_analyzer).run(
+        StockAnalysis(symbol="000001"), use_single_call=True,
+    )
+    # 只登记 DIRECT 阶段;不存在 analysis(骨架)/compile(扩写)阶段
+    assert "direct" in ctx["phase_results"]
+    assert "analysis" not in ctx["phase_results"]
+    assert "compile" not in ctx["phase_results"]
+    # 报告正文来自那一次直出 LLM 调用(_stream_llm_content 的返回)
+    assert "[compiled fake markdown]" in ctx["final_markdown"]
+
+
+@pytest.mark.asyncio
+async def test_ultra_fast_also_uses_direct(_fake_analyzer):
+    """use_ultra_fast=True 同样走 DIRECT 流。"""
+    ctx = await PipelineOrchestrator(_fake_analyzer).run(
+        StockAnalysis(symbol="000001"), use_ultra_fast=True,
+    )
+    assert "direct" in ctx["phase_results"]
+    assert "compile" not in ctx["phase_results"]
 
 
 # ---- Self-check unit tests ----

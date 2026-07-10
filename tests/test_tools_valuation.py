@@ -84,6 +84,53 @@ def test_partial_when_ocf_missing() -> None:
 
 def test_finite_even_with_low_numbers() -> None:
     ft = _fin_temporal(ocf=1.0)
-    out = run(ft, _quote(price=10.0, pe=5.0, pb=1.0), {})
+    quote = _quote(price=10.0, pe=5.0, pb=1.0)
+    # OCF 极小 + 投资净流出 → base_fcfe<0 触发 DDM 回退;给分红数据走正目标价分支。
+    out = run(ft, quote, {}, _financial_with_dividend(1.0e8))
     assert "__partial__" not in out
     assert math.isfinite(out["fcfe_targets"]["neutral"]["price"])
+
+
+def _financial_with_dividend(dividend_paid: float):
+    class _Fin:
+        pass
+
+    _Fin.dividend_paid = dividend_paid
+    return _Fin()
+
+
+def test_ddm_fallback_when_fcfe_negative() -> None:
+    """投资现金流净流出远超 OCF → base_fcfe<0 → DCF 退化,回退 DDM 出正目标价。"""
+    # 格力式:OCF 463.8 亿,投资净流出 486 亿(capex 代理),base_fcfe 为负。
+    ft = _fin_temporal(ocf=463.8e8, investing_cf=-486e8)
+    ft["revenue_cagr"] = -0.086
+    quote = _quote(price=38.36, pe=7.36, pb=1.8)
+    quote.market_cap = 55.5e8 * 38.36  # shares * price
+    financial = _financial_with_dividend(181.7e8)
+    out = run(ft, quote, None, financial)
+
+    assert out.get("valuation_method") == "ddm_fallback"
+    targets = out["fcfe_targets"]
+    for tier in ("conservative", "neutral", "optimistic"):
+        assert targets[tier]["price"] is not None and targets[tier]["price"] > 0
+    # 三档应为正且保守 < 中性 < 乐观
+    assert (
+        targets["conservative"]["price"]
+        <= targets["neutral"]["price"]
+        <= targets["optimistic"]["price"]
+    )
+    # 目标价应接近现价(38.36),不应再出现负值垃圾。
+    assert 20 < targets["neutral"]["price"] < 60
+
+
+def test_ddm_fallback_returns_na_when_no_dividend() -> None:
+    """FCFE 为负且无分红数据 → 三档全 None(渲染为 N/A),不再输出负值。"""
+    ft = _fin_temporal(ocf=463.8e8, investing_cf=-486e8)
+    quote = _quote(price=38.36, pe=7.36, pb=1.8)
+    quote.market_cap = 55.5e8 * 38.36
+    out = run(ft, quote, None, _financial_with_dividend(0.0))
+
+    assert out.get("valuation_method") == "ddm_fallback"
+    targets = out["fcfe_targets"]
+    for tier in ("conservative", "neutral", "optimistic"):
+        assert targets[tier]["price"] is None

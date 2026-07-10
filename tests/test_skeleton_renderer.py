@@ -81,3 +81,48 @@ def test_renders_data_inference():
     md = render_skeleton_md(data)
     assert "缺失数据反推" in md
     assert "fcf" in md
+
+
+def test_renders_self_critique():
+    # 自我批判辩论：骨架有 self_critique 时必须渲染（原渲染器完全丢弃）
+    data = _valid()
+    data["self_critique"] = {
+        "bear_attacks": [
+            {"assumption": "毛利率维持", "attack": "渠道压价将侵蚀毛利"},
+        ],
+        "judge": "攻击部分成立，已在保守目标价体现",
+    }
+    md = render_skeleton_md(data)
+    assert "自我批判" in md
+    assert "渠道压价" in md
+    assert "裁判回应" in md
+
+
+def test_renders_stress_test():
+    # 极端压力测试：骨架有 stress_test 时必须渲染（原渲染器完全丢弃）
+    data = _valid()
+    data["stress_test"] = {
+        "scenario": "需求腰斩",
+        "floor_price": 1200.0,
+        "floor_downside_pct": -0.2,
+        "verdict": "底线价具备股息支撑",
+    }
+    md = render_skeleton_md(data)
+    assert "极端压力测试" in md
+    assert "需求腰斩" in md
+    assert "1200" in md
+    assert "底线价" in md
+
+
+def test_renders_valuation_sensitivity_and_peer_pe():
+    # 估值敏感度分析 + 同业 PE 对比（原渲染器丢弃）
+    data = _valid()
+    data["valuation"]["sensitivity"] = [
+        {"param": "WACC +1%", "impact": "目标价 -12%"},
+    ]
+    data["valuation"]["peer_pe"] = {"五粮液": 18, "泸州老窖": 16}
+    md = render_skeleton_md(data)
+    assert "敏感度分析" in md
+    assert "WACC" in md
+    assert "同业 PE" in md
+    assert "五粮液" in md

@@ -24,6 +24,7 @@ def run(
     fin_temporal: dict | None,
     quote: StockQuote | None,
     peer_comp: dict | None,
+    financial: object | None = None,
 ) -> dict[str, object]:
     try:
         if fin_temporal is None:
@@ -68,19 +69,36 @@ def run(
                 "peer_comparison": _peer_table(peer_comp, pe, pb),
             }
 
-        fcfe_targets, terminal_growth = _project_fcfe(base_fcfe, growth, discount_rate, quote)
-        fcfe_assumptions = {
-            "growth": round(growth, 4),
-            "discount_rate": round(discount_rate, 4),
-            "terminal_growth": round(terminal_growth, 4),
-            "years": FCFE_YEARS,
-            "capex": round(capex, 4),
-            "ocf": round(ocf, 4),
-        }
+        # FCFE 折现:base_fcfe>0 用标准 DCF;<=0(DCF 退化)回退分红折现(DDM)。
+        if base_fcfe > 0:
+            method = "fcfe_dcf"
+            fcfe_targets, terminal_growth = _project_fcfe(base_fcfe, growth, discount_rate, quote)
+            fcfe_assumptions = {
+                "method": method,
+                "growth": round(growth, 4),
+                "discount_rate": round(discount_rate, 4),
+                "terminal_growth": round(terminal_growth, 4),
+                "years": FCFE_YEARS,
+                "capex": round(capex, 4),
+                "ocf": round(ocf, 4),
+            }
+        else:
+            # capex 代理(投资现金流净流出)常含理财等非 PP&E 支出,使 FCFE 假阴性;
+            # 此时 DCF 无意义,改用语折现(Gordon)回退,依赖分红可持续性。
+            method = "ddm_fallback"
+            logger.info("[valuation] base_fcfe=%.2f<=0,FCFE DCF 退化,回退 DDM", base_fcfe)
+            fcfe_targets, _ = _project_ddm(financial, quote, market_cap, pe, discount_rate)
+            fcfe_assumptions = {
+                "method": method,
+                "discount_rate": round(discount_rate, 4),
+                "ddm_growth_tiers": {"conservative": 0.0, "neutral": 0.01, "optimistic": 0.02},
+                "note": "FCFE 为负(capex 代理≥OCF),DCF 退化,改用语折现(Gordon)回退",
+            }
 
         return {
             "pe": pe,
             "pb": pb,
+            "valuation_method": method,
             "fcfe_targets": fcfe_targets,
             "fcfe_assumptions": fcfe_assumptions,
             "peer_comparison": _peer_table(peer_comp, pe, pb),
@@ -132,6 +150,9 @@ def _project_fcfe(
         # 总价值 → 每股目标价;无流通股本信息时无法折算每股,显式置 None
         # (不应把总价值直接当作每股价返回)。
         per_share = (equity_value / shares) if shares > 0 else None
+        # 防御:权益值为负(极端情景)时不输出负值目标价,置 None → 渲染为 N/A。
+        if per_share is not None and per_share <= 0:
+            per_share = None
         target_pe = (per_share / eps) if (per_share is not None and eps > 0) else None
         targets[name] = {
             "price": round(per_share, 2) if per_share is not None else None,
@@ -139,6 +160,61 @@ def _project_fcfe(
             "probability": None,  # 模型不估概率,显式 None → 渲染为 N/A
         }
     return targets, terminal_growth
+
+
+def _project_ddm(
+    financial: object | None,
+    quote: StockQuote,
+    market_cap: float,
+    pe: float,
+    discount_rate: float,
+) -> tuple[dict[str, object], float | None]:
+    """FCFE≤0 时的回退估值:分红折现(Gordon)三档正目标价。
+
+    仅当能拿到分红现金(``financial.dividend_paid``)并用「市值/股价」推导股本时有效;
+    否则三档全部返回 ``None``(渲染为 N/A)。分红增速与营收 CAGR 解耦(分红具粘性),
+    用温和正增速档:保守 0% / 中性 1% / 乐观 2%。
+
+    返回 ``(targets, None)`` —— DDM 无永续增速封顶概念,终端增速由各档 g 直接决定。
+    """
+    price = float(quote.price or 0.0)
+    if price <= 0 or market_cap <= 0:
+        return _none_targets(), None
+    shares = market_cap / price
+    if shares <= 0:
+        return _none_targets(), None
+    div_total = float(getattr(financial, "dividend_paid", 0.0) or 0.0)
+    if div_total <= 0:
+        return _none_targets(), None
+
+    dps = div_total / shares
+    eps = price / pe if pe > 0 else 0.0
+    r = max(discount_rate, 0.001)
+    tiers = {"conservative": 0.0, "neutral": 0.01, "optimistic": 0.02}
+    targets: dict[str, object] = {}
+    for name, g in tiers.items():
+        if r <= g:
+            targets[name] = {"price": None, "pe": None, "probability": None}
+            continue
+        p = dps * (1 + g) / (r - g)
+        if p <= 0:
+            targets[name] = {"price": None, "pe": None, "probability": None}
+            continue
+        tp = p / eps if eps > 0 else None
+        targets[name] = {
+            "price": round(p, 2),
+            "pe": round(tp, 2) if tp is not None else None,
+            "probability": None,
+        }
+    return targets, None
+
+
+def _none_targets() -> dict[str, object]:
+    """三档全 None(渲染为 N/A),用于 DDM 无法计算时的兜底。"""
+    return {
+        name: {"price": None, "pe": None, "probability": None}
+        for name in ("conservative", "neutral", "optimistic")
+    }
 
 
 def _pv_fcfe(

@@ -31,6 +31,23 @@ def _is_reasoner_model(model: str | None) -> bool:
     return any(hint in name for hint in _REASONER_HINTS)
 
 
+def _should_send_reasoning_effort(settings: object) -> bool:
+    """Whether to attach ``reasoning_effort`` to the API body.
+
+    - ``deepseek_reasoner_enabled=True``  -> always send (renamed reasoner
+      endpoints that expose the model under a non-"reasoner" name, e.g.
+      ``deepseek-v4-flash`` on some gateways).
+    - ``False`` -> never send (plain chat/flash models reject the param).
+    - ``None`` (unset) -> auto-detect by model name (reasoner substring).
+    """
+    flag = getattr(settings, "deepseek_reasoner_enabled", None)
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    return _is_reasoner_model(getattr(settings, "deepseek_model", None))
+
+
 class PipelineLlmClient:
     """Owns a dedicated long-timeout httpx client for LLM calls.
 
@@ -69,7 +86,7 @@ class PipelineLlmClient:
             "messages": messages,
             "max_tokens": max_tokens or settings.deepseek_max_tokens,
         }
-        if _is_reasoner_model(settings.deepseek_model):
+        if _should_send_reasoning_effort(settings):
             body["reasoning_effort"] = reasoning_effort
         with logphase(f"llm(effort={reasoning_effort}, mt={body['max_tokens']})"):
             resp = await self._llm_http.post(
@@ -105,7 +122,7 @@ class PipelineLlmClient:
             "max_tokens": max_tokens or settings.deepseek_max_tokens,
             "stream": True,
         }
-        if _is_reasoner_model(settings.deepseek_model):
+        if _should_send_reasoning_effort(settings):
             body["reasoning_effort"] = reasoning_effort
         with logphase(f"llm-stream(effort={reasoning_effort})"):
             async with self._llm_http.stream(

@@ -84,7 +84,15 @@ def _build_skeleton_md(sk: AnalysisSkeleton) -> str:
     )
     if v.implied_g is not None:
         lines.append(f"- 隐含增长率 g*：{v.implied_g:.2%}")
-    lines.append(f"- 预期差判断：{v.expectation_gap}\n")
+    if v.peer_pe:
+        pe_str = "、".join(f"{k} {val}" for k, val in v.peer_pe.items())
+        lines.append(f"- 同业 PE 对比：{pe_str}")
+    lines.append(f"- 预期差判断：{v.expectation_gap}")
+    if v.sensitivity:
+        lines.append("- 敏感度分析：")
+        for s in v.sensitivity:
+            lines.append(f"  - {s.param}：{s.impact}")
+    lines.append("")
 
     # Kelly
     k = sk.kelly
@@ -109,6 +117,36 @@ def _build_skeleton_md(sk: AnalysisSkeleton) -> str:
                 f"- {br.event}：触发={br.trigger}（P={br.prob}）"
                 f"-> {br.action_triggered} / 否则 {br.action_else}"
             )
+        lines.append("")
+
+    # Self-critique（自我批判辩论：空头攻击 -> 裁判回应）
+    sc = sk.self_critique
+    if sc.bear_attacks or sc.judge:
+        lines.append("## 自我批判辩论\n")
+        for ba in sc.bear_attacks:
+            lines.append(f"- 空头攻击「{ba.assumption}」：{ba.attack}")
+        if sc.judge:
+            lines.append(f"\n**裁判回应**：{sc.judge}")
+        lines.append("")
+
+    # Stress test（极端压力测试：情景 -> 底线价 -> 结论）
+    st = sk.stress_test
+    if st.scenario or st.verdict or st.floor_price is not None:
+        lines.append("## 极端压力测试\n")
+        if st.scenario:
+            lines.append(f"- 情景：{st.scenario}")
+        if st.stress_fcf is not None:
+            lines.append(f"- 压力自由现金流：{_fmt2(st.stress_fcf)}")
+        if st.dividend_coverage is not None:
+            lines.append(f"- 股息覆盖率：{_fmt2(st.dividend_coverage)}")
+        if st.floor_price is not None:
+            _dd = (
+                f"（下行 {st.floor_downside_pct:.1%}）"
+                if st.floor_downside_pct is not None else ""
+            )
+            lines.append(f"- 底线价：{_fmt2(st.floor_price)}{_dd}")
+        if st.verdict:
+            lines.append(f"- 结论：{st.verdict}")
         lines.append("")
 
     # Missing-data audit & inference (compile.md 要求展开，降级路径不得丢失)
