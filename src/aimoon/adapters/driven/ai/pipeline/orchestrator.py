@@ -27,7 +27,7 @@ from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.quote import StockQuote
 from aimoon.core.domain.entities.research import ResearchReportData
 
-from ...config.settings import get_settings
+from ...config.settings import get_settings, resolve_ai_provider
 from ..tools import TOOL_RUNNERS
 from ..xml_utils import strip_xml_tool_calls
 from .context_renderer import render_stock_context
@@ -43,6 +43,7 @@ from .table_renderer import (
     render_financial_temporal,
     render_peer_comparison,
     render_scenario_prob,
+    render_segment_revenue,
     render_sentiment,
     render_valuation_targets,
 )
@@ -145,7 +146,12 @@ class PipelineOrchestrator:
                 use_ultra_fast=use_ultra_fast,
             )
         finally:
-            await self._llm.aclose()
+            # 收尾清理绝不能盖掉已成功返回的报告: aclose 抛错(如底层 client 被
+            # 其他事件循环污染)时只记录,不向上抛,否则会丢弃完整正文触发降级。
+            try:
+                await self._llm.aclose()
+            except Exception as e:  # noqa: BLE001 - 清理失败不影响结果
+                logger.warning("[pipeline] llm client aclose 异常 %s: %s", type(e).__name__, e)
 
     async def _run_pipeline(
         self,
@@ -348,6 +354,7 @@ class PipelineOrchestrator:
                 render_scenario_prob(scenario),
                 render_sentiment(senti),
                 render_financial_health_ext(getattr(si, "financial", None)),
+                render_segment_revenue(getattr(si, "financial", None)),
             ]
         )
         prior["tables_md"] = tables_md
@@ -461,6 +468,7 @@ class PipelineOrchestrator:
         # 可选: 实时检索近期催化注入(默认关,开启才有行为变化)
         user_body = tc.body
         settings = get_settings()
+        cfg = resolve_ai_provider(settings)
         if settings.direct_web_search_enabled:
             catalyst = await self._gather_catalysts(si)
             if catalyst:
@@ -477,13 +485,13 @@ class PipelineOrchestrator:
             {"role": "user", "content": user_content},
         ]
 
-        effort = settings.deepseek_analysis_effort
+        effort = cfg.analysis_effort
         text = ""
         for _attempt in range(2):
             try:
                 text = await self._stream_llm_content(
                     messages,
-                    max_tokens=settings.deepseek_max_tokens,
+                    max_tokens=cfg.max_tokens,
                     reasoning_effort=effort,
                     thinking=True,
                 )
@@ -549,8 +557,9 @@ class PipelineOrchestrator:
         skeleton_text = cached_skeleton
         if not skeleton_text:
             settings = get_settings()
-            analysis_effort = settings.deepseek_analysis_effort
-            analysis_max_tokens = settings.deepseek_analysis_max_tokens
+            analysis_cfg = resolve_ai_provider(settings)
+            analysis_effort = analysis_cfg.analysis_effort
+            analysis_max_tokens = analysis_cfg.analysis_max_tokens
             for _attempt in range(3):
                 try:
                     message = await self._call_llm_with_stream(
@@ -673,7 +682,7 @@ class PipelineOrchestrator:
         messages: list[dict],
         *,
         max_tokens: int | None = None,
-        reasoning_effort: str = "max",
+        reasoning_effort: str | None = "max",
         thinking: bool | None = None,
     ) -> dict:
         return await self._llm.call_llm_with_stream(
@@ -686,7 +695,7 @@ class PipelineOrchestrator:
         messages: list[dict],
         *,
         max_tokens: int | None = None,
-        reasoning_effort: str = "high",
+        reasoning_effort: str | None = "high",
         thinking: bool | None = None,
     ) -> str:
         return await self._llm.stream_llm_content(
@@ -771,16 +780,25 @@ def _run_rewrite_llm(client: PipelineLlmClient, system: str, user: str) -> str:
     在独立线程里跑新事件循环 ``asyncio.run``,既不阻塞主事件循环、也不与主循环
     的 ``run_until_complete`` 冲突。任何异常返回空串,交给 ``self_check_rewrite``
     的安全护栏决定保留原文。
+
+    关键: 线程内**新建**一个临时 ``httpx.AsyncClient`` 并在同一线程循环内用完即关,
+    绝不复用 orchestrator 主循环持有的共享 client。否则跨事件循环使用同一 httpx
+    连接池会污染共享 client(``RuntimeError: Event loop is closed``),进而在 run()
+    的 ``finally: aclose()`` 处抛错、把已生成的完整报告整体丢弃(降级 bug)。
     """
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+    analyzer = client.analyzer
 
     def _work() -> str:
         async def _go() -> str:
-            msg = await client.call_llm_with_stream(messages, thinking=False)
-            return (msg.get("content") or "").strip()
+            # 线程私有 client: 绑定本线程的新循环,用完即关,不触碰共享 client。
+            async with httpx.AsyncClient(timeout=120.0) as http:
+                fresh = PipelineLlmClient(analyzer, http_client=http)
+                msg = await fresh.call_llm_with_stream(messages, thinking=False)
+                return (msg.get("content") or "").strip()
 
         try:
             return asyncio.run(_go())

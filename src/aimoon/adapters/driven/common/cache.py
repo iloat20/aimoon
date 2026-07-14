@@ -23,6 +23,19 @@ def _safe_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:32]
 
 
+def _quiet_unlink(path: Path) -> None:
+    """Best-effort delete: 删除失败绝不 abort 调用方。
+
+    缓存清理属于锦上添花——在受限沙箱下(如 WorkBuddy Windows 沙箱回收站不可用,
+    unlink 钩子 fail-closed 抛 OSError)删不掉过期文件时,只需忽略,
+    绝不能因此让整条采集/分析 pipeline 崩溃。
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as e:  # noqa: BLE001 — 沙箱 safe-delete 钩子等
+        logger.debug("cache unlink skipped (%s): %s", path.name, e)
+
+
 class DiskTtlCache:
     """Disk-backed TTL cache with JSON serialisation.
 
@@ -55,12 +68,12 @@ class DiskTtlCache:
             raw = json.loads(path.read_text(encoding="utf-8"))
             ts = raw.get("ts", 0)
             if time.time() - ts > self.ttl_seconds:
-                path.unlink(missing_ok=True)
+                _quiet_unlink(path)
                 return None
             return raw.get("data")
         except (OSError, json.JSONDecodeError, KeyError) as e:
             logger.debug("[%s] cache read error: %s", self.namespace, e)
-            path.unlink(missing_ok=True)
+            _quiet_unlink(path)
             return None
 
     def set(self, key: str, data: Any) -> None:
@@ -78,13 +91,13 @@ class DiskTtlCache:
 
     def invalidate(self, key: str) -> None:
         """Remove a single entry."""
-        self._path_for(key).unlink(missing_ok=True)
+        _quiet_unlink(self._path_for(key))
 
     def clear(self) -> int:
         """Remove all entries in this namespace. Returns count removed."""
         count = 0
         for f in self._dir.glob("*.json"):
-            f.unlink()
+            _quiet_unlink(f)
             count += 1
         return count
 

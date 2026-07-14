@@ -50,6 +50,59 @@ def _filter_report_type(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
     return filtered if not filtered.empty else df
 
 
+def _match_amount(
+    df: pd.DataFrame,
+    candidates: list[str],
+    partial_kws: list[str] | None = None,
+) -> float:
+    """从 DataFrame 首行取第一个命中的正数金额(确定性采集兜底)。
+
+    先精确匹配候选列名,再按部分关键词(列名大写)模糊匹配,
+    用于东财接口列名不稳定时的货币资金/在建工程/购建固定资产等科目。
+    找不到或全为 0 返回 0.0。
+    """
+    partial_kws = partial_kws or []
+    for c in candidates:
+        if c in df.columns:
+            v = _safe_float(_get_col(df, c))
+            if v != 0.0:
+                return abs(v)
+    for col in df.columns:
+        cu = col.upper()
+        if any(kw in cu for kw in partial_kws):
+            v = _safe_float(_get_col(df, col))
+            if v != 0.0:
+                return abs(v)
+    return 0.0
+
+
+def _match_amount_row(
+    row: pd.Series,
+    candidates: list[str],
+    partial_kws: list[str] | None = None,
+) -> float:
+    """同 ``_match_amount`` 但作用于单行 Series(用于 _merge_statements 历史年报)。"""
+    partial_kws = partial_kws or []
+    for c in candidates:
+        if c in row.index:
+            v = row.get(c)
+            try:
+                if pd.notna(v) and float(v) != 0.0:
+                    return abs(float(v))
+            except (TypeError, ValueError):
+                continue
+    for c in row.index:
+        cu = str(c).upper()
+        if any(kw in cu for kw in partial_kws):
+            v = row.get(c)
+            try:
+                if pd.notna(v) and float(v) != 0.0:
+                    return abs(float(v))
+            except (TypeError, ValueError):
+                continue
+    return 0.0
+
+
 class AkshareFinancialAdapter:
     """Fetches structured financial data from akshare (东方财富).
 
@@ -132,14 +185,22 @@ class AkshareFinancialAdapter:
         """
         report_type = kwargs.get("report_type", "年报")
         cache_key = f"financial:{symbol}:{report_type}"
+        prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
+        ak_symbol = f"{prefix}{symbol}"
         cached = self._cache.get(cache_key)
         if cached is not None:
             if isinstance(cached, dict) and cached.get("_empty"):
                 return FinancialData(symbol=symbol, source="akshare_cache_empty")
-            return FinancialData.model_validate(cached)
+            fin = FinancialData.model_validate(cached)
+            # 缓存可能写于 segment_revenue 上线前/采集抖动时 → 缺失则补拉,
+            # 避免 #3 因陈旧缓存永久回缺失清单(2026-07-14 实测:缓存命中没有 segment)。
+            if not fin.segment_revenue:
+                try:
+                    fin.segment_revenue = await self._fetch_segment(ak_symbol)
+                except Exception:  # noqa: BLE001
+                    pass
+            return fin
 
-        prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
-        ak_symbol = f"{prefix}{symbol}"
         try:
             income_df, bs_df, cf_df = await self._get_raw_statements(ak_symbol)
         except Exception as e:
@@ -153,6 +214,12 @@ class AkshareFinancialAdapter:
             self._parse_balance_sheet(result, self._latest_report(bs_df, report_type))
         if cf_df is not None and not cf_df.empty:
             self._parse_cash_flow(result, self._latest_report(cf_df, report_type))
+
+        # 分业务营收(按产品分类,东财 F10 经营分析,结构化 JSON 免 PDF 解析)
+        try:
+            result.segment_revenue = await self._fetch_segment(ak_symbol)
+        except Exception:  # noqa: BLE001 — 单源失败永不 abort 主流程
+            result.segment_revenue = []
 
         if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
             result.source = "akshare_empty"
@@ -168,6 +235,89 @@ class AkshareFinancialAdapter:
             self._cache.set(cache_key, result.model_dump())
 
         return result
+
+    async def _fetch_segment(self, ak_symbol: str) -> list[dict]:
+        """拉取分业务营收(按产品分类,最新年报),消 8.1 缺失清单 #3。
+
+        数据源:akshare.stock_zygc_em — 东方财富 F10 经营分析-主营构成,
+        走 emweb.securities.eastmoney.com(PageAjax),**非**被 reset 的
+        push2*.eastmoney.com,返回结构化 DataFrame,无需 PDF 解析。
+        单源失败返回 [],永不 abort 主流程。
+        """
+        df = None
+        last_err: Exception | None = None
+        # 完整 pipeline 并发打多条 akshare 请求时东财偶发限流/WAF 重置,
+        # 轻量重试(2 次 + 1s 退避)即可显著提升命中率,避免 #3 偶发回缺失清单。
+        for attempt in range(2):
+            try:
+                loop = asyncio.get_running_loop()
+                df = await loop.run_in_executor(
+                    None, lambda: ak.stock_zygc_em(symbol=ak_symbol)
+                )
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if attempt == 0:
+                    await asyncio.sleep(1.0)
+        if df is None:
+            logger.debug(
+                "[akshare] segment fetch failed for %s: %s", ak_symbol, last_err
+            )
+            return []
+        if df is None or not hasattr(df, "empty") or df.empty:
+            return []
+
+        cols = list(df.columns)
+        # 业务名称列:东财真实列名「主营构成」(非分类维度列)
+        name_col = next(
+            (c for c in cols if "主营构成" in c),
+            next((c for c in cols if "构成" in c and "分类" not in c), None),
+        )
+        # 营业收入列:东财真实列名「主营收入」(非「营业收入」)
+        rev_col = next(
+            (c for c in cols if "主营收入" in c),
+            next((c for c in cols if "营业收入" in c and "同比" not in c), None),
+        )
+        if not name_col or not rev_col:
+            return []
+        ratio_col = next((c for c in cols if "收入比例" in c), None)
+        margin_col = next((c for c in cols if "毛利率" in c), None)
+        # 分类维度列:东财真实列名「分类类型」(非「分类方向」);过滤「按产品分类」段
+        seg_col = next(
+            (c for c in cols if "分类类型" in c),
+            next((c for c in cols if "分类" in c and "类型" in c), None),
+        )
+        rows = df
+        if seg_col is not None:
+            rows = df[df[seg_col].astype(str).str.contains("产品")]
+        # 仅取最新报告期,避免多期(年报/中报)混入
+        date_col = next((c for c in cols if "报告日期" in c), None)
+        if date_col is not None and hasattr(rows, "empty") and not rows.empty:
+            dates = rows[date_col].astype(str).str[:10]
+            latest = dates.max()
+            rows = rows[dates == latest]
+        if rows is None or (hasattr(rows, "empty") and rows.empty):
+            return []
+
+        out: list[dict] = []
+        for _, r in rows.iterrows():
+            name = str(r[name_col])
+            if name in ("分类", "产品", ""):
+                continue
+            rev = _safe_float(r.get(rev_col))
+            if rev == 0.0:
+                continue
+            ratio = _safe_float(r.get(ratio_col)) if ratio_col else None
+            margin = _safe_float(r.get(margin_col)) if margin_col else None
+            out.append(
+                {
+                    "name": name,
+                    "revenue_yi": round(rev / 1e8, 2),
+                    "ratio": ratio,
+                    "gross_margin": margin,
+                }
+            )
+        return out
 
     async def _get_raw_statements(
         self, ak_symbol: str
@@ -316,6 +466,15 @@ class AkshareFinancialAdapter:
         if inv != 0.0:
             result.inventory = inv
 
+        # ====== 货币资金(短期分红能力 / 真实财务弹性) ======
+        mf = _match_amount(df, ["MONETARY_FUNDS"], ["MONETARY", "货币资金"])
+        if mf != 0.0:
+            result.monetary_funds = mf
+        # ====== 在建工程(战略性资本开支信号) ======
+        cip = _match_amount(df, ["CONSTRUCTION_IN_PROGRESS"], ["CONSTRUCTION", "在建工程"])
+        if cip != 0.0:
+            result.construction_in_progress = cip
+
         # 自诊断:若新字段全 0,把实际列名写进日志,方便用户上报。
         if ar == 0.0 and inv == 0.0:
             logger.warning(
@@ -355,6 +514,16 @@ class AkshareFinancialAdapter:
                         break
         if div != 0.0:
             result.dividend_paid = div
+
+        # ====== 真实资本开支:购建固定资产/无形资产/长期资产支付的现金 ======
+        # 区别于 investing_cf 净额(含理财/投资收回),用于 FCF 真实 capex 代理。
+        capex = _match_amount(
+            df,
+            ["CASH_PAID_FOR_ASSETS", "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS", "PAID_FOR_ASSETS"],
+            ["PAID_FOR_ASSET", "购建固定资产"],
+        )
+        if capex != 0.0:
+            result.capex = capex
 
         # 自诊断
         if div == 0.0:
@@ -584,6 +753,19 @@ class AkshareFinancialAdapter:
                     fd.equity = fd.total_assets - fd.total_liabilities
                 if fd.net_profit != 0 and fd.equity > 0:
                     fd.roe = round(fd.net_profit / fd.equity * 100, 2)
+                # 货币资金 / 在建工程(资产负债表扩展科目)
+                mf = _match_amount_row(
+                    b_match.iloc[0], ["MONETARY_FUNDS"], ["MONETARY", "货币资金"]
+                )
+                if mf:
+                    fd.monetary_funds = mf
+                cip = _match_amount_row(
+                    b_match.iloc[0],
+                    ["CONSTRUCTION_IN_PROGRESS"],
+                    ["CONSTRUCTION", "在建工程"],
+                )
+                if cip:
+                    fd.construction_in_progress = cip
 
             c_match = c_df[c_df["REPORT_DATE"].astype(str).str[:10] == y]
             if not c_match.empty:
@@ -596,5 +778,13 @@ class AkshareFinancialAdapter:
                 fin = c_match.iloc[0].get("NETCASH_FINANCE")
                 if pd.notna(fin):
                     fd.financing_cf = float(fin)
+                # 真实资本开支:购建固定资产/无形资产/长期资产支付的现金
+                cap = _match_amount_row(
+                    c_match.iloc[0],
+                    ["CASH_PAID_FOR_ASSETS", "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS"],
+                    ["PAID_FOR_ASSET", "购建固定资产", "PAID_FOR_ASSETS"],
+                )
+                if cap:
+                    fd.capex = cap
             out.append(fd)
         return out

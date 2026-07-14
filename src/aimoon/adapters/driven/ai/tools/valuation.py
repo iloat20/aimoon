@@ -52,7 +52,8 @@ def run(
                 "peer_comparison": _peer_table(peer_comp, pe, pb),
             }
 
-        capex = _capex(ocf, invest_cf)
+        real_capex = float(getattr(financial, "capex", 0.0) or 0.0) if financial else 0.0
+        capex = _capex(ocf, invest_cf, real_capex)
         base_fcfe = ocf - capex
         growth = float(fin_temporal.get("revenue_cagr") or 0.0)
         discount_rate = _discount_rate(quote)

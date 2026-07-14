@@ -47,6 +47,9 @@ def run(history: list[FinancialData] | None) -> dict[str, object]:
 
 
 def _serialize(f: FinancialData) -> dict[str, object]:
+    # 真实 FCF = 经营现金流 − 购建固定资产等支付的现金(真实 capex)。
+    # 仅当两者皆有时才算,否则留 None(避免用投资净额代理虚高/虚低)。
+    fcf = (f.operating_cf - f.capex) if (f.operating_cf and f.capex) else None
     return {
         "period": f.report_period,
         "revenue": f.revenue,
@@ -56,6 +59,8 @@ def _serialize(f: FinancialData) -> dict[str, object]:
         "roe": _safe_div(f.net_profit, f.equity),
         "operating_cf": f.operating_cf,
         "investing_cf": f.investing_cf,
+        "capex": f.capex,
+        "fcf": fcf,
         "eps": f.eps,
         "bvps": f.bvps,
     }

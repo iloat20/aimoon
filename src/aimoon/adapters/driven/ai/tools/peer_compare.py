@@ -105,25 +105,109 @@ async def run(
         if not name or not self_fin:
             return {"__partial__": "no_data", "peers": [], "industry": ""}
 
-        if search_fn is None:
-            logger.info("[peer_compare] 未提供 search_fn,返回 partial(由 orchestrator 注入)")
-            return {"__partial__": "no_data", "peers": [], "industry": ""}
-
         industry = _detect_industry(name)
+        peers: list[dict[str, object]] = []
         query = build_search_query(name, industry)
-        html = await search_fn(query)
-        if not html:
+        # 主路径:web 搜索(由 orchestrator 注入 search_fn)
+        if search_fn is not None:
+            try:
+                html = await search_fn(query)
+                if html:
+                    peers = parse(html, self_fin)
+            except Exception as e:
+                logger.debug("[peer_compare] web search failed: %s", e)
+        # 兜底:web 无果 → akshare 行业板块(真实 PE/PB,更可靠)
+        if not peers:
+            peers = await _akshare_peers(self_fin, industry)
+        if not peers:
             return {"__partial__": "no_data", "peers": [], "industry": industry}
-
-        peers = parse(html, self_fin)
         return {
             "peers": peers,
             "industry": industry,
-            "_query": query,
+            "_query": query if search_fn is not None else None,
         }
     except Exception as e:
         logger.debug("[peer_compare] partial: %s: %s", type(e).__name__, e)
         return {"__partial__": "no_data", "peers": [], "industry": ""}
+
+
+async def _akshare_peers(self_fin: FinancialData, industry: str) -> list[dict[str, object]]:
+    """akshare 行业板块兜底:返回同行(真实 PE/PB)。web 搜索无果时启用。
+
+    全链路 lazy import + try/except:任一环节失败(列名差异/网络/WAF)均返回 [],
+    不影响主流程(peer 为空 → 渲染层中位数行不出现,与旧行为一致)。
+    """
+    try:
+        import akshare as ak
+
+        symbol = getattr(self_fin, "symbol", "") or ""
+        if not symbol:
+            return []
+        # 1) 个股所属行业(如 "白色家电")
+        try:
+            info = ak.stock_individual_info_em(symbol=symbol) or {}
+            ind = (info.get("行业") or industry) if isinstance(info, dict) else industry
+        except Exception:
+            ind = industry
+        if not ind:
+            return []
+        # 2) 行业 → 板块名称(如 "家电")
+        boards = ak.stock_board_industry_name_em()
+        board_name = _match_board(ind, boards)
+        if not board_name:
+            return []
+        # 3) 板块成分股(含 市盈率-动态 / 市净率)
+        cons = ak.stock_board_industry_cons_em(symbol=board_name)
+        if cons is None or getattr(cons, "empty", lambda: True)():
+            return []
+        self_sym = symbol
+        peers: list[dict[str, object]] = []
+
+        def _flt(row: Any, col: str, default: float = 0.0) -> float:
+            v = row.get(col)
+            try:
+                return float(v) if v is not None else default
+            except (TypeError, ValueError):
+                return default
+
+        for _, r in cons.iterrows():
+            code = str(r.get("代码", "") or "")
+            if code == self_sym:
+                continue
+            peers.append(
+                {
+                    "name": str(r.get("名称", "") or ""),
+                    "price": _flt(r, "最新价"),
+                    "pe": _flt(r, "市盈率-动态"),
+                    "pb": _flt(r, "市净率"),
+                    "roe": 0.0,
+                    "np_cagr": 0.0,
+                    "rev_g": 0.0,
+                    "np_g": 0.0,
+                    "mcap": _flt(r, "总市值") or _flt(r, "流通市值"),
+                    "self": False,
+                }
+            )
+        return peers
+    except Exception as e:
+        logger.debug("[peer_compare] akshare fallback failed: %s: %s", type(e).__name__, e)
+        return []
+
+
+def _match_board(industry: str, boards: Any) -> str:
+    """从板块列表(含 板块名称)中按子串匹配行业对应的板块名称。"""
+    if not industry or boards is None:
+        return ""
+    try:
+        for _, r in boards.iterrows():
+            bn = str(r.get("板块名称", "") or "")
+            if not bn:
+                continue
+            if industry in bn or bn in industry:
+                return bn
+    except Exception:
+        return ""
+    return ""
 
 
 def _extract_name(text: str) -> str:

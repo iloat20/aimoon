@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from aimoon.adapters.driven.common.cache import DiskTtlCache
+from aimoon.adapters.driven.common.cache import DiskTtlCache, _quiet_unlink
 
 _cache = DiskTtlCache(namespace="ai_analysis", ttl_seconds=86400)
 
@@ -24,7 +24,7 @@ def get_analysis_cache(symbol: str) -> str | None:
         ts = raw.get("ts", 0)
         ttl = raw.get("data", {}).get("ttl", _cache.ttl_seconds)
         if time.time() - ts > ttl:
-            path.unlink(missing_ok=True)
+            _quiet_unlink(path)
             return None
         return raw.get("data", {}).get("report_text")
     except (OSError, json.JSONDecodeError, KeyError):

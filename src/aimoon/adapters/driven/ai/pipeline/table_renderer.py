@@ -8,10 +8,12 @@ Three core tables:
 
 from __future__ import annotations
 
+import statistics
 from typing import Any
 
 COLUMNS = (
-    "报告期 | 营收(亿) | 营收同比(%) | 净利润(亿) | 净利同比(%) | ROE(%) | EPS | 经营现金流(亿)"
+    "报告期 | 营收(亿) | 营收同比(%) | 净利润(亿) | 净利同比(%) | ROE(%) | EPS"
+    " | 经营现金流(亿) | 自由现金流(亿)"
 )
 
 
@@ -30,7 +32,7 @@ def render_financial_temporal(data: Any) -> str:
         "## 近年财务时序表",
         "",
         f"| {COLUMNS} |",
-        "|--------|----------|-------------|------------|-------------|--------|-----|----------------|",
+        "|--------|----------|-------------|------------|-------------|--------|-----|----------------|----------------|",
     ]
     for y in years:
         if not isinstance(y, dict):
@@ -44,8 +46,9 @@ def render_financial_temporal(data: Any) -> str:
         roe = _fmt_pct(roe_raw * 100 if roe_raw else None)  # roe 存储为小数,显示为 %
         eps = _fmt_num(y.get("eps"))
         ocf = _fmt_num(y.get("ocf") or y.get("operating_cf"))
+        fcf = _fmt_num(y.get("fcf"))
         lines.append(
-            f"| {period} | {rev} | {rev_yoy} | {np_} | {np_yoy} | {roe} | {eps} | {ocf} |"
+            f"| {period} | {rev} | {rev_yoy} | {np_} | {np_yoy} | {roe} | {eps} | {ocf} | {fcf} |"
         )
     return "\n".join(lines)
 
@@ -80,6 +83,25 @@ def render_peer_comparison(data: Any) -> str:
         mcap = _fmt_num(p.get("mcap") or p.get("market_cap"))
         lines.append(
             f"| {name} | {price} | {pe} | {pb} | {roe} | {rev_g} | {np_g} | {mcap} |"
+        )
+
+    # 行业中位数(PE/PB):供估值规则对照,消 8.1「同行业 PE/PB 中位数」缺失。
+    pes = [
+        float(p.get("pe") or 0.0)
+        for p in peers
+        if isinstance(p, dict) and p.get("pe") not in (None, 0.0, 0)
+    ]
+    pbs = [
+        float(p.get("pb") or 0.0)
+        for p in peers
+        if isinstance(p, dict) and p.get("pb") not in (None, 0.0, 0)
+    ]
+    if pes or pbs:
+        median_pe = statistics.median(pes) if pes else None
+        median_pb = statistics.median(pbs) if pbs else None
+        lines.append(
+            f"| **行业中位数** | - | {_fmt_num(median_pe)} | "
+            f"{_fmt_num(median_pb)} | - | - | - | - |"
         )
     return "\n".join(lines)
 
@@ -241,18 +263,24 @@ def render_fcf_dividend(data: Any) -> str:
 
 
 def render_financial_health_ext(financial: Any) -> str:
-    """Render extended financial-health indicators(应收账款/存货/分红).
+    """Render extended financial-health indicators(资产负债/现金/应收存货/分红).
 
-    数据来自 FinancialData 实体根级字段(accounts_receivable / inventory /
-    dividend_paid),这些字段在旧版实体中不存在,导致「渠道压货」「库存减值」
-    「股息可持续性」三大核心判断缺失数据支撑。若全部字段为 0 则返回 ''。
+    数据来自 FinancialData 实体根级字段,含确定性扩展字段
+    (monetary_funds / construction_in_progress / capex / 资产负债率派生)。
+    若全部字段为 0 则返回 ''。
     """
     if not hasattr(financial, "accounts_receivable"):
         return ""
     ar = getattr(financial, "accounts_receivable", 0.0) or 0.0
     inv = getattr(financial, "inventory", 0.0) or 0.0
     div = getattr(financial, "dividend_paid", 0.0) or 0.0
-    if ar == 0 and inv == 0 and div == 0:
+    mf = getattr(financial, "monetary_funds", 0.0) or 0.0
+    cip = getattr(financial, "construction_in_progress", 0.0) or 0.0
+    capex = getattr(financial, "capex", 0.0) or 0.0
+    ta = getattr(financial, "total_assets", 0.0) or 0.0
+    tl = getattr(financial, "total_liabilities", 0.0) or 0.0
+    eq = getattr(financial, "equity", 0.0) or 0.0
+    if ar == 0 and inv == 0 and div == 0 and mf == 0 and cip == 0 and capex == 0:
         return ""
     revenue = getattr(financial, "revenue", 0.0) or 0.0
     net_profit = getattr(financial, "net_profit", 0.0) or 0.0
@@ -262,12 +290,25 @@ def render_financial_health_ext(financial: Any) -> str:
     inv_ratio = _pct(inv / revenue) if revenue > 0 else "N/A"
     # 股利支付率(分红 / 净利润)
     payout = _pct(div / net_profit) if net_profit > 0 and div > 0 else "N/A"
+    # 杜邦拆解派生:资产负债率 / 权益乘数
+    debt_ratio = _pct(tl / ta) if ta > 0 else "N/A"
+    equity_mult = _fmt_num(ta / eq) if eq > 0 else "N/A"
+    # 现金/资本开支占比信号
+    mf_ratio = _pct(mf / ta) if ta > 0 else "N/A"
+    cip_ratio = _pct(cip / ta) if ta > 0 else "N/A"
+    capex_ratio = _pct(capex / revenue) if revenue > 0 else "N/A"
 
     lines = [
-        "## 财务健康扩展指标(应收账款/存货/分红)",
+        "## 财务健康扩展指标(资产负债/现金/应收存货/分红)",
         "",
-        "| 指标 | 数值 | 占营收 / 支付率 | 诊断 |",
+        "| 指标 | 数值 | 占资产 / 营收 | 诊断 |",
         "|------|------|----------------|------|",
+        f"| 资产负债率 | {debt_ratio} | 负债/总资产 | 杜邦拆解杠杆依赖度 |",
+        f"| 权益乘数 | {equity_mult} | 总资产/权益 | >2 = 高杠杆维持 ROE,下行受损更重 |",
+        f"| 货币资金 | {_fmt_num(mf)} 亿 | {mf_ratio} | 短期分红能力 / 真实财务弹性 |",
+        f"| 在建工程 | {_fmt_num(cip)} 亿 | {cip_ratio} | 战略性资本开支信号 |",
+        f"| 资本开支 Capex | {_fmt_num(capex)} 亿 | {capex_ratio} | "
+        f"购建固定资产(真实 capex,区别于理财) |",
         f"| 应收账款 | {_fmt_num(ar)} 亿 | {ar_ratio} | 占营收比上升=渠道压货信号 |",
         f"| 存货 | {_fmt_num(inv)} 亿 | {inv_ratio} | 积压风险 / 库存减值先行指标 |",
         f"| 分配股利(现金流出) | {_fmt_num(div)} 亿 | {payout} | 股息可持续性;_coverage=FCF÷分红 |",
@@ -368,4 +409,39 @@ def render_sentiment(data: Any) -> str:
         lines.append(f"**正面词**: {'、'.join(f'{w}({c})' for w, c in pos_words[:6])}")
     if neg_words:
         lines.append(f"**负面词**: {'、'.join(f'{w}({c})' for w, c in neg_words[:6])}")
+    return "\n".join(lines)
+
+
+def render_segment_revenue(financial: Any) -> str:
+    """渲染分业务营收(按产品分类,最新年报),消 8.1 缺失清单 #3。
+
+    数据来自 FinancialData.segment_revenue(确定性采集自东财 F10 主营构成),
+    非空时渲染,供 LLM 在正文引用「见分业务表」,而非标数据缺失。
+    """
+    if not hasattr(financial, "segment_revenue"):
+        return ""
+    segs = getattr(financial, "segment_revenue", []) or []
+    if not isinstance(segs, list) or not segs:
+        return ""
+    rows = [s for s in segs if isinstance(s, dict) and s.get("name") and s.get("revenue_yi")]
+    if not rows:
+        return ""
+
+    lines = [
+        "## 分业务营收(按产品分类,最新年报)",
+        "",
+        "| 业务名称 | 营业收入(亿) | 收入占比(%) | 毛利率(%) |",
+        "|----------|--------------|--------------|------------|",
+    ]
+    for s in rows:
+        name = str(s.get("name", "N/A"))
+        rev = _fmt_num(s.get("revenue_yi"))
+        # ratio / gross_margin 存储为小数(0.78),用 _pct 转百分比(78.1%)
+        ratio = _pct(s.get("ratio")) if s.get("ratio") not in (None, 0.0, 0) else "N/A"
+        margin = (
+            _pct(s.get("gross_margin"))
+            if s.get("gross_margin") not in (None, 0.0, 0)
+            else "N/A"
+        )
+        lines.append(f"| {name} | {rev} | {ratio} | {margin} |")
     return "\n".join(lines)

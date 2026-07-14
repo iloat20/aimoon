@@ -30,8 +30,11 @@ def _first_year_investing(fin: dict) -> float:
     return 0.0
 
 
-def _capex(ocf: float, investing_cf: float) -> float:
-    """capex 代理: 投资现金流净流出绝对值; 否则工业兜底 OCF * 30%。"""
+def _capex(ocf: float, investing_cf: float, real_capex: float = 0.0) -> float:
+    """capex 代理: 优先用真实 capex(购建固定资产现金); 否则投资现金流净流出绝对值;
+    否则工业兜底 OCF * 30%。"""
+    if real_capex and real_capex > 0:
+        return real_capex
     if investing_cf < 0:
         return -investing_cf
     if ocf > 0:

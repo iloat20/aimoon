@@ -56,7 +56,8 @@ def run(
         }
 
     investing = _first_year_investing(fin_temporal)
-    capex = _capex(ocf, investing)
+    real_capex = float(getattr(financial, "capex", 0.0) or 0.0) if financial else 0.0
+    capex = _capex(ocf, investing, real_capex)
     fcf = ocf - capex
     np_ = float(financial.net_profit) if financial else 0.0
     fcf_margin = (fcf / np_) if np_ else None

@@ -37,6 +37,14 @@ class FinancialData(BaseModel):
     inventory: float = 0.0  # 存货(元)
     dividend_paid: float = 0.0  # 分配股利、利润或偿付利息支付的现金(元)
 
+    # 资产负债表/现金流扩展字段(确定性采集,消 8.1 缺失清单 A/B 组)
+    monetary_funds: float = 0.0  # 货币资金(元) — 短期分红能力/真实财务弹性
+    construction_in_progress: float = 0.0  # 在建工程(元) — 战略性资本开支信号
+    capex: float = 0.0  # 购建固定资产/无形资产/长期资产支付的现金(元) — 真实资本开支(区别于理财)
+
+    # 分业务营收(按产品分类,最新年报)— 确定性采集,消 8.1 缺失清单 #3
+    segment_revenue: list[dict] = []  # 每项: {name, revenue_yi, ratio, gross_margin}
+
     source: str = ""
 
 
