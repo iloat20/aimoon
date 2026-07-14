@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import httpx
 
 from .._sse import collect_sse_content
 from .timing import logphase
 from .types import AnalyzerRuntime
+
+if TYPE_CHECKING:
+    from ..config.settings import AIProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +34,41 @@ LLM_CLIENT_TIMEOUT = 500.0  # > COMPILE_TIMEOUT(480), 让 orchestrator 的 async
 def _resolve_thinking(
     settings: object,
     thinking_override: bool | None,
-    reasoning_effort: str,
+    reasoning_effort: str | None,
 ) -> dict[str, object]:
     """Compute the thinking-related request-body fields.
 
     Returns a dict with keys:
       - ``thinking``: always present (``{"type": "enabled" | "disabled"}``).
-      - ``reasoning_effort``: present only when thinking is enabled.
+      - ``reasoning_effort``: present only when thinking is enabled AND the
+        provider supports it (DeepSeek). LongCat has no ``reasoning_effort``
+        param and only uses ``thinking``.
       - ``temperature``: present only when thinking is disabled (thinking mode
         ignores it; sampling params only matter for non-thinking expansion).
 
     Resolution order: an explicit per-call ``thinking_override`` wins; otherwise
-    fall back to ``deepseek_thinking_enabled``, then the legacy
-    ``deepseek_reasoner_enabled`` alias; absent all, v4-* models default to enabled.
+    fall back to the provider-specific enabled flag; absent all, v4-* / LongCat
+    default to thinking enabled.
     """
+    provider = getattr(settings, "ai_provider", "deepseek")
+    if provider == "longcat":
+        explicit = getattr(settings, "longcat_thinking_enabled", None)
+        enabled = True if explicit is None else bool(explicit)
+        if thinking_override is not None:
+            enabled = thinking_override
+        if enabled:
+            return {
+                "thinking": {"type": "enabled"},
+                "reasoning_effort": None,
+                "temperature": None,
+            }
+        return {
+            "thinking": {"type": "disabled"},
+            "reasoning_effort": None,
+            "temperature": float(getattr(settings, "longcat_temperature", 0.3) or 0.3),
+        }
+
+    # deepseek 路径(含旧 deepseek-reasoner 兼容别名)
     explicit = getattr(settings, "deepseek_thinking_enabled", None)
     if explicit is None:
         explicit = getattr(settings, "deepseek_reasoner_enabled", None)
@@ -70,7 +95,7 @@ def _apply_thinking(
     body: dict[str, object],
     settings: object,
     thinking_override: bool | None,
-    reasoning_effort: str,
+    reasoning_effort: str | None,
 ) -> None:
     """Mutate ``body`` in place with the resolved thinking fields."""
     resolved = _resolve_thinking(settings, thinking_override, reasoning_effort)
@@ -79,6 +104,40 @@ def _apply_thinking(
         body["reasoning_effort"] = resolved["reasoning_effort"]
     if resolved["temperature"] is not None:
         body["temperature"] = resolved["temperature"]
+
+
+def _provider_cfg(analyzer: object) -> AIProviderConfig | None:
+    """Resolve the active provider config from an analyzer instance.
+
+    Prefers ``analyzer.provider_config`` (set by the real analyzer); falls back
+    to ``resolve_ai_provider`` so lightweight fake analyzers in tests (without a
+    ``provider_config`` attribute) keep working.
+    """
+    cfg = getattr(analyzer, "provider_config", None)
+    if cfg is not None:
+        return cfg
+    settings = getattr(analyzer, "_provided_settings", None) or getattr(
+        analyzer, "_settings", None
+    )
+    if settings is None:
+        return None
+    from ..config.settings import resolve_ai_provider
+
+    return resolve_ai_provider(settings)
+
+
+def _cfg_model(cfg: AIProviderConfig | None, settings: object) -> str:
+    """Resolve the model id from provider cfg, falling back to legacy settings."""
+    if cfg is not None:
+        return cfg.model
+    return str(getattr(settings, "deepseek_model", "deepseek-v4-flash"))
+
+
+def _cfg_max_tokens(cfg: AIProviderConfig | None, settings: object) -> int:
+    """Resolve max_tokens from provider cfg, falling back to legacy settings."""
+    if cfg is not None:
+        return cfg.max_tokens
+    return int(getattr(settings, "deepseek_max_tokens", 24576))
 
 
 class PipelineLlmClient:
@@ -105,7 +164,7 @@ class PipelineLlmClient:
         messages: list[dict],
         *,
         max_tokens: int | None = None,
-        reasoning_effort: str = "max",
+        reasoning_effort: str | None = "max",
         thinking: bool | None = None,
     ) -> dict:
         """单次 LLM 调用 wrapper,带 DeepSeek 思考模式 + 300s timeout。
@@ -115,10 +174,11 @@ class PipelineLlmClient:
         """
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
+        cfg = _provider_cfg(analyzer)
         body: dict[str, object] = {
-            "model": settings.deepseek_model,
+            "model": _cfg_model(cfg, settings),
             "messages": messages,
-            "max_tokens": max_tokens or settings.deepseek_max_tokens,
+            "max_tokens": max_tokens or _cfg_max_tokens(cfg, settings),
         }
         _apply_thinking(body, settings, thinking, reasoning_effort)
         eff = body.get("reasoning_effort")
@@ -141,7 +201,7 @@ class PipelineLlmClient:
         messages: list[dict],
         *,
         max_tokens: int | None = None,
-        reasoning_effort: str = "high",
+        reasoning_effort: str | None = "high",
         thinking: bool | None = None,
     ) -> str:
         """流式 LLM 调用,实时打印 ``##`` 章节进度,返回拼接后的完整正文。
@@ -151,10 +211,11 @@ class PipelineLlmClient:
         """
         analyzer = self.analyzer
         settings = analyzer._provided_settings or analyzer._settings
+        cfg = _provider_cfg(analyzer)
         body: dict[str, object] = {
-            "model": settings.deepseek_model,
+            "model": _cfg_model(cfg, settings),
             "messages": messages,
-            "max_tokens": max_tokens or settings.deepseek_max_tokens,
+            "max_tokens": max_tokens or _cfg_max_tokens(cfg, settings),
             "stream": True,
         }
         _apply_thinking(body, settings, thinking, reasoning_effort)

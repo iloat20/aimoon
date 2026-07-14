@@ -1,7 +1,9 @@
-"""DeepSeek AI analysis engine (facade).
+"""AI analysis engine (facade) — provider-agnostic (DeepSeek / LongCat).
 
 Delegates prompt building, HTTP/SSE transport, and post-processing to the
-``prompt_builder``, ``api_client``, and ``post_processor`` modules.
+``prompt_builder``, ``api_client``, and ``post_processor`` modules. The active
+provider (DeepSeek vs LongCat) is selected via ``Settings.ai_provider``; the
+resolved endpoint / key / model come from ``resolve_ai_provider``.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from aimoon.core.application.ports import AIAnalyzer as AIAnalyzerPort
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.value_objects.analysis_report import AnalysisReport
 
-from ..config.settings import get_settings
+from ..config.settings import AIProviderConfig, get_settings, resolve_ai_provider
 from .api_client import DeepSeekApiClient
 from .post_processor import (
     build_analysis_report,
@@ -34,10 +36,12 @@ _MAX_TOOL_ROUNDS = 0
 
 
 class DeepSeekAIAnalyzer(AIAnalyzerPort):
-    """DeepSeek AI analysis implementation.
+    """Provider-agnostic AI analysis implementation (DeepSeek / LongCat).
 
-    Calls DeepSeek API directly (no openai SDK), supports tool calling
-    and streaming output. Produces AnalysisReport compatible with HTML templates.
+    Calls an OpenAI-compatible chat completions API directly (no openai SDK),
+    supports tool calling and streaming output. Produces an ``AnalysisReport``
+    compatible with the HTML templates. The concrete backend is resolved from
+    ``Settings.ai_provider`` so the same class serves DeepSeek and LongCat.
     """
 
     def __init__(
@@ -51,9 +55,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         self._provided_settings = settings
         self._settings = settings or get_settings()
         self._mock = mock or self._settings.mock_mode
-        self.api_key = api_key or self._settings.deepseek_api_key
-        base = self._settings.deepseek_base_url.rstrip("/")
-        self.api_url = api_url or f"{base}/v1/chat/completions"
+        # 解析当前 AI 提供商配置(deepseek / longcat ...),统一驱动 url/key/model。
+        self._cfg: AIProviderConfig = resolve_ai_provider(self._settings)
+        self.api_key = api_key or self._cfg.api_key
+        self.api_url = api_url or self._cfg.chat_url
         self._http = http_client or httpx.AsyncClient(
             timeout=180.0,
             limits=httpx.Limits(max_keepalive_connections=5),
@@ -62,8 +67,15 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
             api_url=self.api_url,
             api_key=self.api_key,
             settings=self._settings,
+            provider_config=self._cfg,
             http_client=self._http,
         )
+
+    @property
+    def provider_config(self) -> AIProviderConfig:
+        """Expose the resolved provider config to the v2 pipeline transport."""
+        return self._cfg
+
 
     async def analyze(
         self,
@@ -233,3 +245,11 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
 
         result = await self._api.stream_final_response(messages)
         return strip_xml_tool_calls(result)
+
+
+# 向后兼容 / 显式选择别名: 本分析器现已支持 DeepSeek 与 LongCat(由 Settings.ai_provider
+# 切换),保留 DeepSeekAIAnalyzer 名称以维持既有调用与测试;新增 StockAIAnalyzer 与
+# LongCatAIAnalyzer 便于按意图显式选用。三者指向同一实现。
+StockAIAnalyzer = DeepSeekAIAnalyzer
+LongCatAIAnalyzer = DeepSeekAIAnalyzer
+

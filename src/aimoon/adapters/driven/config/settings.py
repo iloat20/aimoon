@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import model_validator
@@ -80,6 +81,22 @@ class Settings(BaseSettings):
     # 新代码优先读 deepseek_thinking_enabled;本字段保留以避免旧 .env 失效。
     deepseek_reasoner_enabled: bool | None = None
 
+    # ---- LongCat 提供商(OpenAI 兼容 / Anthropic 兼容 API) ----
+    # 与 DeepSeek 二选一,由 ai_provider 切换(默认 deepseek,保持现有行为不变)。
+    # 官方端点 https://api.longcat.chat,OpenAI 格式 /openai/v1/chat/completions。
+    # 当前模型 LongCat-2.0;思考参数用 thinking:{type:enabled/disabled}(无 reasoning_effort)。
+    ai_provider: str = "deepseek"
+    longcat_api_key: str = ""
+    longcat_base_url: str = "https://api.longcat.chat"
+    longcat_model: str = "LongCat-2.0"
+    # 直出/扩写输出上限(模型总上限 131072,此值仅安全天花板)。
+    longcat_max_tokens: int = 24576
+    # ANALYSIS 骨架 JSON 输出上限
+    longcat_analysis_max_tokens: int = 4096
+    longcat_temperature: float = 0.3
+    # 思考开关:None = 沿用模型默认(enabled);True/False 强制开/关。
+    longcat_thinking_enabled: bool | None = None
+
     # 成本开关: 是否启用股吧 Playwright 渲染(重算力)。默认 False = 先用轻量
     # HTML 抓取,仅在 HTML 为空/被 WAF 时才升级到浏览器。设 True 可恢复旧行为。
     guba_playwright_enabled: bool = False
@@ -143,7 +160,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _warn_unknown_model(self) -> Settings:
-        """启动期可见性: 模型名非已知公开模型 / 已弃用 / effort 非法时告警(不阻断运行)。"""
+        """启动期可见性: 模型名非已知公开模型 / 已弃用 / effort 非法时告警(不阻断运行)。
+
+        仅在 ai_provider=deepseek 时校验 DeepSeek 专属模型名 / effort;切换到
+        LongCat 等其它提供商时跳过这些 DeepSeek 专属告警。
+        """
+        if self.ai_provider != "deepseek":
+            return self
         if self.deepseek_model and self.deepseek_model not in _KNOWN_DEEPSEEK_MODELS:
             logger.warning(
                 "[settings] deepseek_model=%r 不是已知 DeepSeek 公开模型(%s)。"
@@ -175,6 +198,76 @@ class Settings(BaseSettings):
                 self.deepseek_analysis_effort,
             )
         return self
+
+
+@dataclass
+class AIProviderConfig:
+    """Resolved, provider-agnostic AI configuration.
+
+    Produced by :func:`resolve_ai_provider` so the transport/analyzer layers
+    never need to branch on ``ai_provider`` themselves — they just read these
+    fields.
+    """
+
+    provider: str
+    api_key: str
+    base_url: str
+    chat_path: str
+    model: str
+    max_tokens: int
+    analysis_max_tokens: int
+    temperature: float
+    # None => provider default (deepseek/longcat both default thinking ON).
+    thinking_enabled: bool | None
+    # DeepSeek 支持 reasoning_effort;LongCat 不支持(思考只用 thinking:{type})。
+    supports_reasoning_effort: bool
+    # DeepSeek 专属思考强度(high/max);LongCat 无 -> None。
+    analysis_effort: str | None
+
+    @property
+    def chat_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}{self.chat_path}"
+
+
+def resolve_ai_provider(settings: object) -> AIProviderConfig:
+    """Return the active provider config based on ``settings.ai_provider``.
+
+    Uses ``getattr`` with defaults so lightweight fake ``Settings`` objects in
+    tests (which only define a subset of fields) keep working without a full
+    LongCat/DeepSeek field set.
+    """
+    provider = (getattr(settings, "ai_provider", "deepseek") or "deepseek").lower()
+    if provider == "longcat":
+        return AIProviderConfig(
+            provider="longcat",
+            api_key=getattr(settings, "longcat_api_key", "") or "",
+            base_url=getattr(settings, "longcat_base_url", "") or "https://api.longcat.chat",
+            chat_path="/openai/v1/chat/completions",
+            model=getattr(settings, "longcat_model", "") or "LongCat-2.0",
+            max_tokens=int(getattr(settings, "longcat_max_tokens", 24576) or 24576),
+            analysis_max_tokens=int(getattr(settings, "longcat_analysis_max_tokens", 4096) or 4096),
+            temperature=float(getattr(settings, "longcat_temperature", 0.3) or 0.3),
+            thinking_enabled=getattr(settings, "longcat_thinking_enabled", None),
+            supports_reasoning_effort=False,
+            analysis_effort=None,
+        )
+    # deepseek (default)
+    explicit = getattr(settings, "deepseek_thinking_enabled", None)
+    if explicit is None:
+        explicit = getattr(settings, "deepseek_reasoner_enabled", None)
+    return AIProviderConfig(
+        provider="deepseek",
+        api_key=getattr(settings, "deepseek_api_key", "") or "",
+        base_url=getattr(settings, "deepseek_base_url", "") or "https://api.deepseek.com",
+        chat_path="/v1/chat/completions",
+        model=getattr(settings, "deepseek_model", "") or "deepseek-v4-flash",
+        max_tokens=int(getattr(settings, "deepseek_max_tokens", 24576) or 24576),
+        analysis_max_tokens=int(getattr(settings, "deepseek_analysis_max_tokens", 4096) or 4096),
+        temperature=float(getattr(settings, "deepseek_temperature", 0.3) or 0.3),
+        thinking_enabled=explicit,
+        supports_reasoning_effort=True,
+        analysis_effort=getattr(settings, "deepseek_analysis_effort", None) or "max",
+    )
 
 
 _settings: Settings | None = None

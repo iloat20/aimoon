@@ -9,6 +9,6 @@
 - 封装 AI 服务的交互细节
 """
 
-from .analyzer import DeepSeekAIAnalyzer
+from .analyzer import DeepSeekAIAnalyzer, LongCatAIAnalyzer, StockAIAnalyzer
 
-__all__ = ["DeepSeekAIAnalyzer"]
+__all__ = ["DeepSeekAIAnalyzer", "LongCatAIAnalyzer", "StockAIAnalyzer"]

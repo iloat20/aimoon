@@ -71,6 +71,11 @@ def main() -> None:
     settings = get_settings()
     mock_mode = args.mock or settings.mock_mode
 
+    # AI 提供商切换(deepseek / longcat);CLI --provider 优先于 .env 的 AI_PROVIDER。
+    if getattr(args, "provider", None):
+        settings.ai_provider = args.provider
+        print(f"  AI 提供商: {settings.ai_provider}")
+
     if args.test and mock_mode:
         print("\n警告: --test 与 --mock 同时指定，test 模式优先（跳过AI，使用真实数据）")
         mock_mode = False
@@ -167,5 +172,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--single-call", action="store_true",
         help="[v2] 单调用模式(默认):合并 ANALYSIS+self-check+COMPILE 为一次 LLM 调用"
+    )
+    parser.add_argument(
+        "--provider", choices=["deepseek", "longcat"],
+        help="AI 模型提供商:deepseek(默认) 或 longcat(OpenAI 兼容 API,https://api.longcat.chat)"
     )
     return parser
