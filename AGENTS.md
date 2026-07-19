@@ -100,7 +100,7 @@ Playwright collectors (guba, toutiao, wechat) spin up real browsers — first ru
 - **Collectors never fail pipeline** — each has mock fallback; exceptions silently caught
 - **Social data cleaning** — `adapters/driven/ai/post_processor.py`: extracts dates/numbers/keywords, strips HTML/noise before feeding to model（注：旧文档误引不存在的 `ai/data_cleaner.py`，实际清洗逻辑在此文件）
 - **Streaming analysis** — v2 流水线 `ai/pipeline/orchestrator.py` 走 `stream=True` 流式直出；`DeepSeekAIAnalyzer.analyze(use_pipeline_v2=True)` 走此路径（受支持路径）。
-- **DEPRECATED: legacy 单发路径** — `analyzer.py:_legacy_analyze`（`use_pipeline_v2=False`，即 `analyze()` 默认）**已弃用**，计划移除（架构审查 #6, 2026-07-19）。其 `analysis:*` 缓存读是 v2 写入的跨路径（写多读少），请勿在 legacy 分支新增行为；移除前需同步改 `test_ai.py` / `test_integration_pipeline.py` 的路由断言。
+- **DEPRECATED: legacy 单发路径** — `analyzer.py:_legacy_analyze`（`use_pipeline_v2=False`，即 `analyze()` 默认）**已弃用**，计划移除（架构审查 #6, 2026-07-19）。`analysis:*` L1 缓存的跨路径读写已在 #6 移除（legacy 不再读、v2 不再写）；`get/set_analysis_cache` 仍保留为受测缓存工具但生产侧不再调用。移除前需同步改 `test_ai.py` / `test_integration_pipeline.py` 的路由断言。
 - **Tool calling for web search** — DeepSeek API `tools` + `tool_choice="auto"` triggers `web_search_tool.py` which scrapes Bing (primary) → DuckDuckGo (fallback); max 5 rounds before forced final response
 - **Support/resistance sanity** — `adapters/driven/ai/analyzer.py`: if support ≥ price or resistance ≤ price, override to price×0.92/1.08
 - **评分模块位置** — 旧文档称 `core/domain/services/scoring.py`（11 因子加权）；该评分模块实际不存在。真实的逐维置信评分在 `adapters/driven/validation/integrity_checker.py`（各维度 1-5 评分 + 确定性校验）。

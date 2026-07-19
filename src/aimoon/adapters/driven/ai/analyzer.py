@@ -103,8 +103,9 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         DEPRECATION: the ``_legacy_analyze`` path is deprecated and scheduled for
         removal (v2 pipeline is the supported path). New code should pass
         ``use_pipeline_v2=True``; the legacy branch is retained only for backward
-        compatibility and its ``analysis:*`` cache read is a write-only-from-v2
-        cross-path (see ``_pipeline_analyze``). Do not expand legacy behavior.
+        compatibility. The ``analysis:*`` L1 cache is no longer read or written by
+        either path (removed in #6); do not re-add cross-path caching. Do not
+        expand legacy behavior.
         """
         if use_pipeline_v2:
             return await self._pipeline_analyze(
@@ -121,27 +122,15 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
     ) -> AnalysisReport:
         # DEPRECATED (架构审查 #6, 2026-07-19): 单发遗留路径,计划移除。
         # v2 pipeline(_pipeline_analyze) 是受支持路径;此分支仅保留向后兼容,
-        # 其 ``analysis:*`` 缓存读是 v2 写入的跨路径(写多读少),请勿在此新增行为。
+        # 不再读取 ``analysis:*`` 缓存(该跨路径死读已在 #6 移除)。
         # 移除前需同步更新 test_ai.py / test_integration_pipeline.py 的路由断言。
         if self._mock:
             from ..common.mock import mock_analysis_report
 
             return mock_analysis_report(stock_info.symbol, stock_info.name)
 
-        # 检查缓存
-        from .cache import get_analysis_cache
-
-        cached = get_analysis_cache(stock_info.symbol)
-        if cached:
-            logger.info("[ai_analysis] cache hit for %s", stock_info.symbol)
-            return AnalysisReport(
-                symbol=stock_info.symbol,
-                name=stock_info.name,
-                summary=cached[:200] + "..." if len(cached) > 200 else cached,
-                report_text=cached,
-                investment_advice="本报告由DeepSeek AI自动生成，仅供参考，不构成投资建议。",
-            )
-
+        # DEPRECATED 路径: 不再读取 ``analysis:*`` L1 缓存(该 key 仅由 v2 写入,
+        # 属跨路径死读;见架构审查 #6)。legacy 每次重新生成——本路径已弃用,开销可接受。
         t0 = time.monotonic()
         collected_data = build_data_dict(stock_info, reports, financial_md_path)
 
@@ -203,7 +192,6 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         except Exception as e:
             logger.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
         text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
-        degraded = False
         if not text:
             # v2 失败时用骨架渲染(0 LLM),不再降级到 legacy
             from .pipeline.skeleton_renderer import render_skeleton_md
@@ -213,18 +201,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
                 logger.info("[pipeline_v2] 降级到骨架渲染(0 LLM)")
             else:
                 text = "# 分析报告（降级）\n\n数据采集或分析暂不可用。"
-            degraded = True
-        # 部分阶段降级也视为不完整报告,不入缓存。
+        # 部分阶段降级(无 final / 部分阶段失败)由下方 with_degradation_notice 标记,
+        # 不再写入 analysis:* L1 缓存(架构审查 #6: 该 key 仅被已弃用 legacy 读取,属跨路径死写)。
+        # 骨架缓存(skeleton:*)由 phase_runners 独立管理,不受影响。
         partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
-        if isinstance(partial, list) and partial:
-            degraded = True
-        # C1 修复: 仅缓存真实完整报告。`analysis:*` 仅被 legacy 路径读取,
-        # 此前 v2 无条件写入(含降级/骨架/兜底文案)会污染 legacy 回读、缓存坏报告。
-        # v2 自身不读此缓存,故降级时直接不写,给下次运行重试机会。
-        if text and not degraded:
-            from .cache import set_analysis_cache
-
-            set_analysis_cache(stock_info.symbol, text)
         appendix_md = ctx.get("system_tables_md") or "" if isinstance(ctx, dict) else ""
         report = build_analysis_report(
             symbol=stock_info.symbol,
