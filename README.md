@@ -3,13 +3,15 @@
 输入股票代码，自动完成 **采集 → 整合 → AI分析 → 可视化报告** 四步流程。
 
 ```bash
-# 安装
-uv sync
-pip install -e .
-uv run playwright install chromium
+# 安装（二选一，v0.5.0 已发布到 PyPI）
+pip install aimoon              # 方式一：从 PyPI 直接安装（推荐）
+cd aimoon && uv sync && pip install -e .   # 方式二：从源码安装（开发/贡献用）
 
 # 配置（编辑 .env 填入 API Key）
 cp .env.example .env
+
+# 首次使用需安装 Playwright 浏览器（股吧/头条/微信采集用）
+uv run playwright install chromium
 
 # 分析任何A股
 aimoon 600519                  # 贵州茅台（真实数据）
@@ -53,6 +55,15 @@ aimoon 600519 --mock --fast    # Mock + 快速组合
 
 ### 基础安装
 
+**方式一：从 PyPI 安装（推荐，无需克隆仓库）**
+
+```bash
+pip install aimoon
+uv run playwright install chromium   # 仅首次需安装浏览器
+```
+
+**方式二：从源码安装（开发 / 贡献）**
+
 ```bash
 # 1. 进入项目目录
 cd aimoon
@@ -72,6 +83,10 @@ uv run playwright install chromium
 ### 升级
 
 ```bash
+# PyPI 安装用户
+pip install --upgrade aimoon
+
+# 源码安装用户
 git pull
 uv sync
 pip install -e .             # 重新安装 CLI
@@ -87,7 +102,9 @@ uv tool uninstall aimoon
 
 ```ini
 # === 必配 ===
+AI_PROVIDER=deepseek              # AI 提供商：deepseek（默认）| longcat
 DEEPSEEK_API_KEY=sk-xxx          # DeepSeek API Key（--test 模式可跳过）
+LONGCAT_API_KEY=sk-xxx           # LongCat API Key（AI_PROVIDER=longcat 时必填）
 
 # === 雪球（推荐配置，可获取含PE的实时行情 + 财报 + 雪球热帖）===
 XUEQIU_TOKEN=xq_a_token=xxx; u=xxx
@@ -95,6 +112,7 @@ XUEQIU_COOKIE=xq_a_token=xxx; u=xxx
 
 # === 可选 ===
 DEEPSEEK_BASE_URL=https://api.deepseek.com   # 自定义 DeepSeek API 地址
+LONGCAT_THINKING_ENABLED=false               # LongCat 思考模式开关（关掉可显著省成本）
 MOCK_MODE=false                               # 设为 true 等同 --mock
 CACHE_DIR=./cache                             # 数据缓存目录
 ```
@@ -167,7 +185,7 @@ CACHE_DIR=./cache                             # 数据缓存目录
 
 - **`adapters/driven/`** — 被驱动适配器（输出侧）
   - `collectors/` — 数据采集适配器（Composite Repository 模式）
-  - `ai/` — DeepSeek AI 分析适配器（支持 Tool Calling + 流式输出）
+  - `ai/` — AI 分析适配器（提供商无关：DeepSeek / LongCat，支持 Tool Calling + 流式输出）
   - `report/` — HTML 报告生成器（Jinja2）
   - `validation/` — 数据完整性校验
   - `financial/` — 财务报告适配器
@@ -217,8 +235,8 @@ src/aimoon/
 │       │   ├── composite_repo.py # 组合资源库（统一对外接口）
 │       │   ├── mock_repo.py      # Mock 数据资源库
 │       │   └── mock.py           # Mock 数据生成器
-│       ├── ai/                    # DeepSeek 分析引擎
-│       │   ├── analyzer.py        # DeepSeekAIAnalyzer（Tool Calling + 流式）
+│       ├── ai/                    # AI 分析引擎（多提供商）
+│       │   ├── analyzer.py        # AIAnalyzer（提供商无关：DeepSeek / LongCat，Tool Calling + 流式）
 │       │   ├── prompts.py         # Prompt 模板
 │       │   ├── post_processor.py  # 社交文本清洗 + 报告后处理（数据清洗在此）
 │       │   ├── web_search_tool.py # Web 搜索工具（Bing → DuckDuckGo 兜底）
@@ -267,7 +285,9 @@ src/aimoon/
 - **K线走势图**：近120日收盘价折线图 + 成交量柱状图（Chart.js 交互式图表）
 - **全网热度**：各平台帖子列表（15-20条，含点赞/评论/链接）
 - **机构研报**：评级分布、EPS预测、PDF下载链接（最近一年）
-- **AI 综合分析报告**：DeepSeek v4-flash 深度思考模式生成，支持 Web 搜索工具调用
+- **AI 综合分析报告**：默认 DeepSeek v4-flash 深度思考（可切换 LongCat），支持 Web 搜索工具调用
+- **执行摘要 + 估值情景卡片**：报告顶部附评级/仓位建议，以及乐观🟢/中性🟡/悲观🔻三档安全边际测算
+- **月度监测清单 + Red Team 压力测试**：跟踪关键指标阈值，并给出极端情景下的风险推演
 - **亮色/暗色主题切换**：右上角按钮一键切换，状态自动保存
 - **数据来源清单**：每个平台采集状态
 
