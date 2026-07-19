@@ -272,6 +272,74 @@ def render_margin_of_safety(data: Any) -> str:
     return "\n".join(lines)
 
 
+def render_margin_of_safety_cards(data: Any) -> str:
+    """渲染估值安全边际「三列情景卡片」(乐观/中性/悲观,绿/黄/红)。
+
+    与 ``render_margin_of_safety``(确定性表格)同源,数据来自 margin_of_safety
+    工具结果。本函数产出**可信 HTML 片段**——由报告模板以 ``|safe`` 直接注入,
+    不经 bleach 清洗,因此可使用彩色卡片样式。失败时返回空串(报告前端不显示)。
+    """
+
+    def _fmt_down(v: object) -> str:
+        if not isinstance(v, (int, float)):
+            return "N/A"
+        return f"{v:+.1f}%"
+
+    if _is_partial(data) or not isinstance(data, dict):
+        return ""
+    pe = data.get("pe")
+    pb = data.get("pb")
+    pe_ok = isinstance(pe, (int, float)) and pe > 0
+    pb_ok = isinstance(pb, (int, float)) and pb > 0
+    if not pe_ok and not pb_ok:
+        return ""
+    pe_disp = _fmt_num(pe) if pe_ok else "N/A"
+    pb_disp = _fmt_num(pb) if pb_ok else "N/A"
+    net_cash_pe = data.get("net_cash_pe")
+    peer_median = data.get("peer_pe_median")
+    stress = data.get("stress") or []
+
+    def _card(cls: str, title: str, rows: list[tuple[str, str]]) -> str:
+        body = "".join(
+            f'<div class="sc-row"><span>{k}</span><b>{v}</b></div>' for k, v in rows
+        )
+        return f'<div class="scenario-card {cls}"><div class="sc-title">{title}</div>{body}</div>'
+
+    neutral = _card(
+        "scenario-neutral",
+        "🟡 中性（当前）",
+        [
+            ("PE(TTM)", pe_disp),
+            ("PB", pb_disp),
+            ("净现金调整 PE", _fmt_num(net_cash_pe)),
+            ("同业 PE 中位数", _fmt_num(peer_median)),
+        ],
+    )
+    up = down = ""
+    if stress:
+        opt = stress[0]  # 净利 −30%
+        pes = stress[-1]  # 净利 −50%
+        up = _card(
+            "scenario-up",
+            "🟢 乐观（净利 −30%）",
+            [
+                ("压力净利", f"{_fmt_num(opt.get('net_profit'))} 亿"),
+                ("压力股价", f"¥{_fmt_num(opt.get('price'))}"),
+                ("下行空间", _fmt_down(opt.get("downside_pct"))),
+            ],
+        )
+        down = _card(
+            "scenario-down",
+            "🔴 悲观（净利 −50%）",
+            [
+                ("压力净利", f"{_fmt_num(pes.get('net_profit'))} 亿"),
+                ("压力股价", f"¥{_fmt_num(pes.get('price'))}"),
+                ("下行空间", _fmt_down(pes.get("downside_pct"))),
+            ],
+        )
+    return '<div class="scenario-cards">' + up + neutral + down + "</div>"
+
+
 def render_financial_health_ext(
     financial: Any, fin: Any = None
 ) -> str:

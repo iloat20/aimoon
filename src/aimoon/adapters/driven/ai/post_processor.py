@@ -235,6 +235,7 @@ def build_analysis_report(
     md: str,
     current_price: float | None = None,
     data_appendix_md: str = "",
+    margin_of_safety_html: str = "",
 ) -> AnalysisReport:
     """Assemble a finalized AnalysisReport from raw markdown output.
 
@@ -250,6 +251,7 @@ def build_analysis_report(
         report_text=md,
         investment_advice=_INVESTMENT_ADVICE,
         data_appendix_md=data_appendix_md,
+        margin_of_safety_html=margin_of_safety_html,
     )
     if current_price is not None:
         result = sanitize_support_resistance(result, current_price)

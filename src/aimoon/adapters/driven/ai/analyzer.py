@@ -206,12 +206,14 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         # 骨架缓存(skeleton:*)由 phase_runners 独立管理,不受影响。
         partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
         appendix_md = ctx.get("system_tables_md") or "" if isinstance(ctx, dict) else ""
+        mos_html = ctx.get("margin_of_safety_html") or "" if isinstance(ctx, dict) else ""
         report = build_analysis_report(
             symbol=stock_info.symbol,
             name=stock_info.name,
             md=text,
             current_price=stock_info.quote.price if stock_info.quote else None,
             data_appendix_md=appendix_md,
+            margin_of_safety_html=mos_html,
         )
         # 透传质量护栏产出的可信度摘要(orchestrator 经 to_dict 返回)。
         # frozen 模型必须用 model_copy,不能就地赋值。

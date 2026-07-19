@@ -34,6 +34,7 @@ from .table_renderer import (
     render_financial_health_ext,
     render_financial_temporal,
     render_margin_of_safety,
+    render_margin_of_safety_cards,
     render_peer_comparison,
     render_quarterly_breakdown,
     render_region_breakdown,
@@ -162,6 +163,8 @@ async def gather_tool_context(
         ]
     )
     prior["tables_md"] = tables_md
+    # 估值情景卡片(可信 HTML,前端以 |safe 注入;与 tables_md 同源,失败返回 "")。
+    prior["margin_of_safety_html"] = render_margin_of_safety_cards(val)
     summary = extract_tool_summary(tool_results)
     prior["summary"] = summary
 
@@ -240,6 +243,7 @@ async def run_direct(
     # 透传可信度摘要到报告上下文(Task 8 将渲染 credibility 页脚)
     ctx.credibility = result.get("credibility") or {}
     ctx.system_tables_md = str(prior.get("tables_md") or "")
+    ctx.margin_of_safety_html = str(prior.get("margin_of_safety_html") or "")
     text = str(result.get("output") or "")
     if text:
         ctx.final_markdown = text

@@ -33,15 +33,18 @@ class PipelineContext:
     partial_phases: list[str] = field(default_factory=list)
     final_markdown: str = ""
     system_tables_md: str = ""
+    margin_of_safety_html: str = ""
     skeleton: dict | None = None
     credibility: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         # 系统预渲染表不再内联进 final_markdown,改为经 system_tables_md 透传,
-        # 由报告模板渲染为独立的「数据底稿」卡片,前置在 AI 报告之前。
+        # 由报告模板渲染为独立的「数据底稿」卡片,置于 AI 报告之后(文末附录)。
+        # margin_of_safety_html 为可信 HTML 情景卡片片段,经 |safe 注入前端。
         return {
             "final_markdown": self.final_markdown or "",
             "system_tables_md": self.system_tables_md,
+            "margin_of_safety_html": self.margin_of_safety_html,
             "phase_results": self.phase_results,
             "partial_phases": self.partial_phases,
             "skeleton": self.skeleton,

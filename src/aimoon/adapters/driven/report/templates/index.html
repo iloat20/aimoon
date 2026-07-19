@@ -110,6 +110,22 @@
   </div>
 </div>
 
+<!-- ===== WARNING (报告最前端,紧跟摘要) ===== -->
+<div class="disclaimer-top">
+  ⚠️ WARNING：本报告由 AI 自动生成，所有分析内容仅供参考，不构成任何投资建议。投资有风险，入市需谨慎。请基于自身情况独立做出投资决策。
+</div>
+
+<!-- ===== 估值情景卡片(系统渲染,可信 HTML) ===== -->
+{% if margin_of_safety_html %}
+<div class="card" id="card-scenarios" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M3 3h14v14H3V3zm2 2v10h10V5H5zm2 2h2v2H7V7zm4 0h2v2h-2V7zm4 0h2v2h-2V7z" opacity="0.8"/></svg>
+    <span class="title">估值安全边际 · 情景卡片</span>
+  </div>
+  {{ margin_of_safety_html|safe }}
+</div>
+{% endif %}
+
 <!-- 股债性价比信号灯 -->
 <div class="card" id="card-equity-bond" style="margin-bottom:16px">
   <div class="card-header">
@@ -411,14 +427,23 @@
 </div>
 {% endif %}
 
-<!-- ===== DATA APPENDIX (系统预渲染,前置) ===== -->
+<!-- ===== AI FULL REPORT ===== -->
+<div class="card" id="card-ai" style="margin-bottom:16px">
+  <div class="card-header">
+    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a3 3 0 00-3 3v1H5a1 1 0 000 2h2v1a4 4 0 008 0V8h2a1 1 0 000-2h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1H9V5a1 1 0 011-1zM7 12.5a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm6 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm-3 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1z" opacity="0.8"/></svg>
+    <span class="title">AI 综合分析报告</span>
+  </div>
+  <div class="ai-report">{{ report_text|md_to_html|safe }}</div>
+</div>
+
+<!-- ===== DATA APPENDIX (系统预渲染,文末附录) ===== -->
 <div class="card" id="card-appendix" style="margin-bottom:16px">
   <div class="card-header">
     <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3h12v14H4V3zm2 2v2h8V5H6zm0 4v2h8V9H6zm0 4v2h5v-2H6z" opacity="0.8"/></svg>
-    <span class="title">数据底稿（系统预渲染）</span>
+    <span class="title">数据底稿（系统预渲染 · 文末附录）</span>
   </div>
   {% if data_appendix_md %}
-  <div class="muted" style="margin-bottom:10px;font-size:12px">以下表格由程序从原始数据直接渲染，未经大语言模型改写，作为 AI 正文的对照底稿。</div>
+  <div class="muted" style="margin-bottom:10px;font-size:12px">以下表格由程序从原始数据直接渲染，未经大语言模型改写，作为 AI 正文的对照底稿（置于文末，正文引用见「见××表」）。</div>
   <div class="ai-report">{{ data_appendix_md|md_to_html|safe }}</div>
   {% else %}
   <div class="data-warning-bar">
@@ -429,15 +454,6 @@
     </ul>
   </div>
   {% endif %}
-</div>
-
-<!-- ===== AI FULL REPORT ===== -->
-<div class="card" id="card-ai" style="margin-bottom:16px">
-  <div class="card-header">
-    <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a3 3 0 00-3 3v1H5a1 1 0 000 2h2v1a4 4 0 008 0V8h2a1 1 0 000-2h-2V5a3 3 0 00-3-3zm0 2a1 1 0 011 1v1H9V5a1 1 0 011-1zM7 12.5a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm6 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1zm-3 0a1 1 0 011 1v2a1 1 0 01-2 0v-2a1 1 0 011-1z" opacity="0.8"/></svg>
-    <span class="title">AI 综合分析报告</span>
-  </div>
-  <div class="ai-report">{{ report_text|md_to_html|safe }}</div>
 </div>
 
 <!-- ===== DATA CREDIBILITY FOOTER ===== -->

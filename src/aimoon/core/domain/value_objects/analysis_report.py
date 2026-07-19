@@ -31,5 +31,9 @@ class AnalysisReport(BaseModel):
     report_text: str = ""
 
     # 系统预渲染数据表(财务时序/同行对比/估值/FCF/情景/舆情/健康/分业务),
-    # 与 report_text 分离,由报告模板渲染为独立的「数据底稿」卡片,前置在 AI 报告之前。
+    # 与 report_text 分离,由报告模板渲染为独立的「数据底稿」卡片,置于 AI 报告之后(文末附录)。
     data_appendix_md: str = ""
+
+    # 估值安全边际「三列情景卡片」可信 HTML 片段(乐观/中性/悲观),
+    # 由 table_renderer.render_margin_of_safety_cards 生成,报告模板以 |safe 注入前端。
+    margin_of_safety_html: str = ""

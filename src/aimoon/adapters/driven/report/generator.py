@@ -198,6 +198,7 @@ class HtmlReportGenerator(ReportGeneratorPort):
             "cn_number": _cn_number,
             "report_text": analysis.report_text,
             "data_appendix_md": analysis.data_appendix_md or "",
+            "margin_of_safety_html": analysis.margin_of_safety_html or "",
             "css_content": Markup(self._css_content),
             "credibility": credibility or {},
         }
