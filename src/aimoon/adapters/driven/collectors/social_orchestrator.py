@@ -7,8 +7,8 @@ import logging
 
 import httpx
 
-from aimoon.core.application.browser_factory import BrowserFactory, PlaywrightBrowserFactory
-from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
+from aimoon.adapters.driven.common.browser_factory import BrowserFactory, PlaywrightBrowserFactory
+from aimoon.adapters.driven.common.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.value_objects.collect_result import CollectResult
 

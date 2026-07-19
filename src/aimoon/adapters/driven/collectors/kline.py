@@ -15,7 +15,6 @@ from typing import Any
 import httpx
 
 from aimoon.adapters.driven.collectors.eastmoney_direct import EastMoneyDirectCollector
-from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.adapters.driven.common.retry import retry_on_connection, silent_failure
 from aimoon.core.domain.entities.kline import KlineData
 from aimoon.core.domain.services.symbols import to_sina_symbol
@@ -32,13 +31,13 @@ class KlineCollector(DataCollector[KlineData]):
     """Fetch daily K-line history for a single A-share."""
 
     name = "kline"
+    _cache_namespace = "kline"
+    _cache_ttl = 3600
 
     def __init__(self, days: int = 180, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__(client)
         self._days = days
-        self._client_provided = client is not None
-        self._client = client
         # 日内 K 线基本不变, 缓存 1 小时: 重复运行 / 重分析不再重拉约 180 根日线。
-        self._cache = DiskTtlCache(namespace="kline", ttl_seconds=3600)
         self._eastmoney_direct_enabled = self._read_eastmoney_direct_enabled()
 
     @staticmethod
@@ -52,11 +51,6 @@ class KlineCollector(DataCollector[KlineData]):
         except Exception:
             return True
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=15.0)
-        return self._client
-
     async def fetch(self, symbol: str, **kwargs: Any) -> KlineData:
         """Fetch K-line with four-level fallback.
 
@@ -65,13 +59,13 @@ class KlineCollector(DataCollector[KlineData]):
         hung source can't stall the whole pipeline.
         """
         cache_key = f"kline:{symbol}:{self._days}"
-        cached = self._cache.get(cache_key)
+        cached = await self._cache.aget(cache_key)
         if cached is not None:
             return KlineData.model_validate(cached)
 
         result = await self._fetch_with_fallback(symbol)
         if result and result.bars:
-            self._cache.set(cache_key, result.model_dump())
+            await self._cache.aset(cache_key, result.model_dump())
         return result
 
     async def _fetch_with_fallback(self, symbol: str) -> KlineData:
@@ -112,18 +106,22 @@ class KlineCollector(DataCollector[KlineData]):
             if d is None:
                 continue
             date_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
-            bars.append(
-                KlineBar(
-                    date=date_str[:10],
-                    open=float(row.get("开盘", 0) or 0),
-                    high=float(row.get("最高", 0) or 0),
-                    low=float(row.get("最低", 0) or 0),
-                    close=float(row.get("收盘", 0) or 0),
-                    volume=float(row.get("成交量", 0) or 0),
-                    amount=float(row.get("成交额", 0) or 0),
-                    pct_change=float(row.get("涨跌幅", 0) or 0),
+            # 逐根容错: 单根脏数据(NaN/缺值/OHLC 越界)不应拖垮整层 (2026-07-14)。
+            try:
+                bars.append(
+                    KlineBar(
+                        date=date_str[:10],
+                        open=float(row.get("开盘", 0) or 0),
+                        high=float(row.get("最高", 0) or 0),
+                        low=float(row.get("最低", 0) or 0),
+                        close=float(row.get("收盘", 0) or 0),
+                        volume=float(row.get("成交量", 0) or 0),
+                        amount=float(row.get("成交额", 0) or 0),
+                        pct_change=float(row.get("涨跌幅", 0) or 0),
+                    )
                 )
-            )
+            except (ValueError, TypeError):
+                continue
 
         return KlineData(
             symbol=symbol, bars=bars[-self._days :], source="akshare(hist)", period="daily"
@@ -159,18 +157,21 @@ class KlineCollector(DataCollector[KlineData]):
             if d is None:
                 continue
             date_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
-            bars.append(
-                KlineBar(
-                    date=date_str[:10],
-                    open=float(row.get("open", 0) or 0),
-                    high=float(row.get("high", 0) or 0),
-                    low=float(row.get("low", 0) or 0),
-                    close=float(row.get("close", 0) or 0),
-                    volume=float(row.get("volume", 0) or 0),
-                    amount=float(row.get("amount", 0) or 0),
-                    pct_change=float(row.get("pct_chg", 0) or 0),
+            try:
+                bars.append(
+                    KlineBar(
+                        date=date_str[:10],
+                        open=float(row.get("open", 0) or 0),
+                        high=float(row.get("high", 0) or 0),
+                        low=float(row.get("low", 0) or 0),
+                        close=float(row.get("close", 0) or 0),
+                        volume=float(row.get("volume", 0) or 0),
+                        amount=float(row.get("amount", 0) or 0),
+                        pct_change=float(row.get("pct_chg", 0) or 0),
+                    )
                 )
-            )
+            except (ValueError, TypeError):
+                continue
 
         return KlineData(symbol=symbol, bars=bars, source="akshare(daily)", period="daily")
 

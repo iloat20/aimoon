@@ -59,36 +59,6 @@ def fcf_summary(fcf: object) -> str:
     return "\n".join(lines)
 
 
-def scenario_summary(scenario: object) -> str:
-    """Format scenario probability / risk-reward tool output into a summary."""
-    if not isinstance(scenario, dict) or is_partial(scenario):
-        return "- 情景概率与风险收益比: 数据缺失(缺估值目标价)"
-    exp = scenario.get("expected_target")
-    rr = scenario.get("risk_reward_ratio")
-    down = scenario.get("downside_neutral_pct")
-    up = scenario.get("upside_optimistic_pct")
-    lines = []
-    if exp is not None:
-        lines.append(f"- 加权期望目标价: {exp} 元(期望 PE {scenario.get('expected_pe')})")
-    if down is not None or up is not None:
-        d = f"{down:+.1f}%" if isinstance(down, (int, float)) else "N/A"
-        u = f"{up:+.1f}%" if isinstance(up, (int, float)) else "N/A"
-        rr_txt = f" → 非对称比 {rr:.2f}" if rr is not None else ""
-        lines.append(f"- 风险收益比: 中性下行 {d} / 乐观上行 {u}{rr_txt}")
-    targets = scenario.get("targets") or {}
-    if targets:
-        parts = []
-        name_map = {"conservative": "保守", "neutral": "中性", "optimistic": "乐观"}
-        for tier in ("conservative", "neutral", "optimistic"):
-            t = targets.get(tier) or {}
-            p = t.get("probability")
-            if p is not None:
-                parts.append(f"{name_map.get(tier, tier)}{t.get('price')}({p}%)")
-        if parts:
-            lines.append("- 三档情景: " + " / ".join(parts))
-    return "\n".join(lines) if lines else "- 情景概率与风险收益比: 数据缺失"
-
-
 def research_divergence(si: object) -> str:
     """量化机构研报分歧:EPS 预测区间 + 评级分布。"""
     research = getattr(si, "research", None)
@@ -158,15 +128,6 @@ def extract_tool_summary(results: dict) -> str:
             parts.append(f"股息支付率={pay*100:.1f}%")
         if dy is not None:
             parts.append(f"股息率={dy*100:.1f}%")
-    # 情景概率 / 风险收益比
-    s = results.get("scenario_prob") or {}
-    if isinstance(s, dict) and not is_partial(s):
-        exp = s.get("expected_target")
-        rr = s.get("risk_reward_ratio")
-        if exp is not None:
-            parts.append(f"加权期望目标价={exp}")
-        if rr is not None:
-            parts.append(f"风险收益比={rr}")
     # 舆情情感
     senti = results.get("sentiment") or {}
     if isinstance(senti, dict) and not is_partial(senti):

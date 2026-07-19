@@ -13,18 +13,27 @@ import re
 logger = logging.getLogger(__name__)
 
 
-async def collect_sse_content(resp: object) -> str:
-    """Read SSE stream, print ``##`` section headers as they arrive, return full text.
+async def collect_sse_content(resp: object, verbose: bool = False) -> str:
+    """Read SSE stream, optionally print ``##`` section headers as they arrive, return full text.
 
     Only the ``delta.content`` chunks are collected (reasoning middleware is
     ignored). Uses ``splitlines()`` for O(n) buffer processing.
+
+    When ``verbose`` is False (default), no report content is printed to the
+    terminal — the full text is still accumulated and returned for the HTML
+    report. Set ``verbose=True`` to restore the streaming progress display.
     """
     full_text: list[str] = []
     buffer = ""
     state = {"section": ""}
 
     def _emit(line_text: str) -> None:
-        """Print one complete/partial line, handling ``##`` section banners."""
+        """Print one complete/partial line, handling ``##`` section banners.
+
+        No-op unless ``verbose`` is True (report is still accumulated/returned).
+        """
+        if not verbose:
+            return
         header_match = re.match(r"^##\s+(.+)", line_text)
         if header_match:
             if state["section"]:

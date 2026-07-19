@@ -61,23 +61,13 @@ class ForensicAudit(BaseModel):
     red_flags: list[str] = Field(default_factory=list)
 
 
-class ValuationTargets(BaseModel):
-    conservative: float | None = None
-    neutral: float | None = None
-    optimistic: float | None = None
-
-
-class SensitivityItem(BaseModel):
-    param: str = ""
-    impact: str = ""
-
-
 class Valuation(BaseModel):
-    targets: ValuationTargets = Field(default_factory=ValuationTargets)
-    implied_g: float | None = None
-    peer_pe: dict[str, float | int] | None = None
+    """估值安全边际(对应 margin_of_safety 工具输出,无目标价)。"""
+
+    net_cash_pe: float | None = None
+    peer_pe_median: float | None = None
+    stress: list[dict] = Field(default_factory=list)
     expectation_gap: str = ""
-    sensitivity: list[SensitivityItem] = Field(default_factory=list)
 
 
 class Kelly(BaseModel):

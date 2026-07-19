@@ -19,8 +19,14 @@ def _valid():
             "red_flags": [],
         },
         "valuation": {
-            "targets": {"conservative": 1500, "neutral": 1800, "optimistic": 2100},
-            "implied_g": 0.04,
+            "net_cash_pe": 3.84,
+            "peer_pe_median": 12.10,
+            "stress": [
+                {
+                    "drop": 30.0, "net_profit": 202.02, "eps": 3.63,
+                    "price": 27.76, "downside_pct": -30.3,
+                },
+            ],
             "expectation_gap": "过度乐观",
         },
         "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},
@@ -55,12 +61,14 @@ def test_kelly_formula_check():
     assert any("Kelly" in f for f in result["fixes_needed"])
 
 
-def test_missing_valuation_targets():
+def test_missing_valuation_safety_margin():
     data = _valid()
-    data["valuation"]["targets"] = {"conservative": 1500}
+    data["valuation"]["net_cash_pe"] = None
+    data["valuation"]["peer_pe_median"] = None
+    data["valuation"]["stress"] = []
     result = validate_skeleton(data, tables_md="")
     assert result["passed"] is False
-    assert any("目标价" in f for f in result["fixes_needed"])
+    assert any("估值安全边际" in f for f in result["fixes_needed"])
 
 
 def test_half_kelly_position_mismatch():

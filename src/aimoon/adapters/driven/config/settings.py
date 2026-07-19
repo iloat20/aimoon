@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from pydantic import model_validator
@@ -22,6 +23,9 @@ _KNOWN_DEEPSEEK_MODELS = frozenset(
 )
 # 2026/07/24 弃用的旧模型名(仅用于弃用告警,不阻断运行)。
 _DEPRECATED_DEEPSEEK_MODELS = frozenset({"deepseek-chat", "deepseek-reasoner"})
+# 官方弃用截止日(北京时间 2026/07/24 23:59)。过此日后旧模型名 API 直接 400,
+# 告警文案从「将于」升级为「已于…弃用,现在会 400」,让日志一眼看出是硬失效而非提醒。
+_DEEPSEEK_DEPRECATION_CUTOFF = date(2026, 7, 24)
 
 
 def _find_project_root() -> Path:
@@ -62,10 +66,9 @@ class Settings(BaseSettings):
 
     # 思考强度(仅思考模式生效)。官方只区分两档:high / max;
     # low / medium 会被 API 静默映射为 high,xhigh 映射为 max。
-    # 默认 max(最深推理,质量最高;思考 token 按输出计价,是主要成本)。
-    # 想降思考 token 成本可设为 high;想大幅省钱应直接关闭思考
-    # (见 deepseek_thinking_enabled / COMPILE 阶段)。
-    deepseek_analysis_effort: str = "max"
+    # 默认 high(DIRECT 直出一次成文,无需最深推理;max 的思考 token 成本显著更高
+    # 而对结构化直出质量增益有限)。确需最深推理可显式设 DEEPSEEK_ANALYSIS_EFFORT=max。
+    deepseek_analysis_effort: str = "high"
     # ANALYSIS 骨架 JSON 的输出上限。骨架比旧初稿短得多,4096 已留充足余量。
     deepseek_analysis_max_tokens: int = 4096
 
@@ -74,12 +77,9 @@ class Settings(BaseSettings):
     # True                = 强制开启思考 + 发送 reasoning_effort(质量最高,思考 token 按输出计费);
     # False               = 关闭思考(纯扩写/格式化场景),不再发 reasoning_effort,
     #                       改回传 temperature(top_p 等仍忽略)。
-    # 注: 旧字段 deepseek_reasoner_enabled 为其兼容别名,未设置时回退读取之。
+    # 注: 旧字段 deepseek_reasoner_enabled 已移除(2026-07-19 架构审查);
+    # 其兼容别名职责由 deepseek_thinking_enabled 单独承担。
     deepseek_thinking_enabled: bool | None = None
-
-    # 兼容别名: 旧环境以 DEEPSEEK_REASONER_ENABLED=true 强制开启思考。
-    # 新代码优先读 deepseek_thinking_enabled;本字段保留以避免旧 .env 失效。
-    deepseek_reasoner_enabled: bool | None = None
 
     # ---- LongCat 提供商(OpenAI 兼容 / Anthropic 兼容 API) ----
     # 与 DeepSeek 二选一,由 ai_provider 切换(默认 deepseek,保持现有行为不变)。
@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     # 质量护栏开关: 疑点非空时 LLM 定点重写的开关(针对对账/自查暴露的问题局部改写)。
     # 默认 True = 开启;设 False 可跳过定点重写(只暴露疑点、不做修正)。
     self_check_rewrite_enabled: bool = True
+
+    # 终端输出开关: 是否在终端实时打印 AI 报告正文(## 章节横幅 + 正文行)。
+    # 默认 False = 报告只落 HTML 文件,不往终端刷正文(减少噪音);
+    # 设 True(环境变量 STREAM_REPORT_TO_TERMINAL=true)可恢复流式打印,便于实时观察进度。
+    stream_report_to_terminal: bool = False
 
     # 东方财富数据(akshare)的代理补丁配置。
     # 配置后 akshare-proxy-patch 会注入代理认证头,绕过部分 WAF 限制。
@@ -158,6 +163,33 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def deepseek(self) -> DeepSeekConfig:
+        """DeepSeek 提供商分组配置视图(只读,由扁平 deepseek_* 字段聚合)。"""
+        return DeepSeekConfig(
+            api_key=self.deepseek_api_key,
+            base_url=self.deepseek_base_url,
+            model=self.deepseek_model,
+            max_tokens=self.deepseek_max_tokens,
+            analysis_max_tokens=self.deepseek_analysis_max_tokens,
+            temperature=self.deepseek_temperature,
+            thinking_enabled=self.deepseek_thinking_enabled,
+            analysis_effort=self.deepseek_analysis_effort,
+        )
+
+    @property
+    def longcat(self) -> LongCatConfig:
+        """LongCat 提供商分组配置视图(只读,由扁平 longcat_* 字段聚合)。"""
+        return LongCatConfig(
+            api_key=self.longcat_api_key,
+            base_url=self.longcat_base_url,
+            model=self.longcat_model,
+            max_tokens=self.longcat_max_tokens,
+            analysis_max_tokens=self.longcat_analysis_max_tokens,
+            temperature=self.longcat_temperature,
+            thinking_enabled=self.longcat_thinking_enabled,
+        )
+
     @model_validator(mode="after")
     def _warn_unknown_model(self) -> Settings:
         """启动期可见性: 模型名非已知公开模型 / 已弃用 / effort 非法时告警(不阻断运行)。
@@ -176,11 +208,19 @@ class Settings(BaseSettings):
                 ", ".join(sorted(_KNOWN_DEEPSEEK_MODELS)),
             )
         if self.deepseek_model in _DEPRECATED_DEEPSEEK_MODELS:
-            logger.warning(
-                "[settings] deepseek_model=%r 将于 2026/07/24 23:59 弃用,请迁移到 "
-                "deepseek-v4-flash(思考模式,等价原 reasoner)或 deepseek-v4-pro。",
-                self.deepseek_model,
-            )
+            if date.today() > _DEEPSEEK_DEPRECATION_CUTOFF:
+                logger.warning(
+                    "[settings] deepseek_model=%r 已于 2026/07/24 弃用,官方 API 现在"
+                    "会直接返回 400 并触发整条重试 + 静默降级;请立即迁移到 "
+                    "deepseek-v4-flash(思考模式,等价原 reasoner)或 deepseek-v4-pro。",
+                    self.deepseek_model,
+                )
+            else:
+                logger.warning(
+                    "[settings] deepseek_model=%r 将于 2026/07/24 23:59 弃用,请迁移到 "
+                    "deepseek-v4-flash(思考模式,等价原 reasoner)或 deepseek-v4-pro。",
+                    self.deepseek_model,
+                )
         # 官方仅 high/max 为有效档;low/medium 被静默映射为 high,xhigh 映射为 max。
         # 仍接受全部以兼容旧配置(不会报错),仅提示映射关系。
         _valid_efforts = {"low", "medium", "high", "max", "xhigh"}
@@ -198,6 +238,39 @@ class Settings(BaseSettings):
                 self.deepseek_analysis_effort,
             )
         return self
+
+
+@dataclass
+class DeepSeekConfig:
+    """DeepSeek 提供商的分组配置视图。
+
+    存储仍为 ``Settings`` 上的扁平 ``deepseek_*`` 字段(保持 .env 的
+    ``DEEPSEEK_API_KEY`` 扁平命名与测试 kwargs 兼容);本类仅提供按提供商聚类的
+    只读视图,供 ``resolve_ai_provider`` 等消费者以 ``settings.deepseek`` 干净访问,
+    避免散落的 ``deepseek_*`` 字段重复。
+    """
+
+    api_key: str
+    base_url: str
+    model: str
+    max_tokens: int
+    analysis_max_tokens: int
+    temperature: float
+    thinking_enabled: bool | None
+    analysis_effort: str
+
+
+@dataclass
+class LongCatConfig:
+    """LongCat 提供商的分组配置视图(语义同 ``DeepSeekConfig``)。"""
+
+    api_key: str
+    base_url: str
+    model: str
+    max_tokens: int
+    analysis_max_tokens: int
+    temperature: float
+    thinking_enabled: bool | None
 
 
 @dataclass
@@ -229,44 +302,85 @@ class AIProviderConfig:
         return f"{self.base_url.rstrip('/')}{self.chat_path}"
 
 
-def resolve_ai_provider(settings: object) -> AIProviderConfig:
-    """Return the active provider config based on ``settings.ai_provider``.
-
-    Uses ``getattr`` with defaults so lightweight fake ``Settings`` objects in
-    tests (which only define a subset of fields) keep working without a full
-    LongCat/DeepSeek field set.
-    """
-    provider = (getattr(settings, "ai_provider", "deepseek") or "deepseek").lower()
-    if provider == "longcat":
-        return AIProviderConfig(
-            provider="longcat",
-            api_key=getattr(settings, "longcat_api_key", "") or "",
-            base_url=getattr(settings, "longcat_base_url", "") or "https://api.longcat.chat",
-            chat_path="/openai/v1/chat/completions",
-            model=getattr(settings, "longcat_model", "") or "LongCat-2.0",
-            max_tokens=int(getattr(settings, "longcat_max_tokens", 24576) or 24576),
-            analysis_max_tokens=int(getattr(settings, "longcat_analysis_max_tokens", 4096) or 4096),
-            temperature=float(getattr(settings, "longcat_temperature", 0.3) or 0.3),
-            thinking_enabled=getattr(settings, "longcat_thinking_enabled", None),
-            supports_reasoning_effort=False,
-            analysis_effort=None,
-        )
-    # deepseek (default)
-    explicit = getattr(settings, "deepseek_thinking_enabled", None)
-    if explicit is None:
-        explicit = getattr(settings, "deepseek_reasoner_enabled", None)
-    return AIProviderConfig(
-        provider="deepseek",
+def _deepseek_cfg(settings: object) -> DeepSeekConfig:
+    """提取 DeepSeek 配置:优先用 Settings.deepseek 分组视图,回退到扁平字段(兼容测试 fake)。"""
+    view = getattr(settings, "deepseek", None)
+    if isinstance(view, DeepSeekConfig):
+        return view
+    return DeepSeekConfig(
         api_key=getattr(settings, "deepseek_api_key", "") or "",
         base_url=getattr(settings, "deepseek_base_url", "") or "https://api.deepseek.com",
-        chat_path="/v1/chat/completions",
         model=getattr(settings, "deepseek_model", "") or "deepseek-v4-flash",
         max_tokens=int(getattr(settings, "deepseek_max_tokens", 24576) or 24576),
         analysis_max_tokens=int(getattr(settings, "deepseek_analysis_max_tokens", 4096) or 4096),
         temperature=float(getattr(settings, "deepseek_temperature", 0.3) or 0.3),
+        thinking_enabled=getattr(settings, "deepseek_thinking_enabled", None),
+        analysis_effort=getattr(settings, "deepseek_analysis_effort", None) or "high",
+    )
+
+
+def _longcat_cfg(settings: object) -> LongCatConfig:
+    """提取 LongCat 配置:语义同 ``_deepseek_cfg``。"""
+    view = getattr(settings, "longcat", None)
+    if isinstance(view, LongCatConfig):
+        return view
+    return LongCatConfig(
+        api_key=getattr(settings, "longcat_api_key", "") or "",
+        base_url=getattr(settings, "longcat_base_url", "") or "https://api.longcat.chat",
+        model=getattr(settings, "longcat_model", "") or "LongCat-2.0",
+        max_tokens=int(getattr(settings, "longcat_max_tokens", 24576) or 24576),
+        analysis_max_tokens=int(getattr(settings, "longcat_analysis_max_tokens", 4096) or 4096),
+        temperature=float(getattr(settings, "longcat_temperature", 0.3) or 0.3),
+        thinking_enabled=getattr(settings, "longcat_thinking_enabled", None),
+    )
+
+
+def resolve_ai_provider(settings: object) -> AIProviderConfig:
+    """Return the active provider config based on ``settings.ai_provider``.
+
+    经 ``Settings.deepseek`` / ``Settings.longcat`` 分组视图(或扁平字段回退)
+    提取配置,消除 deepseek/longcat 分支中重复的字段读取;provider 专属告警
+    仍由 ``Settings._warn_unknown_model`` 在加载期负责。
+    """
+    provider = (getattr(settings, "ai_provider", "deepseek") or "deepseek").lower()
+    if provider == "longcat":
+        lc = _longcat_cfg(settings)
+        return AIProviderConfig(
+            provider="longcat",
+            api_key=lc.api_key,
+            base_url=lc.base_url,
+            chat_path="/openai/v1/chat/completions",
+            model=lc.model,
+            max_tokens=lc.max_tokens,
+            analysis_max_tokens=lc.analysis_max_tokens,
+            temperature=lc.temperature,
+            thinking_enabled=lc.thinking_enabled,
+            supports_reasoning_effort=False,
+            analysis_effort=None,
+        )
+    # deepseek (default)
+    ds = _deepseek_cfg(settings)
+    # 新默认(C2 降本): 未显式配置时,DIRECT 直出默认关闭思考。
+    # 思考 token 按输出计价、是最大成本项,而直出报告有 direct.md 强约束,
+    # 关思考对质量影响有限。需最深推理请显式 DEEPSEEK_THINKING_ENABLED=true。
+    explicit = ds.thinking_enabled if ds.thinking_enabled is not None else False
+    # effort 归一(C3): low/medium 会被 API 静默映射为 high 且无降本效果,
+    # 直接归一为 high,避免发送无意义档位。
+    effort = ds.analysis_effort or "high"
+    if effort in {"low", "medium"}:
+        effort = "high"
+    return AIProviderConfig(
+        provider="deepseek",
+        api_key=ds.api_key,
+        base_url=ds.base_url,
+        chat_path="/v1/chat/completions",
+        model=ds.model,
+        max_tokens=ds.max_tokens,
+        analysis_max_tokens=ds.analysis_max_tokens,
+        temperature=ds.temperature,
         thinking_enabled=explicit,
         supports_reasoning_effort=True,
-        analysis_effort=getattr(settings, "deepseek_analysis_effort", None) or "max",
+        analysis_effort=effort,
     )
 
 

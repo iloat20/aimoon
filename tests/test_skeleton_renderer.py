@@ -28,8 +28,18 @@ def _valid():
             "red_flags": ["应收增速超营收"],
         },
         "valuation": {
-            "targets": {"conservative": 1500, "neutral": 1800, "optimistic": 2100},
-            "implied_g": 0.04,
+            "net_cash_pe": 3.84,
+            "peer_pe_median": 12.10,
+            "stress": [
+                {
+                    "drop": 30.0, "net_profit": 202.02, "eps": 3.63,
+                    "price": 27.76, "downside_pct": -30.3,
+                },
+                {
+                    "drop": 50.0, "net_profit": 144.30, "eps": 2.60,
+                    "price": 19.83, "downside_pct": -50.2,
+                },
+            ],
             "expectation_gap": "过度乐观",
         },
         "kelly": {
@@ -47,8 +57,9 @@ def test_renders_all_sections():
     assert "估值" in md
     assert "Kelly" in md
     assert "增持" in md
-    assert "1500" in md
-    assert "1800" in md
+    assert "估值安全边际" in md
+    assert "3.84" in md  # 净现金调整 PE
+    assert "12.10" in md  # 同业 PE 中位数
 
 
 def test_dupont_partial_none_does_not_crash():
@@ -114,15 +125,14 @@ def test_renders_stress_test():
     assert "底线价" in md
 
 
-def test_renders_valuation_sensitivity_and_peer_pe():
-    # 估值敏感度分析 + 同业 PE 对比（原渲染器丢弃）
+def test_renders_valuation_safety_margin():
+    # 估值安全边际(净现金PE / 同业PE中位数 / 压力测试),不输出目标价
     data = _valid()
-    data["valuation"]["sensitivity"] = [
-        {"param": "WACC +1%", "impact": "目标价 -12%"},
-    ]
-    data["valuation"]["peer_pe"] = {"五粮液": 18, "泸州老窖": 16}
     md = render_skeleton_md(data)
-    assert "敏感度分析" in md
-    assert "WACC" in md
-    assert "同业 PE" in md
-    assert "五粮液" in md
+    assert "估值安全边际" in md
+    assert "净现金调整 PE" in md
+    assert "同业 PE 中位数" in md
+    assert "压力" in md
+    assert "27.76" in md  # 压力股价
+    # 严禁三档目标价
+    assert "保守" not in md or "目标价" not in md

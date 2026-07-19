@@ -31,30 +31,20 @@ class QuoteCollector(DataCollector[StockQuote]):
     """Fetch real-time stock quotes with multi-source fallback."""
 
     name = "quote"
+    _default_timeout = 10.0
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
-        self._client_provided = client is not None
-        self._client = client
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=10.0)
-        return self._client
-
-    async def aclose(self) -> None:
-        if self._client is not None and not self._client_provided:
-            await self._client.aclose()
-            self._client = None
+        super().__init__(client)
 
     async def fetch(self, symbol: str, **kwargs: Any) -> StockQuote:
         """Fetch quote with caching. Cache hit avoids HTTP requests entirely."""
-        cached = _quote_cache.get(f"quote:{symbol}")
+        cached = await _quote_cache.aget(f"quote:{symbol}")
         if cached is not None:
             return StockQuote.model_validate(cached)
 
         result = await self._fetch_uncached(symbol, **kwargs)
         if result and result.price > 0:
-            _quote_cache.set(f"quote:{symbol}", result.model_dump())
+            await _quote_cache.aset(f"quote:{symbol}", result.model_dump())
         return result
 
     async def _fetch_uncached(self, symbol: str, **kwargs: Any) -> StockQuote:
@@ -80,11 +70,17 @@ class QuoteCollector(DataCollector[StockQuote]):
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             pass
         # Level 2: Tencent API
-        result = await self._fetch_tencent(symbol, name)
-        if result is not None and result.price > 0:
-            if name and (not result.name or result.name == symbol):
-                result.name = name
-            return result
+        # 契约: 单源失败永不 abort。L2 同样是网络调用, 必须包异常
+        # (腾讯 5xx / 超时 / 字段空致 float() 抛错), 否则会冒泡出 fetch()→orchestrate()
+        # 拖垮整条 pipeline (原缺此保护, 2026-07-14 修复)。
+        try:
+            result = await self._fetch_tencent(symbol, name)
+            if result is not None and result.price > 0:
+                if name and (not result.name or result.name == symbol):
+                    result.name = name
+                return result
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+            pass
         # All sources failed
         return StockQuote(symbol=symbol, name=name, source="all_failed")
 
@@ -186,8 +182,12 @@ class QuoteCollector(DataCollector[StockQuote]):
         prev_close = float(parts[4])
         change = price - prev_close
         change_pct = (change / prev_close) * 100 if prev_close != 0 else 0
-        volume = int(float(parts[6]))
-        amount = float(parts[37]) * 10000 if parts[37] else 0
+        # 腾讯 qt.gtimg.cn (~分隔) 字段布局 —— 2026-07-14 实抓 sh600519 核对确认:
+        #   [6]=成交量(手)  [37]=成交额(万元)  [38]=换手率(%)  [39]=市盈率(TTM)
+        #   [44]=流通市值(亿)  [45]=总市值(亿)  [46]=市净率(PB)  [47]=涨停价
+        # 注意: [45]/[46] 相邻但语义分别是「总市值/市净率」, 勿把 [46] 误当流通市值。
+        volume = int(float(parts[6]))  # 已是「手」, 无需换算 (新浪 parts[8] 才是股)
+        amount = float(parts[37]) * 10000 if parts[37] else 0  # 万元 → 元
         high = float(parts[33])
         low = float(parts[34])
         open_price = float(parts[5])
@@ -195,6 +195,9 @@ class QuoteCollector(DataCollector[StockQuote]):
         pe = float(parts[39]) if len(parts) > 39 and parts[39] else 0.0
         pb = float(parts[46]) if len(parts) > 46 and parts[46] else 0.0
         market_cap = float(parts[45]) * 1e8 if len(parts) > 45 and parts[45] else 0.0
+        # 防列位移位再次静默出错: PB 正常区间 0~200, 越界大概率是取到了市值列。
+        if pb > 1000:
+            pb = 0.0
         return StockQuote(
             symbol=symbol,
             name=name,

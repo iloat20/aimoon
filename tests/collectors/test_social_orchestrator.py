@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from aimoon.adapters.driven.collectors.social_orchestrator import SocialMediaOrchestrator
-from aimoon.core.application.progress import NullProgressReporter, RecordingProgressReporter
+from aimoon.adapters.driven.common.progress import NullProgressReporter, RecordingProgressReporter
 
 
 class _FakeBrowserFactory:

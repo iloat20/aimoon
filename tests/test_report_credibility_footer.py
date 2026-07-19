@@ -2,7 +2,7 @@
 
 验证 generator 把 credibility 摘要写入 context 后，
 index.html 在报告末尾条件渲染「数据可信度」卡片：
-- 正常：核对事实数 / 自动修正数 / 仍存疑清单
+- 正常：已程序化核对指标声明 / 自动修正数 / 仍存疑清单 + 核对范围说明
 - skipped：显示「数据自检未执行：<原因>」
 """
 
@@ -24,9 +24,11 @@ def test_credibility_footer_renders():
     html = _render_report({"checked": 12, "corrected": 1, "uncertain": ["XX 存疑"]})
     assert "数据可信度" in html
     assert "12" in html
-    assert "核对事实数" in html
+    # C4 诚实页脚：标签由「核对事实数」改为「已程序化核对指标声明」,并附核对范围说明。
+    assert "已程序化核对指标声明" in html
     assert "自动修正数" in html
     assert "XX 存疑" in html
+    assert "核对范围" in html
 
 
 def test_credibility_footer_skipped():
@@ -36,7 +38,7 @@ def test_credibility_footer_skipped():
     assert "数据自检未执行" in html
     assert "reconcile disabled" in html
     # skipped 时不渲染核对数统计块
-    assert "核对事实数" not in html
+    assert "已程序化核对指标声明" not in html
 
 
 def test_credibility_empty_uncertain_shows_none():

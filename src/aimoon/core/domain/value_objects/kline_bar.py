@@ -5,6 +5,8 @@ KlineBar 是一个值对象，概念上不可变。
 在领域模型中作为 KlineData 实体的组成部分存在。
 """
 
+import math
+
 from pydantic import BaseModel, model_validator
 
 
@@ -24,6 +26,11 @@ class KlineBar(BaseModel):
 
     @model_validator(mode="after")
     def _validate_business_rules(self) -> "KlineBar":
+        # NaN 防御: NaN 的所有比较均为 False, 会绕过下方全部校验并污染技术指标。
+        # 必须显式拦截, 由上游逐根 try/except 跳过该根 (2026-07-14)。
+        for _f in (self.open, self.high, self.low, self.close, self.volume, self.amount):
+            if math.isnan(_f) or math.isinf(_f):
+                raise ValueError(f"K线含 NaN/Inf 非法数值: {_f}")
         if self.volume < 0:
             raise ValueError(f"volume 不能为负数: {self.volume}")
         if self.amount < 0:

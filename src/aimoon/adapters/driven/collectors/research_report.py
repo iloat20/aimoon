@@ -20,6 +20,7 @@ class ResearchReportCollector(DataCollector[ResearchReportData]):
     name = "research_report"
 
     def __init__(self) -> None:
+        super().__init__()
         self._year_cols: dict[str, tuple[str, str]] = {}
 
     async def fetch(self, symbol: str, **kwargs: Any) -> ResearchReportData:

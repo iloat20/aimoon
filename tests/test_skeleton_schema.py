@@ -23,8 +23,12 @@ def _valid_skeleton() -> dict:
             "red_flags": ["应收增速超营收"],
         },
         "valuation": {
-            "targets": {"conservative": 1500, "neutral": 1800, "optimistic": 2100},
-            "implied_g": 0.04,
+            "net_cash_pe": 3.84,
+            "peer_pe_median": 12.10,
+            "stress": [
+                {"drop": 30.0, "net_profit": 202.02, "eps": 3.63,
+                 "price": 27.76, "downside_pct": -30.3},
+            ],
             "expectation_gap": "过度乐观",
         },
         "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},

@@ -18,8 +18,6 @@ from .web_search_tool import execute_web_search, get_tool_definitions
 
 logger = logging.getLogger(__name__)
 
-_MAX_TOOL_ROUNDS = 0
-
 
 class DeepSeekApiClient:
     """Thin transport wrapper around an OpenAI-compatible chat completions API.
@@ -140,8 +138,14 @@ class DeepSeekApiClient:
 
         return messages, False
 
-    async def stream_final_response(self, messages: list[dict]) -> str:
-        """Send a streaming request and return the full accumulated text."""
+    async def stream_final_response(
+        self, messages: list[dict], verbose: bool | None = None
+    ) -> str:
+        """Send a streaming request and return the full accumulated text.
+
+        ``verbose`` controls whether the report body is streamed to the terminal.
+        Defaults to the ``stream_report_to_terminal`` setting (off = silent).
+        """
         async with self._http.stream(
             "POST",
             self.api_url,
@@ -157,4 +161,9 @@ class DeepSeekApiClient:
             resp.raise_for_status()
             from ._sse import collect_sse_content
 
-            return await collect_sse_content(resp)
+            flag = (
+                self._settings.stream_report_to_terminal
+                if verbose is None
+                else verbose
+            )
+            return await collect_sse_content(resp, verbose=bool(flag))

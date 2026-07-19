@@ -29,11 +29,14 @@ class ReconcileResult:
     checked: int = 0
 
 # 已知别名按长度降序（子串匹配时优先选最长别名）。
+# 「目标*」类须比「市盈率/营收」更长以在子串匹配时优先命中,避免
+# 「目标市盈率21.3」被误归一化为当前 pe_ttm(I1 假阳性修复)。
 _ALIASES_SORTED: list[str] = sorted(
     [
         "市盈率", "pe_ttm", "pettm", "价格", "现价", "股价", "price",
         "营收", "收入", "revenue", "roe", "净资产收益率", "pb", "市净率",
         "目标价", "target_base", "target", "pe", "ttm",
+        "目标市盈率", "目标pe", "目标营收", "目标收入", "目标价格",
     ],
     key=len,
     reverse=True,
@@ -42,7 +45,10 @@ _ALIASES_SORTED: list[str] = sorted(
 # 当前架构下无法抽取、缺失时不判虚构的指标。
 # 例：现价 price —— _ToolContext 不含 quote 实体，price 取不到，缺失属预期，
 # 不应把报告里的「现价 XXX 元」误判为虚构指标。
-_OPTIONAL_METRICS: frozenset[str] = frozenset({"price"})
+# 目标 PE / 目标营收同理为估值推导量，facts 通常不含，缺失时跳过(不判虚构)。
+_OPTIONAL_METRICS: frozenset[str] = frozenset(
+    {"price", "target_pe", "target_revenue"}
+)
 
 # 中文指标词 / 英文缩写 -> facts 键。
 _METRIC_ALIASES: dict[str, str] = {
@@ -69,8 +75,14 @@ _METRIC_ALIASES: dict[str, str] = {
     "市净率": "pb",
     # 目标价
     "目标价": "target_base",
+    "目标价格": "target_base",
     "target": "target_base",
     "target_base": "target_base",
+    # 目标市盈率 / 目标营收 —— 与「当前」指标分离,防止把估值目标误当现值对账(I1)。
+    "目标市盈率": "target_pe",
+    "目标pe": "target_pe",
+    "目标营收": "target_revenue",
+    "目标收入": "target_revenue",
 }
 
 # 单位换算系数

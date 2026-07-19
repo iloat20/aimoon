@@ -69,7 +69,7 @@ uv sync --group dev
   - `aggregates/stock_analysis.py` — StockAnalysis aggregate root
   - `entities/` — Entities with identity (quote, financial, kline, capital_flow, social, research)
   - `value_objects/` — Immutable value objects (KlineBar, DimensionScore, AnalysisReport, CollectResult, FinancialReport)
-  - `services/symbols.py` — Stock code → market resolution（注: 文档曾描述的 `scoring.py` 11 因子评分模型并不存在）
+  - `services/symbols.py` — Stock code → market resolution（注: 旧文档所称 `scoring.py` 11 因子评分模型并不存在；逐维置信评分在 `adapters/driven/validation/integrity_checker.py`）
   - `repositories/stock_analysis_repo.py` — Repository interface (port)
 
 - **`core/application/`** — Orchestration only
@@ -118,11 +118,11 @@ uv sync --group dev
 
 - **Settings** via Pydantic-settings from `.env` — `adapters/driven/config/settings.py:Settings`. Singleton via `get_settings()`. Test injection via `inject_settings()`.
 
-- **Scoring** — 11-factor model (1-5 scale), 3 dimensions: fundamental 50% + capital flow 25% + news 25%.
+- **Scoring（逐维置信评分）** — 各维度 1-5 评分 + 数据确定性校验，实现在 `adapters/driven/validation/integrity_checker.py`（注: 旧文档所称 11 因子加权模型并不存在对应模块）。
 
 ### Data Sources & Quirks
 
-- **pysnowball** for financials — requires `XUEQIU_TOKEN`, silently returns empty if missing
+- **财务三表已迁 akshare** — `AkshareFinancialAdapter`（`cli/pipeline.py:52` 注入），东财 F10 WAF 时自动回退新浪。pysnowball 现仅作**资金流主源**（需 `XUEQIU_TOKEN`，缺失则静默降级到 akshare 兜底）。
 - **K-line 3-tier** — akshare `stock_zh_a_hist` (qfq) → `stock_zh_a_daily` → Tencent `fqkline`. Tencent volume unit = 手(腾讯接口直接返回手,无需 ×100)
 - **East Money push2*.eastmoney.com** — all subdomains connection reset (HTTP 000)
 - **Xueqiu WAF** — main domain blocked; only `stock.xueqiu.com` subdomain works

@@ -1,4 +1,4 @@
-from aimoon.adapters.driven.ai.pipeline.orchestrator import _verify_and_fix
+from aimoon.adapters.driven.ai.pipeline._helpers import _verify_and_fix
 
 
 def _fake_llm_returning(sentence):
@@ -26,7 +26,7 @@ def test_verify_and_fix_never_crashes():
 
 def test_critical_fiction_flagged_uncertain_not_rewritten():
     """虚构指标(critical)不应被 LLM 重写，应标记 uncertain 让用户可见。"""
-    report = "目标价 999 元，空间巨大。"  # target_base 不在 facts => critical
+    report = "目标价 999 元，空间巨大。"  # target_base absent in facts => critical
     facts = {"pe_ttm": 21.3}
     out, summary = _verify_and_fix(
         report, facts, llm=_fake_llm_returning("目标价 50 元，空间巨大。")

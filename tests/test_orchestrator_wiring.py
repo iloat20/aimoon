@@ -72,7 +72,6 @@ def _wired(monkeypatch):
         "valuation": _recorder("valuation"),
         "sentiment": _recorder("sentiment"),
         "fcf_dividend": _recorder("fcf_dividend"),
-        "scenario_prob": _recorder("scenario_prob"),
     }
     monkeypatch.setattr(orch_mod, "TOOL_RUNNERS", fake_runners)
 
@@ -87,7 +86,7 @@ def _wired(monkeypatch):
     monkeypatch.setattr(wst, "execute_web_search", _fake_search)
     # 同行对比走 orchestrator._run_peer_compare → peer_compare.run(同步调用 search_fn),
     # 直接 monkeypatch peer_compare.run,返回带 peers 的 dict,绕过真实网络搜索。
-    async def _fake_peer_run(name, self_fin, search_fn=None):
+    async def _fake_peer_run(name, self_fin, search_fn=None, self_pe=None):
         return {
             "peers": [
                 {"name": "五粮液", "pe": 25.0, "pb": 7.0, "roe": 22.0, "np_cagr": 12.0},
@@ -102,6 +101,10 @@ def _wired(monkeypatch):
     monkeypatch.setattr(peer_compare_mod, "run", _fake_peer_run)
     monkeypatch.setattr(ai_cache, "get_analysis_cache", lambda *a, **k: "")
     monkeypatch.setattr(ai_cache, "set_analysis_cache", lambda *a, **k: None)
+    # 隔离 C2 新增的骨架磁盘缓存(skeleton:{symbol}:{today}),否则上一轮写入的
+    # 合法骨架会命中,使 ANALYSIS 直接跳过 LLM 调用 → 重试/调用类断言假失败。
+    monkeypatch.setattr(ai_cache, "get_skeleton_cache", lambda *a, **k: "")
+    monkeypatch.setattr(ai_cache, "set_skeleton_cache", lambda *a, **k: None)
 
     return calls
 
@@ -137,7 +140,8 @@ async def test_valuation_called_with_correct_arg_order(monkeypatch, _wired):
 
     def _val(*args):
         captured["args"] = args
-        return {"pe": 1, "pb": 1, "fcfe_targets": {}, "fcfe_assumptions": {}}
+        return {"pe": 1, "pb": 1, "net_cash_pe": 30.0, "peer_pe_median": 25.0,
+                "stress": [], "expectation_gap": "略高估"}
 
     import aimoon.adapters.driven.ai.tools as tools_mod
 
@@ -183,8 +187,14 @@ async def test_analysis_retries_on_http_status_error(monkeypatch, _wired):
             },
             "composite_prob": 0.42,
             "forensic_audit": {"items": [], "dupont": {}, "quality_score": 7, "red_flags": []},
-            "valuation": {"targets": {"conservative": 100, "neutral": 120, "optimistic": 150}},
-            "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},
+            "valuation": {"net_cash_pe": 30.0, "peer_pe_median": 25.0,
+                          "stress": [{"drop": 0.3, "net_profit": 140.0, "eps": 11.2,
+                                      "price": 35.0, "downside_pct": -0.1}],
+                          "expectation_gap": "中性"},
+            "kelly": {
+                "b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13,
+                "position": 0.065, "rating": "增持",
+            },
         }
         return {"role": "assistant", "content": f"```json\n{_json.dumps(_sk)}\n```"}
 

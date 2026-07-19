@@ -48,7 +48,12 @@ async def run_peer_compare(si: object, search_fn: Callable[..., Any]) -> dict:
     self_fin = getattr(si, "financial", None)
     if not isinstance(self_fin, FinancialData):
         return {"__partial__": "no_data", "peers": [], "industry": ""}
-    return await peer_run(name=name, self_fin=self_fin, search_fn=search_fn)
+    # 行情 PE 作为同行数据异常自检基准(标的 PE 与同行串号时触发告警)。
+    quote = getattr(si, "quote", None)
+    self_pe = float(getattr(quote, "pe", 0.0) or 0.0) or None
+    return await peer_run(
+        name=name, self_fin=self_fin, search_fn=search_fn, self_pe=self_pe
+    )
 
 
 def parse_skeleton_json(text: str) -> dict | None:

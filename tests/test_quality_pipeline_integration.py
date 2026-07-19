@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from aimoon.adapters.driven.ai.pipeline.orchestrator import _verify_and_fix
+from aimoon.adapters.driven.ai.pipeline._helpers import _verify_and_fix
 from aimoon.adapters.driven.config.settings import get_settings
 
 # 质量护栏依赖两个开关，默认开启；但 .env 可能覆盖，测试内显式开启保证确定性。

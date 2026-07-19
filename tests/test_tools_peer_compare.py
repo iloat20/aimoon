@@ -5,7 +5,9 @@ import asyncio
 
 import pytest
 
+from aimoon.adapters.driven.ai.pipeline.table_renderer import render_peer_comparison
 from aimoon.adapters.driven.ai.tools.peer_compare import (
+    _validate_peers,
     build_search_query,
     parse,
     run,
@@ -94,9 +96,34 @@ def test_run_with_mock_search_returns_peers_when_search_provided() -> None:
     assert out["industry"] == "白色家电"
 
 
-def test_run_without_search_returns_partial() -> None:
-    out = _run("美的集团", _self_fin())
+def test_run_without_search_uncurated_returns_partial() -> None:
+    # 未策展行业 + 无 search_fn → 仍走 partial 降级(纯单测,不触网)。
+    out = _run("某冷门设备股份", _self_fin())
     assert out["__partial__"] == "no_data"
+
+
+def test_run_curated_industry_without_search_returns_peers(monkeypatch) -> None:
+    # 策展行业(白色家电)即便无 search_fn 也能经 _curated_peers 出真实 peer。
+    # mock 掉网络抓取,验证 run 直接采用策展结果、不回退 partial。
+    fake = [
+        {"name": "美的集团", "price": 81.0, "pe": 14.0, "pb": 3.0,
+         "roe": 0.0, "np_cagr": 0.0, "rev_g": 0.0, "np_g": 0.0,
+         "mcap": 6200.0, "self": False},
+        {"name": "海尔智家", "price": 20.0, "pe": 10.0, "pb": 1.5,
+         "roe": 0.0, "np_cagr": 0.0, "rev_g": 0.0, "np_g": 0.0,
+         "mcap": 1900.0, "self": False},
+    ]
+    import aimoon.adapters.driven.ai.tools.peer_compare as pc_mod
+
+    async def _fake_curated(self_fin, industry):
+        return list(fake)
+
+    monkeypatch.setattr(pc_mod, "_curated_peers", _fake_curated)
+    out = _run("格力电器", _self_fin())
+    assert "__partial__" not in out
+    assert len(out["peers"]) == 2
+    assert out["industry"] == "白色家电"
+    assert out["peers"][0]["name"] == "美的集团"
 
 
 def test_run_with_empty_name_returns_partial() -> None:
@@ -113,3 +140,63 @@ def test_run_no_html_returns_peers_shape() -> None:
     out = _run(name="贵州茅台", self_fin=None, search_fn=_empty_search)
     assert isinstance(out.get("peers"), list)
     assert "industry" in out
+
+
+# ---------- 数据异常自检(_validate_peers) ----------
+
+def _peer(name: str, pe: float) -> dict:
+    return {"name": name, "price": 1.0, "pe": pe, "pb": 1.0, "roe": 0.0,
+            "np_cagr": 0.0, "rev_g": 0.0, "np_g": 0.0, "mcap": 1.0, "self": False}
+
+
+def test_validate_peers_polluted_all_equal_self() -> None:
+    # 致命场景:所有同行 PE 与标的自身 PE(7.65)完全一致 → 判定异常并清空。
+    peers = [_peer("美的集团", 7.65), _peer("海尔智家", 7.65), _peer("海信家电", 7.65)]
+    cleaned, quality, msg = _validate_peers(peers, 7.65)
+    assert quality == "anomaly"
+    assert cleaned == []  # 污染项被剔除
+    assert "污染" in msg and "失效" in msg
+
+
+def test_validate_peers_polluted_two_close_to_self() -> None:
+    # ≥2 家同行 PE 与标的高度一致(≤2%)即触发,即便非全部。
+    peers = [_peer("美的集团", 7.7), _peer("海尔智家", 7.6), _peer("海信家电", 14.0)]
+    cleaned, quality, _ = _validate_peers(peers, 7.65)
+    assert quality == "anomaly"
+    # 仅保留明显不同的海信
+    assert [p["name"] for p in cleaned] == ["海信家电"]
+
+
+def test_validate_peers_clean_not_flagged() -> None:
+    # 正常分散的同行 PE 不应触发异常。
+    peers = [_peer("美的集团", 14.25), _peer("海尔智家", 10.53), _peer("海信家电", 11.75)]
+    cleaned, quality, _ = _validate_peers(peers, 7.65)
+    assert quality == "ok"
+    assert len(cleaned) == 3
+
+
+def test_validate_peers_self_pe_none_or_zero_skips() -> None:
+    # 无基准(self_pe=None/0)时跳过自检,原样返回,避免误伤。
+    peers = [_peer("美的集团", 7.65), _peer("海尔智家", 7.65)]
+    assert _validate_peers(peers, None)[1] == "ok"
+    assert _validate_peers(peers, 0.0)[1] == "ok"
+
+
+def test_render_peer_comparison_shows_anomaly_warning() -> None:
+    data = {
+        "peers": [_peer("美的集团", 14.25)],
+        "industry": "白色家电",
+        "data_quality": "anomaly",
+        "anomaly_msg": "同行 PE 与标的高度一致",
+    }
+    out = render_peer_comparison(data)
+    assert "⚠️" in out
+    assert "同行数据异常" in out
+
+
+def test_render_peer_comparison_roe_blank_not_zero() -> None:
+    # 同行 ROE 未采集(=0)应渲染为"—"而非误导性的 0.0%。
+    data = {"peers": [_peer("美的集团", 14.25)], "industry": "白色家电"}
+    out = render_peer_comparison(data)
+    assert "| — |" in out
+    assert "0.0%" not in out.split("| 美的集团 |")[1].split("\n")[0]

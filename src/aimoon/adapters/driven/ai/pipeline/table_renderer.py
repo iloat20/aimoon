@@ -1,9 +1,9 @@
 """Render tool JSON results into Markdown tables (zero LLM tokens).
 
-Three core tables:
+Core tables:
 1. Financial timeline (from financial_temporal.years)
 2. Peer comparison (from peer_compare.peers)
-3. Valuation targets (from valuation.fcfe_targets + assumptions)
+3. Valuation safety margin (from margin_of_safety: net_cash_pe / peer_pe_median / stress)
 """
 
 from __future__ import annotations
@@ -67,9 +67,19 @@ def render_peer_comparison(data: Any) -> str:
     lines: list[str] = [
         "## 同行竞品对比表",
         "",
-        "| 公司 | 最新价 | PE | PB | ROE(%) | 营收增速(%) | 净利增速(%) | 市值(亿) |",
-        "|------|--------|----|----|--------|------------|------------|----------|",
     ]
+    # 数据异常自检:同行 PE 与标的串号/解析污染时,前置告警并阻止据此做估值结论。
+    if data.get("data_quality") == "anomaly":
+        msg = str(data.get("anomaly_msg") or "同行对比数据异常,分析失效")
+        lines.append(f"> ⚠️ **同行数据异常**:{msg}。")
+        lines.append("")
+
+    lines.extend(
+        [
+            "| 公司 | 最新价 | PE | PB | ROE(%) | 营收增速(%) | 净利增速(%) | 市值(亿) |",
+            "|------|--------|----|----|--------|------------|------------|----------|",
+        ]
+    )
     for p in peers:
         if not isinstance(p, dict):
             continue
@@ -77,7 +87,9 @@ def render_peer_comparison(data: Any) -> str:
         price = _fmt_num(p.get("price") or p.get("latest_price"))
         pe = _fmt_num(p.get("pe"))
         pb = _fmt_num(p.get("pb"))
-        roe = _fmt_pct(p.get("roe"))
+        # 同行 ROE 当前未采集(peer_compare 仅取 PE/PB/市值),渲染为"—"避免误导为 0。
+        _roe_raw = p.get("roe")
+        roe = "—" if not _roe_raw else _fmt_pct(_roe_raw)
         rev_g = _fmt_pct(p.get("rev_g") or p.get("revenue_growth"))
         np_g = _fmt_pct(p.get("np_g") or p.get("profit_growth"))
         mcap = _fmt_num(p.get("mcap") or p.get("market_cap"))
@@ -103,64 +115,9 @@ def render_peer_comparison(data: Any) -> str:
             f"| **行业中位数** | - | {_fmt_num(median_pe)} | "
             f"{_fmt_num(median_pb)} | - | - | - | - |"
         )
-    return "\n".join(lines)
-
-
-def render_valuation_targets(data: Any) -> str:
-    """Render valuation.fcfe_targets + assumptions to Markdown table.
-
-    Columns: 档位 | PE | 目标价(元) | 概率(%)
-    """
-    if not isinstance(data, dict):
-        return ""
-    targets = data.get("fcfe_targets") or data.get("targets") or {}
-    if not isinstance(targets, dict) or not targets:
-        return ""
-
-    assumptions = data.get("fcfe_assumptions") or data.get("assumptions") or {}
-    # 用 is None 判断而非 or,避免 0.0 等合法 falsy 值被误判为缺失。
-    disc = assumptions.get("discount_rate")
-    if disc is None:
-        disc = assumptions.get("r")
-    g = assumptions.get("growth")
-    if g is None:
-        g = assumptions.get("g")
-    tg = assumptions.get("terminal_growth")
-    if tg is None:
-        tg = assumptions.get("terminal_g")
-
-    lines: list[str] = [
-        "## 估值三档表",
-        "",
-    ]
-    if disc is not None or g is not None:
-        # 折现率/增速以小数存储,此处显式 ×100 显示为百分比(避免 0.1 误读为 0.1%)
-        disc_s = f"{disc * 100:.1f}%" if disc is not None else "N/A"
-        tg_s = f"{tg * 100:.1f}%" if tg is not None else "N/A"
-        lines.append(f"*假设:折现率={disc_s},永续增速封顶={tg_s}*")
-        lines.append("")
-    method = assumptions.get("method")
-    if method == "ddm_fallback":
-        lines.append("*估值方法:分红折现(Gordon)DDM 回退 —— FCFE 为负时 DCF 退化*")
-        lines.append("")
-    lines.extend(
-        [
-            "| 档位 | PE | 目标价(元) | 概率(%) |",
-            "|------|----|------------|---------|",
-        ]
-    )
-    for tier in ("conservative", "neutral", "optimistic"):
-        if tier not in targets:
-            continue
-        t = targets[tier]
-        if isinstance(t, (int, float)):
-            # Simple numeric target
-            lines.append(f"| {tier} | - | {_fmt_num(t)} | - |")
-        elif isinstance(t, dict):
-            pe = _fmt_num(t.get("pe"))
-            price = _fmt_num(t.get("price") or t.get("target_price"))
-            prob = _fmt_pct(t.get("probability") or t.get("prob"))
-            lines.append(f"| {tier} | {pe} | {price} | {prob} |")
+    # 同行 ROE 由 peer_compare 未采集(仅 PE/PB/市值),统一以"—"呈现,避免误读为 0。
+    lines.append("")
+    lines.append('> 注:同行 ROE 未采集,以"—"表示;PE/PB/市值来自行情接口(新浪→腾讯)。')
     return "\n".join(lines)
 
 
@@ -262,12 +219,72 @@ def render_fcf_dividend(data: Any) -> str:
     return "\n".join(lines)
 
 
-def render_financial_health_ext(financial: Any) -> str:
+def render_margin_of_safety(data: Any) -> str:
+    """渲染估值安全边际表(确定性计算,无目标价)。
+
+    列: 指标 | 数值 | 解读。数据来自 margin_of_safety 工具(原 valuation 工具瘦身):
+    当前 PE/PB、净现金调整 PE、同业 PE 中位数、确定性压力测试(净利 -30%/-50%
+    → EPS → 股价 → 下行空间)。AI 直接引用,严禁重算。
+    """
+    if _is_partial(data) or not isinstance(data, dict):
+        return ""
+    pe = data.get("pe")
+    pb = data.get("pb")
+    # 工具对缺失 PE/PB 发射 0.0 哨兵,非真实 0;pe/pb 任一为正才算"有行情"。
+    pe_ok = isinstance(pe, (int, float)) and pe > 0
+    pb_ok = isinstance(pb, (int, float)) and pb > 0
+    if not pe_ok and not pb_ok:
+        return ""
+    pe_disp = _fmt_num(pe) if pe_ok else "N/A"
+    pb_disp = _fmt_num(pb) if pb_ok else "N/A"
+
+    net_cash_pe = data.get("net_cash_pe")
+    peer_median = data.get("peer_pe_median")
+    stress = data.get("stress") or []
+
+    lines = [
+        "## 估值安全边际",
+        "",
+        "| 指标 | 数值 | 解读 |",
+        "|------|------|------|",
+        f"| 当前 PE(TTM) | {pe_disp} | 行情派生 |",
+        f"| 当前 PB | {pb_disp} | 行情派生 |",
+        f"| 净现金调整 PE | {_fmt_num(net_cash_pe)} | (市值−货币资金)/净利润,剔除现金安全垫 |",
+        f"| 同业 PE 中位数 | {_fmt_num(peer_median)} | 来自 Peer 表 |",
+    ]
+    if stress:
+        lines.append("")
+        lines.append("**确定性压力测试**(恒定 PE,净利下滑 → 股价同比例下滑):")
+        lines.append("")
+        lines.append("| 情景 | 压力净利(亿) | 压力 EPS | 压力股价(元) | 下行空间 |")
+        lines.append("|------|--------------|----------|--------------|----------|")
+        for s in stress:
+            drop = s.get("drop")
+            np_ = s.get("net_profit")
+            eps = s.get("eps")
+            price = s.get("price")
+            down = s.get("downside_pct")
+            name = f"净利 −{drop:.0f}%" if isinstance(drop, (int, float)) else "压力"
+            down_s = f"{down:+.1f}%" if isinstance(down, (int, float)) else "N/A"
+            lines.append(
+                f"| {name} | {_fmt_num(np_)} | {_fmt_num(eps)} | {_fmt_num(price)} | {down_s} |"
+            )
+    return "\n".join(lines)
+
+
+def render_financial_health_ext(
+    financial: Any, fin: Any = None
+) -> str:
     """Render extended financial-health indicators(资产负债/现金/应收存货/分红).
 
     数据来自 FinancialData 实体根级字段,含确定性扩展字段
     (monetary_funds / construction_in_progress / capex / 资产负债率派生)。
     若全部字段为 0 则返回 ''。
+
+    ``fin`` 为「自由现金流与股息」工具结果(fcf),其直接携带 ``capex`` 字段,
+    与自由现金流表同源。根级 ``financial.capex`` 缺失(=0)时优先回退到此值,
+    避免「财务健康表 Capex=0」与「FCF 表 Capex=486亿」自相矛盾;
+    若 fcf 也未提供 capex,再回退到 financial_temporal 最新年 capex。
     """
     if not hasattr(financial, "accounts_receivable"):
         return ""
@@ -277,6 +294,16 @@ def render_financial_health_ext(financial: Any) -> str:
     mf = getattr(financial, "monetary_funds", 0.0) or 0.0
     cip = getattr(financial, "construction_in_progress", 0.0) or 0.0
     capex = getattr(financial, "capex", 0.0) or 0.0
+    # 回退:根级 capex 缺失时,优先用「自由现金流与股息」表同源 capex(fcf 直接含),
+    # 其次用 financial_temporal 最新年 capex,保证与自由现金流表口径一致。
+    if capex == 0 and isinstance(fin, dict):
+        fcf_capex = fin.get("capex")
+        if fcf_capex:
+            capex = float(fcf_capex)
+        else:
+            years = fin.get("years") or []
+            if years and isinstance(years[0], dict) and years[0].get("capex"):
+                capex = float(years[0]["capex"])
     ta = getattr(financial, "total_assets", 0.0) or 0.0
     tl = getattr(financial, "total_liabilities", 0.0) or 0.0
     eq = getattr(financial, "equity", 0.0) or 0.0
@@ -313,61 +340,6 @@ def render_financial_health_ext(financial: Any) -> str:
         f"| 存货 | {_fmt_num(inv)} 亿 | {inv_ratio} | 积压风险 / 库存减值先行指标 |",
         f"| 分配股利(现金流出) | {_fmt_num(div)} 亿 | {payout} | 股息可持续性;_coverage=FCF÷分红 |",
     ]
-    return "\n".join(lines)
-
-
-def render_scenario_prob(data: Any) -> str:
-    """Render the scenario probability-weighted & risk-reward table.
-
-    Columns: 档位 | 目标价(元) | 目标PE | 概率(%)。来自 scenario_prob 工具。
-    """
-    if _is_partial(data) or not isinstance(data, dict):
-        return ""
-    targets = data.get("targets") or {}
-    if not isinstance(targets, dict) or not targets:
-        return ""
-
-    lines = [
-        "## 情景概率加权与风险收益比",
-        "",
-    ]
-    basis = data.get("prob_basis")
-    if basis:
-        lines.append(f"*赋权依据: {basis}*")
-        lines.append("")
-    lines.extend([
-        "| 档位 | 目标价(元) | 目标PE | 概率(%) |",
-        "|------|------------|--------|---------|",
-    ])
-    for tier in ("conservative", "neutral", "optimistic"):
-        t = targets.get(tier)
-        if not isinstance(t, dict):
-            continue
-        name = {"conservative": "保守", "neutral": "中性", "optimistic": "乐观"}.get(tier, tier)
-        price = _fmt_num(t.get("price"))
-        pe = _fmt_num(t.get("pe"))
-        prob = _fmt_num(t.get("probability")) if t.get("probability") is not None else "N/A"
-        lines.append(f"| {name} | {price} | {pe} | {prob} |")
-
-    exp = data.get("expected_target")
-    exp_pe = data.get("expected_pe")
-    if exp is not None:
-        lines.append(f"| **加权期望** | **{_fmt_num(exp)}** | **{_fmt_num(exp_pe)}** | **100** |")
-
-    rr = data.get("risk_reward_ratio")
-    lines.append("")
-    down = data.get("downside_neutral_pct")
-    up = data.get("upside_optimistic_pct")
-    down_s = f"{down:+.1f}%" if isinstance(down, (int, float)) else "N/A"
-    up_s = f"{up:+.1f}%" if isinstance(up, (int, float)) else "N/A"
-    lines.append(
-        f"*现价 {_fmt_num(data.get('current_price'))} 元: "
-        f"中性情景下行空间 **{down_s}**, 乐观情景上行空间 **{up_s}**"
-    )
-    if rr is not None:
-        lines.append(f"*风险收益比(上行/下行非对称): **{rr:.2f}** (＜1 表示下行风险大于上行空间)*")
-    else:
-        lines.append("*风险收益比: N/A(缺少完整情景目标价或三档均低于现价)*")
     return "\n".join(lines)
 
 
@@ -444,4 +416,155 @@ def render_segment_revenue(financial: Any) -> str:
             else "N/A"
         )
         lines.append(f"| {name} | {rev} | {ratio} | {margin} |")
+    return "\n".join(lines)
+
+
+def render_annual_report_footnotes(financial: Any) -> str:
+    """渲染年报附注摘录(应收账款保理/证券化/账龄,存货跌价准备,关联交易,应付账款账龄)。
+
+    数据来自 FinancialData.annual_report_footnotes(确定性采集自巨潮年报 PDF,
+    annual_report_pdf.parse_footnotes_from_text)。available=True 且 excerpts 非空时渲染,
+    供 LLM 在法务会计/估值正文引用「见年报附注表」,而非把上述项列入 8.1 缺失清单。
+    """
+    if not hasattr(financial, "annual_report_footnotes"):
+        return ""
+    fn = getattr(financial, "annual_report_footnotes", {}) or {}
+    if not isinstance(fn, dict):
+        return ""
+    if not fn.get("available") or not fn.get("excerpts"):
+        return ""
+    excerpts = [
+        e
+        for e in fn["excerpts"]
+        if isinstance(e, dict) and e.get("topic") and e.get("text")
+    ]
+    if not excerpts:
+        return ""
+    title = str(fn.get("report_title") or "年报")
+    lines = [
+        f"## 年报附注摘录(来源: {title})",
+        "",
+        "> 以下为年报原文摘录,供法务会计/估值章节直接引用,勿重复标「数据缺失」。",
+        "",
+    ]
+    for e in excerpts:
+        lines.append(f"**{e['topic']}**: {e['text']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_quarterly_breakdown(financial: Any) -> str:
+    """渲染分季度主要财务指标(单季营收/归母净利 + 单季同比),消 8.1 缺失清单 #1。
+
+    数据来自 FinancialData.annual_report_footnotes["quarterly_breakdown"](确定性采集自
+    巨潮年报 PDF「八、分季度主要财务指标」)。非空时渲染,供 LLM 在正文引用「见分季度表」,
+    而非把分季度营收/净利列入 8.1 缺失清单。同比由上年同期年报合并,缺失则显示 N/A。
+    """
+    if not hasattr(financial, "annual_report_footnotes"):
+        return ""
+    fn = getattr(financial, "annual_report_footnotes", {}) or {}
+    if not isinstance(fn, dict):
+        return ""
+    qb = fn.get("quarterly_breakdown")
+    if not isinstance(qb, dict) or not qb.get("available") or not qb.get("quarters"):
+        return ""
+    quarters = qb["quarters"]
+    lines = [
+        "## 分季度主要财务指标(单季值,来源: 巨潮年报 PDF)",
+        "",
+        "| 季度 | 营业收入(亿) | 营收同比(%) | 归母净利润(亿) | 净利同比(%) |",
+        "|------|--------------|--------------|----------------|--------------|",
+    ]
+    for q in quarters:
+        rev = _fmt_num(q.get("revenue_yi"))
+        rev_yoy = _fmt_pct(q.get("revenue_yoy"))
+        np_ = _fmt_num(q.get("net_profit_yi"))
+        np_yoy = _fmt_pct(q.get("net_profit_yoy"))
+        lines.append(f"| {q.get('quarter')} | {rev} | {rev_yoy} | {np_} | {np_yoy} |")
+    return "\n".join(lines)
+
+
+def render_region_breakdown(financial: Any) -> str:
+    """渲染主营业务分地区(内销/外销),消 8.1 缺失清单 #2。
+
+    数据来自 FinancialData.annual_report_footnotes["region_breakdown"](确定性采集自
+    巨潮年报 PDF「营业收入构成-分地区」)。非空时渲染,供 LLM 引用「见分地区表」。
+    注: 这是公司主营业务层面拆分,非空调业务专属(空调专属内销/出口仅第三方可得,
+    见 8.1),LLM 可将其作为空调内外销的强代理但不应声称是空调专属值。
+    """
+    if not hasattr(financial, "annual_report_footnotes"):
+        return ""
+    fn = getattr(financial, "annual_report_footnotes", {}) or {}
+    if not isinstance(fn, dict):
+        return ""
+    rb = fn.get("region_breakdown")
+    if not isinstance(rb, dict) or not rb.get("available") or not rb.get("regions"):
+        return ""
+    regions = rb["regions"]
+    lines = [
+        "## 主营业务分地区(内销/外销,来源: 巨潮年报 PDF)",
+        "",
+        "| 地区 | 营业收入(亿) | 收入占比(%) | 营收同比(%) | 毛利率(%) |",
+        "|------|--------------|--------------|--------------|------------|",
+    ]
+    for r in regions:
+        name = str(r.get("name", "N/A"))
+        rev = _fmt_num(r.get("revenue_yi"))
+        ratio = _fmt_pct(r.get("ratio"))
+        yoy = _fmt_pct(r.get("yoy"))
+        margin = _fmt_pct(r.get("gross_margin"))
+        lines.append(f"| {name} | {rev} | {ratio} | {yoy} | {margin} |")
+    lines.append("")
+    lines.append(
+        "> 注: 上述为**公司主营业务**层面内销/外销拆分(年报「分地区」),非空调业务专属。"
+        "空调专属内销/出口无公开确定性来源(仅产业在线等第三方),详见 8.1 关键缺失数据清单。"
+    )
+    return "\n".join(lines)
+
+
+def render_channel_proxy(financial: Any) -> str:
+    """渲染渠道代理指标:合同负债(经销商预收打款蓄水池),消 8.1 缺失清单 #3(代理)。
+
+    经销商数量 / 真实渠道库存无公开确定性来源;**合同负债**(经销商提前打款待提货)
+    是市场公认的渠道需求与压货节奏**代理指标**,确定性可采(资产负债表科目)。
+    非空(>0)时渲染,供 LLM 在渠道改革/压货讨论引用「见渠道代理指标表」,
+    并把【经销商数量/渠道库存】从 8.1 缺口降级为「代理指标已给出,真实值仅第三方可得」。
+    """
+    if not hasattr(financial, "contract_liabilities"):
+        return ""
+    cl = getattr(financial, "contract_liabilities", 0.0) or 0.0
+    if cl == 0:
+        return ""
+    cl_prev = getattr(financial, "contract_liabilities_prev", 0.0) or 0.0
+    revenue = getattr(financial, "revenue", 0.0) or 0.0
+
+    yoy = "N/A"
+    if cl_prev > 0:
+        yoy = _signed_pct((cl - cl_prev) / cl_prev)
+    ratio = _pct(cl / revenue) if revenue > 0 else "N/A"
+
+    if cl_prev > 0:
+        if cl > cl_prev:
+            diag = "合同负债同比上升 = 经销商备货积极 / 渠道压货节奏加速"
+        else:
+            diag = "合同负债同比下降 = 渠道主动去库存 / 提货放缓"
+    else:
+        diag = "无上年同期对比(东财仅软封历史时缺),仅看绝对蓄水池"
+
+    prev_s = _fmt_num(cl_prev) if cl_prev > 0 else "N/A"
+    lines = [
+        "## 渠道代理指标:合同负债(经销商打款蓄水池)",
+        "",
+        "> 经销商数量 / 真实渠道库存无公开确定性来源;**合同负债**(经销商提前打款待提货)"
+        "是市场公认的渠道需求与压货节奏**代理指标**,确定性可采(资产负债表科目)。"
+        "以下为**代理值**,非真实经销商家数 / 渠道库存吨数。",
+        "",
+        "| 指标 | 数值 | 解读 |",
+        "|------|------|------|",
+        f"| 合同负债(最新年报) | {_fmt_num(cl)} 亿 | 经销商预收待发货,渠道蓄水池 |",
+        f"| 合同负债(上一年) | {prev_s} 亿 | 同比对照基数 |",
+        f"| 同比 | {yoy} | 上升=压货/备货积极,下降=去库存 |",
+        f"| 占营收比 | {ratio} | 季节性蓄水代理;异常偏高=压货风险 |",
+        f"| 渠道诊断 | {diag} | 替代『经销商数量/渠道库存』缺失项(代理) |",
+    ]
     return "\n".join(lines)

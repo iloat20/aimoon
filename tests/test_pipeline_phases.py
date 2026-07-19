@@ -108,7 +108,10 @@ def _fake_analyzer(monkeypatch):
             },
             "composite_prob": 0.42,
             "forensic_audit": {"items": [], "dupont": {}, "quality_score": 7, "red_flags": []},
-            "valuation": {"targets": {"conservative": 100, "neutral": 120, "optimistic": 150}},
+            "valuation": {"net_cash_pe": 30.0, "peer_pe_median": 25.0,
+                          "stress": [{"drop": 0.3, "net_profit": 140.0, "eps": 11.2,
+                                      "price": 35.0, "downside_pct": -0.1}],
+                          "expectation_gap": "中性"},
             "kelly": {"b": 2.0, "p": 0.42, "q": 0.58, "f_star": 0.13, "position": 0.065, "rating": "增持"},
         }
         return {"role": "assistant", "content": f"```json\n{_json.dumps(skeleton)}\n```"}

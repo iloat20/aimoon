@@ -6,6 +6,7 @@ Supports namespacing by source/adapter to avoid key collisions.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -88,6 +89,18 @@ class DiskTtlCache:
             path.write_text(payload, encoding="utf-8")
         except (OSError, TypeError) as e:
             logger.debug("[%s] cache write error: %s", self.namespace, e)
+
+    async def aget(self, key: str) -> Any | None:
+        """Async-safe ``get``: 把阻塞的磁盘读卸载到线程池,不阻塞事件循环。
+
+        供 async 协程内(如采集器 ``fetch``)直接调用,避免 ``read_text``/``json.loads``
+        卡住整个 asyncio 事件循环、抵消并行采集收益。
+        """
+        return await asyncio.to_thread(self.get, key)
+
+    async def aset(self, key: str, data: Any) -> None:
+        """Async-safe ``set``: 把阻塞的磁盘写卸载到线程池,不阻塞事件循环。"""
+        await asyncio.to_thread(self.set, key, data)
 
     def invalidate(self, key: str) -> None:
         """Remove a single entry."""

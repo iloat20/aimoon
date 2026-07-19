@@ -29,7 +29,7 @@ aimoon 600519 --mock --fast    # Mock + 快速组合
 | 数据源 | 采集方式 | 数据量 | 状态 |
 |--------|----------|--------|------|
 | 实时行情(含PE) | 雪球 stock.xueqiu.com API | — | ✅ |
-| 财务数据 | pysnowball (资产负债表/利润表/现金流) | 年报+季报 | ✅ |
+| 财务数据 | akshare（三大表 + 新浪兜底）+ 巨潮年报 PDF 附注解析 | 年报+季报 | ✅ |
 | K线历史 | akshare (前复权日线) | 120根 | ✅ |
 | 资金流向 | pysnowball + akshare + 东方财富(北向) | — | ✅ |
 | 机构研报 | akshare (东方财富) | 最近一年 | ✅ |
@@ -220,13 +220,16 @@ src/aimoon/
 │       ├── ai/                    # DeepSeek 分析引擎
 │       │   ├── analyzer.py        # DeepSeekAIAnalyzer（Tool Calling + 流式）
 │       │   ├── prompts.py         # Prompt 模板
-│       │   ├── data_cleaner.py    # 社交文本清洗
-│       │   └── web_search_tool.py # Web 搜索工具（Bing → DuckDuckGo 兜底）
+│       │   ├── post_processor.py  # 社交文本清洗 + 报告后处理（数据清洗在此）
+│       │   ├── web_search_tool.py # Web 搜索工具（Bing → DuckDuckGo 兜底）
+│       │   └── pipeline/          # v2 AI 分析流水线（DIRECT / 骨架+扩写双流）
 │       ├── report/                # 报告生成
 │       │   ├── generator.py       # Jinja2 模板渲染
 │       │   └── templates/index.html
 │       ├── financial/             # 财务数据处理
-│       │   └── akshare_adapter.py # akshare 适配器
+│       │   ├── akshare_adapter.py  # akshare 适配器（三大表 + 新浪兜底）
+│       │   ├── annual_report_pdf.py # 巨潮年报 PDF 下载 + pdfplumber 解析
+│       │   └── parsing.py          # 报表字段解析工具
 │       ├── validation/            # 数据质量
 │       │   └── integrity_checker.py
 │       ├── config/                # 配置

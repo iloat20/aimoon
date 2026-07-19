@@ -35,15 +35,26 @@ def self_check_rewrite(
     report_md: str,
     mismatches: list[Mismatch],
     facts: dict,
-    llm: Callable[[str, str], str],
+    llm: Callable[[str, str], str] | None = None,
+    *,
+    batch_llm: Callable[[list[tuple[str, str]]], list[str]] | None = None,
 ) -> str:
     """返回修正后的报告 markdown。
 
-    llm: (system_prompt, user_prompt) -> corrected_sentence(str)
+    两种调用模式（``batch_llm`` 优先，二选一）：
+      - ``batch_llm``: (list[(system, user)]) -> list[corrected]
+        一次性把全部疑点 prompt 交给底层批量执行（单线程 + 单事件循环 +
+        单 httpx client + 并发 gather），把 N 次线程/循环/client 创建开销降到 1 次，
+        wall-clock 从 N×latency 降到 ~1×latency。返回列表须与 mismatches 等长
+        （失败位置回退空串），否则缺失位置保留原文。
+      - ``llm``: (system_prompt, user_prompt) -> corrected_sentence
+        逐条改正（旧契约，供单测与批量不可用时兜底）。
     """
-    result = report_md
-    for mm in mismatches:
-        corrected = llm(
+    if not mismatches:
+        return report_md
+
+    prompts = [
+        (
             _SYSTEM_PROMPT,
             _USER_TEMPLATE.format(
                 facts_summary=_facts_summary(facts),
@@ -52,6 +63,18 @@ def self_check_rewrite(
                 metric=mm.metric,
             ),
         )
+        for mm in mismatches
+    ]
+
+    if batch_llm is not None:
+        corrections = list(batch_llm(prompts))
+    elif llm is not None:
+        corrections = [llm(sys_p, usr_p) for sys_p, usr_p in prompts]
+    else:
+        raise ValueError("self_check_rewrite 需要 llm 或 batch_llm 其一")
+
+    result = report_md
+    for mm, corrected in zip(mismatches, corrections):
         if not corrected:
             continue
         corrected = corrected.strip()

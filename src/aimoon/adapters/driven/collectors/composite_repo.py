@@ -11,7 +11,7 @@ import logging
 
 import httpx
 
-from aimoon.core.application.progress import ProgressReporter
+from aimoon.adapters.driven.common.progress import ProgressReporter
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.repositories.stock_analysis_repo import (
     StockAnalysisRepository,

@@ -24,7 +24,12 @@ def silent_failure(context: str):
         if isinstance(e, _SILENT_NETWORK_ERRORS):
             logging.debug("[%s] %s: %s", context, type(e).__name__, e)
         else:
-            logging.warning("[%s] %s: %s", context, type(e).__name__, e)
+            # 非网络异常多半是真实代码 bug(AttributeError/TypeError/KeyError 等)。
+            # 保持吞掉以维持 fallback 链不中断,但带上 stack trace 便于定位,
+            # 不再让程序错误伪装成普通降级而被忽视。
+            logging.warning(
+                "[%s] %s: %s", context, type(e).__name__, e, exc_info=True
+            )
 
 
 def retry_on_connection(func, *args, retries: int = 2, delay: float = 1.0, **kwargs):

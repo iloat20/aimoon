@@ -48,8 +48,16 @@ def run(history: list[FinancialData] | None) -> dict[str, object]:
 
 def _serialize(f: FinancialData) -> dict[str, object]:
     # 真实 FCF = 经营现金流 − 购建固定资产等支付的现金(真实 capex)。
-    # 仅当两者皆有时才算,否则留 None(避免用投资净额代理虚高/虚低)。
-    fcf = (f.operating_cf - f.capex) if (f.operating_cf and f.capex) else None
+    # `f.capex` 来自适配器财报解析;若缓存旧数据未含(=0)或投资净额明显大于 OCF
+    # (说明净额主要系理财而非 PP&E,如格力 -486 亿),绝不拿 |investing_cf| 当 capex,
+    # 否则 FCF 会被虚构为巨额负值。此时 capex 记 0,FCF 以 OCF 为下限(安全高估)。
+    ocf = f.operating_cf or 0.0
+    effective_capex = 0.0
+    if f.capex and f.capex > 0:
+        effective_capex = f.capex
+    elif f.investing_cf and f.investing_cf < 0 and abs(f.investing_cf) <= ocf:
+        effective_capex = -f.investing_cf
+    fcf = (ocf - effective_capex) if ocf > 0 else None
     return {
         "period": f.report_period,
         "revenue": f.revenue,

@@ -54,9 +54,8 @@ class EastMoneyDirectCollector(DataCollector[KlineData]):
     name = "kline_eastmoney_direct"
 
     def __init__(self, days: int = 180, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__(client)
         self._days = days
-        self._client_provided = client is not None
-        self._client = client
         self._request_interval = 0.5
         self._init_proxy_patch()
 

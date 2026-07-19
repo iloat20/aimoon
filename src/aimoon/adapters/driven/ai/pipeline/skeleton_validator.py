@@ -81,17 +81,10 @@ def validate_skeleton(raw: Any, tables_md: str = "") -> dict[str, Any]:
             f"Kelly 概率 p 与复合看多概率不一致：p={k.p}，复合概率={sk.composite_prob}"
         )
 
-    # 5. Completeness: valuation targets
-    t = sk.valuation.targets
-    missing_targets = []
-    if t.conservative is None:
-        missing_targets.append("conservative")
-    if t.neutral is None:
-        missing_targets.append("neutral")
-    if t.optimistic is None:
-        missing_targets.append("optimistic")
-    if missing_targets:
-        fixes.append(f"估值目标价缺失：{', '.join(missing_targets)}")
+    # 5. Completeness: valuation safety margin
+    v = sk.valuation
+    if v.net_cash_pe is None and v.peer_pe_median is None and not v.stress:
+        fixes.append("估值安全边际缺失(净现金PE/同业PE中位数/压力测试均为空)")
 
     # 6. Completeness: narratives falsify thresholds
     for name, nar in [("宏观", n.macro), ("行业", n.industry), ("企业alpha", n.alpha)]:

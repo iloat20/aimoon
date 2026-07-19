@@ -17,91 +17,29 @@ import akshare as ak
 import pandas as pd
 
 from aimoon.adapters.driven.common.cache import DiskTtlCache
+from aimoon.adapters.driven.financial.annual_report_pdf import (
+    fetch_annual_report_footnotes,
+)
+from aimoon.adapters.driven.financial.parsing import (
+    _CONTRACT_LIAB_CANDIDATES,
+    _CONTRACT_LIAB_KWS,
+    _filter_report_type,
+    _get_col,
+    _is_annual_report,
+    _match_amount,
+    _match_amount_row,
+    _safe_float,
+)
 from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
 
+# 分业务名称归一:东财 F10 主营构成对个别公司会把主营误标为笼统大类
+# (如格力电器 000651 将「空调」标成「消费电器」),此处按 (代码, 原始名) 精确定位修正。
+# 仅覆盖已核实的误标,不做泛化映射,避免误伤其他公司的真实业务名。
+_SEGMENT_NAME_FIX: dict[tuple[str, str], str] = {
+    ("000651", "消费电器"): "空调",
+}
+
 logger = logging.getLogger(__name__)
-
-
-def _safe_float(value: Any) -> float:
-    """Safely convert a value to float, returning 0.0 on failure."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return 0.0
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _get_col(df: pd.DataFrame, col_name: str) -> Any:
-    """Get a column value from the first row, returning None if column doesn't exist."""
-    if col_name not in df.columns:
-        return None
-    val = df.iloc[0][col_name]
-    if pd.isna(val):
-        return None
-    return val
-
-
-def _filter_report_type(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
-    """Filter DataFrame to only include rows of the given report type."""
-    if "REPORT_TYPE" not in df.columns:
-        return df
-    filtered = df[df["REPORT_TYPE"] == report_type]
-    return filtered if not filtered.empty else df
-
-
-def _match_amount(
-    df: pd.DataFrame,
-    candidates: list[str],
-    partial_kws: list[str] | None = None,
-) -> float:
-    """从 DataFrame 首行取第一个命中的正数金额(确定性采集兜底)。
-
-    先精确匹配候选列名,再按部分关键词(列名大写)模糊匹配,
-    用于东财接口列名不稳定时的货币资金/在建工程/购建固定资产等科目。
-    找不到或全为 0 返回 0.0。
-    """
-    partial_kws = partial_kws or []
-    for c in candidates:
-        if c in df.columns:
-            v = _safe_float(_get_col(df, c))
-            if v != 0.0:
-                return abs(v)
-    for col in df.columns:
-        cu = col.upper()
-        if any(kw in cu for kw in partial_kws):
-            v = _safe_float(_get_col(df, col))
-            if v != 0.0:
-                return abs(v)
-    return 0.0
-
-
-def _match_amount_row(
-    row: pd.Series,
-    candidates: list[str],
-    partial_kws: list[str] | None = None,
-) -> float:
-    """同 ``_match_amount`` 但作用于单行 Series(用于 _merge_statements 历史年报)。"""
-    partial_kws = partial_kws or []
-    for c in candidates:
-        if c in row.index:
-            v = row.get(c)
-            try:
-                if pd.notna(v) and float(v) != 0.0:
-                    return abs(float(v))
-            except (TypeError, ValueError):
-                continue
-    for c in row.index:
-        cu = str(c).upper()
-        if any(kw in cu for kw in partial_kws):
-            v = row.get(c)
-            try:
-                if pd.notna(v) and float(v) != 0.0:
-                    return abs(float(v))
-            except (TypeError, ValueError):
-                continue
-    return 0.0
-
 
 class AkshareFinancialAdapter:
     """Fetches structured financial data from akshare (东方财富).
@@ -184,19 +122,50 @@ class AkshareFinancialAdapter:
         "一季报" or "三季报" for quarterly.
         """
         report_type = kwargs.get("report_type", "年报")
+        stock_name = kwargs.get("stock_name", "")
         cache_key = f"financial:{symbol}:{report_type}"
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
-        cached = self._cache.get(cache_key)
+        cached = await self._cache.aget(cache_key)
         if cached is not None:
             if isinstance(cached, dict) and cached.get("_empty"):
                 return FinancialData(symbol=symbol, source="akshare_cache_empty")
             fin = FinancialData.model_validate(cached)
-            # 缓存可能写于 segment_revenue 上线前/采集抖动时 → 缺失则补拉,
-            # 避免 #3 因陈旧缓存永久回缺失清单(2026-07-14 实测:缓存命中没有 segment)。
+            # 缓存可能写于 segment_revenue / annual_report_footnotes 上线前或
+            # 采集抖动时 → 缺失则补拉,避免因陈旧缓存永久回缺失清单。
             if not fin.segment_revenue:
                 try:
                     fin.segment_revenue = await self._fetch_segment(ak_symbol)
+                except Exception:  # noqa: BLE001
+                    pass
+            if (
+                not fin.annual_report_footnotes
+                or not isinstance(fin.annual_report_footnotes, dict)
+                or not fin.annual_report_footnotes.get("quarterly_breakdown")
+                or not fin.annual_report_footnotes.get("region_breakdown")
+            ):
+                try:
+                    stock_name = kwargs.get("stock_name", "")
+                    fin.annual_report_footnotes = await fetch_annual_report_footnotes(
+                        symbol, stock_name
+                    )
+                    await self._cache.aset(cache_key, fin.model_dump())
+                except Exception:  # noqa: BLE001
+                    pass
+            # 资产负债表字段(应收账款/存货/货币资金/总资产)可能写于新浪兜底上线前
+            # 或某次 Sina 抖动时,缓存里恒为 0 → 陈旧缓存永久回 0。任一为空则补拉
+            # 新浪资产负债表回填,避免 AR=0 这类与年报附注(190亿+)打架的硬伤。
+            if (
+                fin.accounts_receivable == 0.0
+                or fin.inventory == 0.0
+                or fin.monetary_funds == 0.0
+                or fin.total_assets == 0.0
+            ):
+                try:
+                    sina_bs = await asyncio.to_thread(self._sync_balance_sina, ak_symbol)
+                    if sina_bs is not None and not sina_bs.empty:
+                        self._parse_balance_sina(fin, sina_bs)
+                        await self._cache.aset(cache_key, fin.model_dump())
                 except Exception:  # noqa: BLE001
                     pass
             return fin
@@ -215,11 +184,130 @@ class AkshareFinancialAdapter:
         if cf_df is not None and not cf_df.empty:
             self._parse_cash_flow(result, self._latest_report(cf_df, report_type))
 
+        # 合同负债同比基数(上一年年报):从同一份东财原始资产负债表取第二新的年报行。
+        # 东财 WAF 软封时 bs_df 为 None 或非东财格式(无 REPORT_TYPE),跳过 → prev 留 0,
+        # 渲染层同比显示 N/A(不影响 current 绝对值代理)。
+        if bs_df is not None and not bs_df.empty and "REPORT_TYPE" in bs_df.columns:
+            try:
+                annual_bs = self._annual(bs_df)
+                if len(annual_bs) >= 2:
+                    prev_cl = _match_amount_row(
+                        annual_bs.iloc[1], _CONTRACT_LIAB_CANDIDATES, _CONTRACT_LIAB_KWS
+                    )
+                    if prev_cl != 0.0:
+                        result.contract_liabilities_prev = prev_cl
+            except Exception:  # noqa: BLE001
+                pass
+
+        # ====== 东财 emweb 软封(风控 type=soft)检测 + 新浪兜底 ======
+        # em_any: 三张原始表任一非空(说明东财接口至少通);
+        # em_ok:  核心字段已被东财解析出来(即便部分列名未匹配)。
+        em_any = any(df is not None and not df.empty for df in (income_df, bs_df, cf_df))
+        em_ok = (
+            result.net_profit != 0.0
+            or result.total_assets != 0.0
+            or result.operating_cf != 0.0
+            or result.revenue != 0.0
+        )
+        sina_filled: list[str] = []
+
+        # 现金流量表:东财被 WAF 软封(cf_df=None)或 capex 列名未匹配致恒为 0 时,
+        # 回退新浪(走新浪、绕开 WAF),补全真实 capex/OCF/ICF。
+        cf_before = result.capex
+        if cf_before == 0.0:
+            try:
+                sina_df = await asyncio.to_thread(self._sync_cashflow_sina, ak_symbol)
+                if sina_df is not None and not sina_df.empty:
+                    self._parse_cash_flow_sina(result, sina_df)
+                    if result.capex != 0.0:
+                        sina_filled.append("现金流量表")
+            except Exception as e:  # noqa: BLE001 — 单源失败永不 abort 主流程
+                logger.warning("[akshare] sina cashflow fallback failed for %s: %s", ak_symbol, e)
+
+        # 利润表:东财被 WAF 软封或 net_profit 未解析时,回退新浪利润表
+        np_before = result.net_profit
+        if np_before == 0.0:
+            try:
+                sina_inc = await asyncio.to_thread(self._sync_income_sina, ak_symbol)
+                if sina_inc is not None and not sina_inc.empty:
+                    self._parse_income_sina(result, sina_inc)
+                    if result.net_profit != 0.0:
+                        sina_filled.append("利润表")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[akshare] sina income fallback failed for %s: %s", ak_symbol, e)
+
+        # 资产负债表:东财被 WAF 软封,或**任一核心字段(资产/应收/存货/货币资金)未解析**
+        # 时,回退新浪资产负债表补填(东财列名不稳定常漏应收/存货/货币资金,导致恒为 0)。
+        balance_missing = (
+            result.total_assets == 0.0
+            or result.accounts_receivable == 0.0
+            or result.inventory == 0.0
+            or result.monetary_funds == 0.0
+        )
+        sina_bs_fetched = None
+        if balance_missing:
+            try:
+                sina_bs = await asyncio.to_thread(self._sync_balance_sina, ak_symbol)
+                sina_bs_fetched = sina_bs
+                if sina_bs is not None and not sina_bs.empty:
+                    self._parse_balance_sina(result, sina_bs)
+                    if result.total_assets != 0.0 or result.accounts_receivable != 0.0:
+                        sina_filled.append("资产负债表")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[akshare] sina balance fallback failed for %s: %s", ak_symbol, e)
+
+        # 合同负债补充兜底:东财已解析核心字段(balance_missing=False)但其列名未匹配,
+        # 致合同负债恒为 0 时,静默回退新浪补填。**不**计入 sina_filled、**不**改 source 标记,
+        # 避免污染来源判定(否则会误把『东财主源』标成『东财主源·新浪补』)。
+        # 仅当新浪资产负债表尚未在本轮拉取过时才发起一次网络请求(复用优先)。
+        if result.contract_liabilities == 0.0:
+            try:
+                sina_bs = sina_bs_fetched or await asyncio.to_thread(
+                    self._sync_balance_sina, ak_symbol
+                )
+                if sina_bs is not None and not sina_bs.empty:
+                    self._parse_balance_sina(result, sina_bs)  # 仅填空字段,不改 source
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[akshare] sina contract_liabilities fallback failed: %s", e)
+
+        # ====== 数据源汇总(WARNING 级,保证 pipeline 跑批时一眼看出当前主源) ======
+        if not em_any:
+            # 东财三表原始数据全空 = 被风控软封,数据完全来自新浪
+            logger.warning(
+                "[akshare] ⚠️ 东财 F10 被风控软封(type=soft),已整体回退新浪(sina)。"
+                "财务数据来源: 新浪(sina)"
+            )
+            result.source = "akshare(新浪sina兜底-东财软封)"
+        elif not em_ok and sina_filled:
+            logger.warning(
+                "[akshare] ⚠️ 东财(em)返回但核心字段未解析,改由新浪(sina)提供。"
+                "财务数据来源: 新浪(sina)"
+            )
+            result.source = "akshare(新浪sina兜底)"
+        elif sina_filled:
+            logger.warning(
+                "[akshare] 财务主源: 东财(em);新浪(sina)补: %s。财务数据来源: 东财+新浪",
+                "/".join(sina_filled),
+            )
+            result.source = f"akshare(东财主源·新浪补:{','.join(sina_filled)})"
+        else:
+            logger.warning("[akshare] 财务数据来源: 东财(em) ✓")
+
         # 分业务营收(按产品分类,东财 F10 经营分析,结构化 JSON 免 PDF 解析)
         try:
             result.segment_revenue = await self._fetch_segment(ak_symbol)
         except Exception:  # noqa: BLE001 — 单源失败永不 abort 主流程
             result.segment_revenue = []
+
+        # 年报附注(应收账款保理/证券化/账龄,存货跌价准备,关联交易,应付账款账龄)—
+        # 巨潮年报 PDF 解析,确定性采集,消 8.1 缺失清单(C 组附注级)。仅年报路径拉取。
+        if report_type == "年报":
+            try:
+                result.annual_report_footnotes = await fetch_annual_report_footnotes(
+                    symbol, stock_name
+                )
+            except Exception:  # noqa: BLE001 — 单源失败永不 abort 主流程
+                result.annual_report_footnotes = {}
 
         if result.revenue == 0 and result.net_profit == 0 and result.total_assets == 0:
             result.source = "akshare_empty"
@@ -230,9 +318,9 @@ class AkshareFinancialAdapter:
             result.roe = round(result.net_profit / result.equity * 100, 2)
 
         if result.source.startswith("akshare_empty"):
-            self._cache.set(cache_key, {"_empty": True})
+            await self._cache.aset(cache_key, {"_empty": True})
         else:
-            self._cache.set(cache_key, result.model_dump())
+            await self._cache.aset(cache_key, result.model_dump())
 
         return result
 
@@ -302,6 +390,10 @@ class AkshareFinancialAdapter:
         out: list[dict] = []
         for _, r in rows.iterrows():
             name = str(r[name_col])
+            # 分业务名称归一:修正东财 F10 对个别公司的笼统大类误标。
+            # ak_symbol 为 sina 风格(sz000651),用末 6 位作为代码键,兼容大小写/前缀。
+            code = ak_symbol[-6:] if len(ak_symbol) >= 6 else ak_symbol
+            name = _SEGMENT_NAME_FIX.get((code, name), name)
             if name in ("分类", "产品", ""):
                 continue
             rev = _safe_float(r.get(rev_col))
@@ -380,6 +472,20 @@ class AkshareFinancialAdapter:
         df = ak.stock_cash_flow_sheet_by_report_em(symbol=ak_symbol)
         return df if (df is not None and not df.empty) else None
 
+    def _sync_cashflow_sina(self, ak_symbol: str) -> pd.DataFrame | None:
+        """新浪现金流量表兜底源(东财 emweb 被 WAF 拦截时绕开,返回真实 capex/OCF/ICF)。
+
+        东财 ``stock_cash_flow_sheet_by_report_em`` 当前被 WAF 拦截(返回 challenge 页,
+        akshare 解析报 NoneType 下标错误)。新浪 ``stock_financial_report_sina`` 走新浪
+        而非东财,未被拦截,且直接给出标准现金流量表行项(含
+        「购建固定资产、无形资产和其他长期资产所支付的现金」)。数值单位与东财一致(元)。
+        """
+        import akshare as ak
+
+        sina_symbol = ak_symbol.lower()  # SZ000651 -> sz000651
+        df = ak.stock_financial_report_sina(stock=sina_symbol, symbol="现金流量表")
+        return df if (df is not None and not df.empty) else None
+
     @staticmethod
     def _filter_by_report_type(df: pd.DataFrame, report_type: str) -> pd.DataFrame:
         """Filter DataFrame to only include rows of the given report type."""
@@ -404,16 +510,31 @@ class AkshareFinancialAdapter:
         if revenue_yoy != 0:
             result.revenue_yoy = revenue_yoy
 
+        # 净利润: NETPROFIT 为东财现用列名(2026-07 缓存实测非零, 正确)。
+        # 保留 PARENT_NETPROFIT/归母 作 sign-preserving 兜底, 应对未来列名变动;
+        # 不用 _match_amount(它取 abs, 会把亏损翻正)。列全缺失时告警而非静默归零。
         net_profit = _safe_float(_get_col(df, "NETPROFIT"))
+        if net_profit == 0:
+            for cand in ("PARENT_NETPROFIT", "NETPROFIT_PARENT"):
+                v = _safe_float(_get_col(df, cand))
+                if v != 0:
+                    net_profit = v
+                    break
         if net_profit != 0:
             result.net_profit = net_profit
+        elif "NETPROFIT" not in df.columns and "PARENT_NETPROFIT" not in df.columns:
+            logger.warning(
+                "[akshare] 利润表未匹配净利润列, 实际列=%s", list(df.columns)
+            )
 
         net_profit_yoy = _safe_float(_get_col(df, "NETPROFIT_YOY"))
+        if net_profit_yoy == 0:
+            net_profit_yoy = _safe_float(_get_col(df, "PARENT_NETPROFIT_YOY"))
         if net_profit_yoy != 0:
             result.net_profit_yoy = net_profit_yoy
 
         eps = _safe_float(_get_col(df, "BASIC_EPS"))
-        if eps > 0:
+        if eps != 0.0:  # 保留负值(亏损股 EPS 为负),仅跳过缺列/解析失败导致的 0.0
             result.eps = eps
 
     def _parse_balance_sheet(self, result: FinancialData, df: pd.DataFrame) -> None:
@@ -475,6 +596,13 @@ class AkshareFinancialAdapter:
         if cip != 0.0:
             result.construction_in_progress = cip
 
+        # ====== 合同负债(经销商预收打款蓄水池)— 渠道压货/库存代理指标 ======
+        # 经销商提前打款待提货,蓄水池高低反映渠道需求与压货节奏,确定性可采。
+        # 新收入准则「合同负债」或旧准则「预收款项」;广匹配覆盖东财列名不稳定。
+        cl = _match_amount(df, _CONTRACT_LIAB_CANDIDATES, _CONTRACT_LIAB_KWS)
+        if cl != 0.0:
+            result.contract_liabilities = cl
+
         # 自诊断:若新字段全 0,把实际列名写进日志,方便用户上报。
         if ar == 0.0 and inv == 0.0:
             logger.warning(
@@ -517,19 +645,155 @@ class AkshareFinancialAdapter:
 
         # ====== 真实资本开支:购建固定资产/无形资产/长期资产支付的现金 ======
         # 区别于 investing_cf 净额(含理财/投资收回),用于 FCF 真实 capex 代理。
+        # 东方财富列名不稳定,广度匹配:精确候选 + 部分关键词(英文/中文),
+        # 覆盖 CASH_PAID_FOR_ASSETS / CASH_PAID_FIXED_ASSETS / 购建固定资产 等。
         capex = _match_amount(
             df,
-            ["CASH_PAID_FOR_ASSETS", "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS", "PAID_FOR_ASSETS"],
-            ["PAID_FOR_ASSET", "购建固定资产"],
+            [
+                "CASH_PAID_FOR_ASSETS",
+                "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS",
+                "CASH_PAID_FIXED_ASSETS",
+                "NET_CASH_PAID_FOR_ASSETS",
+                "CASH_PAID_FOR_LONG_TERM_ASSETS",
+                "PAID_FOR_ASSETS",
+                "CONSTRUCT_LONG_ASSET",
+                "CONSTRUCT_FIXED_ASSET",
+                "PAID_TO_CONSTRUCT_LONG_ASSET",
+            ],
+            [
+                "PAID_FOR_ASSET",
+                "购建固定资产",
+                "FIXED_ASSET",
+                "CAPEX",
+                "购建",
+                "长期资产支付",
+                "CONSTRUCT",
+                "LONG_ASSET",
+            ],
         )
         if capex != 0.0:
             result.capex = capex
+        elif result.capex == 0.0:
+            logger.warning(
+                "[akshare] cashflow 未匹配 capex 列(购建固定资产),实际列=%s;"
+                " FCF 将回退到 OCF(避免误用投资现金流净额),请上报以补充列名",
+                list(df.columns),
+            )
 
         # 自诊断
         if div == 0.0:
             logger.info(
                 "[akshare] cashflow 股利列未匹配,实际列=%s", list(df.columns)
             )
+
+    def _parse_cash_flow_sina(self, result: FinancialData, df: pd.DataFrame) -> None:
+        """解析新浪现金流量表(行=报告期、中文列名)为 FinancialData 现金流字段。
+
+        仅填充仍为 0 的字段,避免覆盖东财已正确解析的 OCF/ICF(当东财仅 capex 列名
+        未匹配时)。东财完全 WAF 失败(cf_df=None)时各现金流字段均为 0,此处整体补全。
+        """
+        if "报告日" not in df.columns:
+            logger.warning("[akshare] sina cashflow 缺少 报告日 列,跳过")
+            return
+
+        annual = df[df["报告日"].astype(str).apply(_is_annual_report)]
+        if annual.empty:
+            logger.warning("[akshare] sina cashflow 无年报行,跳过")
+            return
+        latest = annual.sort_values("报告日", ascending=False).iloc[0]
+
+        capex = _safe_float(latest.get("购建固定资产、无形资产和其他长期资产所支付的现金"))
+        if capex > 0:
+            result.capex = capex
+        ocf = _safe_float(latest.get("经营活动产生的现金流量净额"))
+        if ocf != 0 and result.operating_cf == 0.0:
+            result.operating_cf = ocf
+        icf = _safe_float(latest.get("投资活动产生的现金流量净额"))
+        if icf != 0 and result.investing_cf == 0.0:
+            result.investing_cf = icf
+        fcf = _safe_float(latest.get("筹资活动产生的现金流量净额"))
+        if fcf != 0 and result.financing_cf == 0.0:
+            result.financing_cf = fcf
+        div = _safe_float(latest.get("分配股利、利润或偿付利息所支付的现金"))
+        if div > 0 and result.dividend_paid == 0.0:
+            result.dividend_paid = div
+        logger.info(
+            "[akshare] sina cashflow 兜底: capex=%.2f亿 ocf=%.2f亿 icf=%.2f亿",
+            capex / 1e8, ocf / 1e8, icf / 1e8,
+        )
+
+    def _sync_income_sina(self, ak_symbol: str) -> pd.DataFrame | None:
+        """新浪利润表兜底源(东财 emweb 被 WAF 拦截时绕开)。"""
+        import akshare as ak
+
+        sina_symbol = ak_symbol.lower()
+        df = ak.stock_financial_report_sina(stock=sina_symbol, symbol="利润表")
+        return df if (df is not None and not df.empty) else None
+
+    def _parse_income_sina(self, result: FinancialData, df: pd.DataFrame) -> None:
+        """解析新浪利润表(行=报告期、中文列名)为 FinancialData 利润表字段。仅填空字段。"""
+        if "报告日" not in df.columns:
+            return
+        annual = df[df["报告日"].astype(str).apply(_is_annual_report)]
+        if annual.empty:
+            return
+        latest = annual.sort_values("报告日", ascending=False).iloc[0]
+        rev = _safe_float(latest.get("营业收入")) or _safe_float(latest.get("营业总收入"))
+        if rev > 0 and result.revenue == 0.0:
+            result.revenue = rev
+        np_ = _safe_float(latest.get("净利润"))
+        if np_ > 0 and result.net_profit == 0.0:
+            result.net_profit = np_
+        eps = _safe_float(latest.get("基本每股收益"))
+        if eps != 0.0 and result.eps == 0.0:
+            result.eps = eps
+
+    def _sync_balance_sina(self, ak_symbol: str) -> pd.DataFrame | None:
+        """新浪资产负债表兜底源(东财 emweb 被 WAF 拦截时绕开)。"""
+        import akshare as ak
+
+        sina_symbol = ak_symbol.lower()
+        df = ak.stock_financial_report_sina(stock=sina_symbol, symbol="资产负债表")
+        return df if (df is not None and not df.empty) else None
+
+    def _parse_balance_sina(self, result: FinancialData, df: pd.DataFrame) -> None:
+        """解析新浪资产负债表(行=报告期、中文列名)为 FinancialData 资产负债表字段。仅填空字段。"""
+        if "报告日" not in df.columns:
+            return
+        annual = df[df["报告日"].astype(str).apply(_is_annual_report)]
+        if annual.empty:
+            return
+        latest = annual.sort_values("报告日", ascending=False).iloc[0]
+        ta = _safe_float(latest.get("资产总计"))
+        if ta > 0 and result.total_assets == 0.0:
+            result.total_assets = ta
+        tl = _safe_float(latest.get("负债合计"))
+        if tl > 0 and result.total_liabilities == 0.0:
+            result.total_liabilities = tl
+        eq = _safe_float(latest.get("所有者权益(或股东权益)合计"))
+        if eq > 0 and result.equity == 0.0:
+            result.equity = eq
+        mf = _safe_float(latest.get("货币资金"))
+        if mf > 0 and result.monetary_funds == 0.0:
+            result.monetary_funds = mf
+        # 应收账款 / 存货 / 在建工程: 东财软封走新浪时补填,避免恒为 0。
+        ar = _safe_float(latest.get("应收账款"))
+        if ar == 0.0:
+            ar = _safe_float(latest.get("应收票据及应收账款"))
+        if ar > 0 and result.accounts_receivable == 0.0:
+            result.accounts_receivable = ar
+        inv = _safe_float(latest.get("存货"))
+        if inv > 0 and result.inventory == 0.0:
+            result.inventory = inv
+        cip = _safe_float(latest.get("在建工程"))
+        if cip == 0.0:
+            cip = _safe_float(latest.get("在建工程合计"))
+        if cip > 0 and result.construction_in_progress == 0.0:
+            result.construction_in_progress = cip
+        # 合同负债(经销商预收打款蓄水池)— 渠道压货/库存代理指标。仅填空字段。
+        cl = _safe_float(latest.get("合同负债")) or _safe_float(latest.get("预收款项"))
+        if cl > 0 and result.contract_liabilities == 0.0:
+            result.contract_liabilities = cl
 
     async def fetch_financial(self, symbol: str, **kwargs: Any) -> FinancialData:
         """Alias for fetch() — matches PysnowballAdapter interface."""
@@ -546,7 +810,7 @@ class AkshareFinancialAdapter:
         ak_symbol = f"{prefix}{symbol}"
 
         cache_key = f"quarterly:{symbol}"
-        cached = self._quarterly_cache.get(cache_key)
+        cached = await self._quarterly_cache.aget(cache_key)
         if cached is not None:
             return QuarterlyFinancialData.model_validate(cached)
 
@@ -576,7 +840,7 @@ class AkshareFinancialAdapter:
         else:
             report_type = "一季报"
         result = self._parse_quarterly(non_annual, symbol, report_type)
-        self._quarterly_cache.set(cache_key, result.model_dump())
+        await self._quarterly_cache.aset(cache_key, result.model_dump())
         return result
 
     @staticmethod
@@ -651,7 +915,7 @@ class AkshareFinancialAdapter:
         prefix = "SH" if symbol.startswith("6") else "SZ" if symbol.startswith("0") else "BJ"
         ak_symbol = f"{prefix}{symbol}"
         cache_key = f"history:{symbol}:{years}"
-        cached = self._history_cache.get(cache_key)
+        cached = await self._history_cache.aget(cache_key)
         if cached is not None:
             return [FinancialData.model_validate(d) for d in cached]
 
@@ -661,7 +925,7 @@ class AkshareFinancialAdapter:
             logger.debug("[akshare] fetch_history failed for %s: %s", symbol, e)
             return []
         result = self._merge_statements(symbol, years, p_df, b_df, c_df)
-        self._history_cache.set(cache_key, [fd.model_dump() for fd in result])
+        await self._history_cache.aset(cache_key, [fd.model_dump() for fd in result])
         return result
 
     @staticmethod
@@ -781,8 +1045,26 @@ class AkshareFinancialAdapter:
                 # 真实资本开支:购建固定资产/无形资产/长期资产支付的现金
                 cap = _match_amount_row(
                     c_match.iloc[0],
-                    ["CASH_PAID_FOR_ASSETS", "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS"],
-                    ["PAID_FOR_ASSET", "购建固定资产", "PAID_FOR_ASSETS"],
+                    [
+                        "CASH_PAID_FOR_ASSETS",
+                        "CASH_PAID_TO_ACQUIRE_FIXED_ASSETS",
+                        "CASH_PAID_FIXED_ASSETS",
+                        "NET_CASH_PAID_FOR_ASSETS",
+                        "PAID_FOR_ASSETS",
+                        "CONSTRUCT_LONG_ASSET",
+                        "CONSTRUCT_FIXED_ASSET",
+                        "PAID_TO_CONSTRUCT_LONG_ASSET",
+                    ],
+                    [
+                        "PAID_FOR_ASSET",
+                        "购建固定资产",
+                        "FIXED_ASSET",
+                        "CAPEX",
+                        "购建",
+                        "长期资产支付",
+                        "CONSTRUCT",
+                        "LONG_ASSET",
+                    ],
                 )
                 if cap:
                     fd.capex = cap

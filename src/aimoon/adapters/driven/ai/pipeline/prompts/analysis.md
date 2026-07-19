@@ -25,7 +25,7 @@
 - `narratives`: 三层叙事,每层包含 probability(0-1小数)/consensus/our_view/falsify
 - `composite_prob`: 三层概率之积(0-1小数)
 - `forensic_audit`: 法务会计审计,含 items(逐项排查)/dupont(杜邦拆解)/quality_score(1-10)/red_flags
-- `valuation`: 估值,含 targets(conservative/neutral/optimistic三档)/implied_g/expectation_gap/sensitivity
+- `valuation`: 估值安全边际(对应 margin_of_safety 工具),含 net_cash_pe/peer_pe_median/stress(确定性压力测试)/expectation_gap;不输出任何目标价
 - `kelly`: 凯利公式,含 b/p/q/f_star/position/rating
   - f_star = (b*p - q) / b
   - position = f_star * 0.5(半凯利),若 f_star <= 0 则 position = 0
@@ -58,9 +58,8 @@
 ROE 杜邦拆解:ROE = 净利率 * 资产周转率 * 权益乘数。
 盈利质量总评(1-10分) + 红旗清单。
 
-### 隐含市场预期反推
-Gordon 模型反推 g*,同业 PE 对比,预期差判断。
-估值三档目标价(保守/中性/乐观) + 敏感度分析。
+### 估值安全边际(不输出目标价)
+同业 PE 对比、净现金调整 PE、确定性压力测试(净利 −30% / −50% → 股价下行空间),预期差判断。不输出任何目标价。
 
 ### 仓位量化(Kelly)
 Kelly: f* = (bp - q) / b; p 来自复合看多概率。

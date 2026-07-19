@@ -1,17 +1,16 @@
-"""Phase 1 基础设施层测试 — Container / ProgressReporter / HttpClient / BrowserFactory。"""
+"""Phase 1 基础设施层测试 — Container / ProgressReporter / BrowserFactory。"""
 
 from __future__ import annotations
 
 import pytest
 
-from aimoon.core.application.browser_factory import PlaywrightBrowserFactory
-from aimoon.core.application.container import Container
-from aimoon.core.application.http_client import FakeHttpClient, HttpResponse
-from aimoon.core.application.progress import (
+from aimoon.adapters.driven.common.browser_factory import PlaywrightBrowserFactory
+from aimoon.adapters.driven.common.progress import (
     CliProgressReporter,
     NullProgressReporter,
     RecordingProgressReporter,
 )
+from aimoon.core.application.container import Container
 
 # ── Container ──────────────────────────────────────────────────────────
 
@@ -89,51 +88,6 @@ def test_recording_reporter_records():
     assert r.messages[0] == ("info", "msg1")
     assert r.messages[1] == ("warning", "msg2")
     assert r.progress_calls == [("采集K线", 2, 5)]
-
-
-# ── HttpClient ────────────────────────────────────────────────────────
-
-
-def test_http_response_json():
-    """HttpResponse.json() 解析 JSON。"""
-    resp = HttpResponse(status_code=200, text='{"key": "value"}')
-    assert resp.ok is True
-    assert resp.json() == {"key": "value"}
-
-
-def test_http_response_not_ok():
-    """非 2xx 状态码 ok=False。"""
-    resp = HttpResponse(status_code=404, text="not found")
-    assert resp.ok is False
-
-
-@pytest.mark.asyncio
-async def test_fake_http_client_get():
-    """FakeHttpClient 按 URL 模式返回预设响应。"""
-    fake = FakeHttpClient()
-    fake.add_response("sinajs.cn", HttpResponse(status_code=200, text="data"))
-    resp = await fake.get("https://hq.sinajs.cn/list=sh600519")
-    assert resp.status_code == 200
-    assert resp.text == "data"
-    assert fake.calls == [("get", "https://hq.sinajs.cn/list=sh600519")]
-
-
-@pytest.mark.asyncio
-async def test_fake_http_client_no_mock():
-    """无匹配 mock 时抛 ConnectionError。"""
-    fake = FakeHttpClient()
-    with pytest.raises(ConnectionError):
-        await fake.get("https://unknown.url/")
-
-
-@pytest.mark.asyncio
-async def test_fake_http_client_post():
-    """FakeHttpClient post 同样按 URL 模式匹配。"""
-    fake = FakeHttpClient()
-    fake.add_response("api/deepseek", HttpResponse(status_code=200, text="{}"))
-    resp = await fake.post("https://api/deepseek.com/v1/chat", json={"x": 1})
-    assert resp.status_code == 200
-    assert len(fake.calls) == 1
 
 
 # ── BrowserFactory ────────────────────────────────────────────────────

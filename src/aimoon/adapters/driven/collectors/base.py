@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 
 import httpx
 
+from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.core.domain.entities.social import SocialPost
 from aimoon.core.domain.value_objects.collect_result import CollectResult
 
@@ -46,9 +47,48 @@ class DataCollector[T](ABC):
     """Abstract base for non-social data collectors (quote, K-line, fund flow, etc.).
 
     Returns typed data models directly rather than CollectResult.
+
+    Shared infrastructure (lazy httpx client, optional disk cache, resource
+    teardown) lives here so concrete collectors only implement :meth:`fetch`
+    (and any private ``_fetch_*`` helpers). Concrete collectors may override
+    :meth:`_get_client` when they need custom client configuration (e.g. extra
+    headers), and set ``_cache_namespace``/``_cache_ttl`` to opt into the
+    lazily-created per-instance :attr:`_cache`.
     """
 
     name: str = "base"
+    _default_timeout: float = 15.0
+    _cache_namespace: str | None = None
+    _cache_ttl: int = 3600
+
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        self._client_provided = client is not None
+        self._client = client
+        self._cache_inst: DiskTtlCache | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Lazily create a shared :class:`httpx.AsyncClient`.
+
+        Override in a subclass only when custom client config (headers, auth)
+        is required; otherwise the shared default is used.
+        """
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._default_timeout)
+        return self._client
+
+    @property
+    def _cache(self) -> DiskTtlCache:
+        """Lazily-created per-instance disk cache (opt-in via class attrs)."""
+        if self._cache_inst is None:
+            ns = self._cache_namespace or self.name
+            self._cache_inst = DiskTtlCache(namespace=ns, ttl_seconds=self._cache_ttl)
+        return self._cache_inst
+
+    async def aclose(self) -> None:
+        """Close the client if we created it (not when injected for sharing)."""
+        if self._client is not None and not self._client_provided:
+            await self._client.aclose()
+            self._client = None
 
     @abstractmethod
     async def fetch(self, symbol: str, **kwargs: object) -> T:

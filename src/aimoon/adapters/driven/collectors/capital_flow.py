@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from aimoon.adapters.driven.common.retry import silent_failure
+from aimoon.core.application.ports import CapitalFlowSource
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 
 from .base import DataCollector
@@ -31,18 +32,13 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
     def __init__(
         self,
         client: httpx.AsyncClient | None = None,
-        financial_adapter: Any | None = None,
+        financial_adapter: CapitalFlowSource | None = None,
     ) -> None:
+        super().__init__(client)
         self._sources_ok: list[str] = []
-        self._client_provided = client is not None
-        self._client = client
-        # 复用 orchestrator 已注入的财务适配器(及其磁盘缓存), 避免每次 new 一个。
+        # 经构造函数注入的资金流数据源端口(由 orchestrator 注入共享的财务适配器,
+        # 复用其磁盘缓存,避免每次 new 一个具体适配器)。collectors 不再依赖具体实现。
         self._financial_adapter = financial_adapter
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=15.0)
-        return self._client
 
     async def fetch(self, symbol: str, **kwargs: Any) -> CapitalFlowData:
         """Run sub-fetchers with smart fallback; return aggregated CapitalFlowData."""
@@ -141,12 +137,15 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
     async def _fetch_via_akshare(
         self, symbol: str, data: CapitalFlowData, sources: list[str]
     ) -> None:
-        """Fallback: fetch net flow from akshare individual fund flow."""
-        try:
-            from ..financial.akshare_adapter import AkshareFinancialAdapter
+        """Fallback: fetch net flow via the injected capital-flow source port.
 
-            # 优先复用注入的适配器(共享其年报/季报/历史磁盘缓存); 否则惰性构造一个。
-            adapter = self._financial_adapter or AkshareFinancialAdapter()
+        数据源由 orchestrator 经构造函数注入(共享其年报/季报/历史磁盘缓存)。
+        若未注入(standalone 构造),优雅跳过该回退源,不构造具体适配器。
+        """
+        adapter = self._financial_adapter
+        if adapter is None:
+            return
+        try:
             cf = await adapter.fetch_capital_flow(symbol)
             if cf:
                 if data.main_net_5d == 0.0:

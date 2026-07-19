@@ -16,8 +16,8 @@ from typing import Any
 
 import httpx
 
+from aimoon.adapters.driven.common.progress import CliProgressReporter, ProgressReporter
 from aimoon.adapters.driven.common.timing import logphase
-from aimoon.core.application.progress import CliProgressReporter, ProgressReporter
 from aimoon.core.domain.aggregates.stock_analysis import StockAnalysis
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from aimoon.core.domain.entities.financial import FinancialData, QuarterlyFinancialData
@@ -126,7 +126,7 @@ class CollectorOrchestrator:
         t0 = time.monotonic()
         with logphase("collectors(fin+kline+cf+research+history+social)"):
             gathered = await asyncio.gather(
-                self._collect_financial(symbol),
+                self._collect_financial(symbol, stock_name),
                 self._collect_quarterly_financial(symbol),
                 self._kline_collector.fetch(symbol),
                 self._capital_flow_collector.fetch(symbol),
@@ -211,8 +211,18 @@ class CollectorOrchestrator:
             history_financial=history if isinstance(history, list) else [],
         )
 
-    async def _fetch_quote(self, symbol: str, name: str) -> StockQuote:
-        return await self._quote_collector.fetch(symbol, name=name)
+    async def _fetch_quote(self, symbol: str, name: str) -> object:
+        """采集行情；故障隔离：任何异常都降级为失败结果，不向上抛。
+
+        返回 StockQuote 或 Exception 对象 —— 下游 ``_unwrap_quote`` 统一处理，
+        与并行 ``gather(return_exceptions=True)`` 的行为一致，确保行情采集失败
+        不会拖垮整条 pipeline。
+        """
+        try:
+            return await self._quote_collector.fetch(symbol, name=name)
+        except Exception as e:  # noqa: BLE001 — 故障隔离：行情失败不得逃逸
+            logger.debug("[quote] 行情采集异常，降级为失败: %s", e)
+            return e
 
     def _unwrap_quote(
         self, result: object, symbol: str, name: str, results: list[CollectResult]
@@ -237,9 +247,9 @@ class CollectorOrchestrator:
         )
         return StockQuote(symbol=symbol, name=name, source="获取失败")
 
-    async def _collect_financial(self, symbol: str) -> FinancialData:
+    async def _collect_financial(self, symbol: str, stock_name: str = "") -> FinancialData:
         if self._financial_collector is not None:
-            return await self._financial_collector.fetch(symbol)
+            return await self._financial_collector.fetch(symbol, stock_name=stock_name)
         return FinancialData(symbol=symbol)
 
     async def _collect_quarterly_financial(self, symbol: str) -> QuarterlyFinancialData:

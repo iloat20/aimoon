@@ -17,6 +17,7 @@ import logging
 from aimoon.adapters.driven.ai.tools._safe import tool_safe
 from aimoon.core.domain.entities.financial import FinancialData
 from aimoon.core.domain.entities.quote import StockQuote
+from aimoon.core.domain.services.valuation_signals import CGB_10Y
 
 from ._common import (
     _capex,
@@ -25,9 +26,6 @@ from ._common import (
 )
 
 logger = logging.getLogger(__name__)
-
-# 10 年期国债收益率锚(用于股债相对价值比较)
-CGB_10Y = 0.025
 
 
 @tool_safe("computation_error")

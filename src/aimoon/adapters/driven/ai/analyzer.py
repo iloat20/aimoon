@@ -32,6 +32,10 @@ from .prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
+# 遗留路径(_legacy_analyze)的 LLM 工具调用轮数开关 —— 有意置 0 关闭。
+# 默认 DIRECT 流不走此路径,联网检索改由 pipeline 并行工具 _gather_catalysts 负责
+# (且受 direct_web_search_enabled 控制)。置 0 时 _call_deepseek 的工具循环整体跳过;
+# 若要重新启用遗留 web_search 工具调用,将其调到 >0 即可。这是功能开关,不是死代码。
 _MAX_TOOL_ROUNDS = 0
 
 
@@ -95,6 +99,12 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         (``_legacy_analyze``). Old callers (without the kwarg) work identically —
         DEFAULT OFF. ``use_fast`` skips ANALYSIS self-check for a faster run.
         ``use_single_call`` / ``use_ultra_fast`` are experimental low-latency modes.
+
+        DEPRECATION: the ``_legacy_analyze`` path is deprecated and scheduled for
+        removal (v2 pipeline is the supported path). New code should pass
+        ``use_pipeline_v2=True``; the legacy branch is retained only for backward
+        compatibility and its ``analysis:*`` cache read is a write-only-from-v2
+        cross-path (see ``_pipeline_analyze``). Do not expand legacy behavior.
         """
         if use_pipeline_v2:
             return await self._pipeline_analyze(
@@ -109,6 +119,10 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         reports: dict | None = None,
         financial_md_path: Path | None = None,
     ) -> AnalysisReport:
+        # DEPRECATED (架构审查 #6, 2026-07-19): 单发遗留路径,计划移除。
+        # v2 pipeline(_pipeline_analyze) 是受支持路径;此分支仅保留向后兼容,
+        # 其 ``analysis:*`` 缓存读是 v2 写入的跨路径(写多读少),请勿在此新增行为。
+        # 移除前需同步更新 test_ai.py / test_integration_pipeline.py 的路由断言。
         if self._mock:
             from ..common.mock import mock_analysis_report
 
@@ -131,20 +145,27 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         t0 = time.monotonic()
         collected_data = build_data_dict(stock_info, reports, financial_md_path)
 
+        fallback = "AI分析暂不可用，以下为基础数据汇总。"
         try:
             md = await self._call_deepseek(stock_info.symbol, stock_info.name, collected_data)
             md = deduplicate_tail(md)
         except Exception as e:  # broad tolerance
             logger.warning("[ai_analyze_stock] %s: %s", type(e).__name__, e)
-            md = "AI分析暂不可用，以下为基础数据汇总。"
+            md = ""
+        # 流被中断/上游返回空时会得到空字符串(不一定抛异常),此前会静默缓存并产出空报告。
+        # 现在显式兜底,且兜底文案不写缓存 —— 让下一次运行有机会重试拿到真实分析。
+        if not md or not md.strip():
+            logger.warning("[ai_analysis] AI 输出为空,使用兜底文案且跳过缓存")
+            md = fallback
 
         elapsed = int((time.monotonic() - t0) * 1000)
         logger.info("[ai_analysis] completed in %dms, output %d chars", elapsed, len(md))
 
-        # 写入缓存
-        from .cache import set_analysis_cache
+        # 写入缓存(兜底文案不缓存,避免污染当日缓存)
+        if md != fallback:
+            from .cache import set_analysis_cache
 
-        set_analysis_cache(stock_info.symbol, md)
+            set_analysis_cache(stock_info.symbol, md)
 
         return build_analysis_report(
             symbol=stock_info.symbol,
@@ -182,6 +203,7 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         except Exception as e:
             logger.warning("[pipeline_v2] orchestrator failed: %s: %s", type(e).__name__, e)
         text = ctx.get("final_markdown", "") if isinstance(ctx, dict) else ""
+        degraded = False
         if not text:
             # v2 失败时用骨架渲染(0 LLM),不再降级到 legacy
             from .pipeline.skeleton_renderer import render_skeleton_md
@@ -191,14 +213,25 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
                 logger.info("[pipeline_v2] 降级到骨架渲染(0 LLM)")
             else:
                 text = "# 分析报告（降级）\n\n数据采集或分析暂不可用。"
-        from .cache import set_analysis_cache
+            degraded = True
+        # 部分阶段降级也视为不完整报告,不入缓存。
+        partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
+        if isinstance(partial, list) and partial:
+            degraded = True
+        # C1 修复: 仅缓存真实完整报告。`analysis:*` 仅被 legacy 路径读取,
+        # 此前 v2 无条件写入(含降级/骨架/兜底文案)会污染 legacy 回读、缓存坏报告。
+        # v2 自身不读此缓存,故降级时直接不写,给下次运行重试机会。
+        if text and not degraded:
+            from .cache import set_analysis_cache
 
-        set_analysis_cache(stock_info.symbol, text)
+            set_analysis_cache(stock_info.symbol, text)
+        appendix_md = ctx.get("system_tables_md") or "" if isinstance(ctx, dict) else ""
         report = build_analysis_report(
             symbol=stock_info.symbol,
             name=stock_info.name,
             md=text,
             current_price=stock_info.quote.price if stock_info.quote else None,
+            data_appendix_md=appendix_md,
         )
         # 透传质量护栏产出的可信度摘要(orchestrator 经 to_dict 返回)。
         # frozen 模型必须用 model_copy,不能就地赋值。
@@ -206,7 +239,7 @@ class DeepSeekAIAnalyzer(AIAnalyzerPort):
         if credibility:
             report = report.model_copy(update={"credibility": credibility})
         # v2 部分阶段降级时,在报告插入可见降级标记(阶段名列表),避免静默丢失。
-        partial = ctx.get("partial_phases") if isinstance(ctx, dict) else []
+        # (partial 已在上方缓存判定处取过,此处复用同一变量。)
         if isinstance(partial, list) and partial:
             report = with_degradation_notice(
                 report, "部分阶段降级: " + "、".join(partial)

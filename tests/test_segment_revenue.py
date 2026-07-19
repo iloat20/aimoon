@@ -76,7 +76,9 @@ def test_fetch_segment_parses_latest_product_rows(
     names = [s["name"] for s in segs]
     assert "制造业" not in names  # 按行业分类被过滤
     assert "智能装备" not in names  # 旧期(2025-06-30)被过滤
-    assert segs[0]["name"] == "消费电器"
+    # 000651 的「消费电器」经 _SEGMENT_NAME_FIX 归一为「空调」(东财 F10 误标修正)。
+    assert segs[0]["name"] == "空调"
+    assert "消费电器" not in names
     assert segs[0]["revenue_yi"] == 1330.55
     assert segs[0]["ratio"] == 0.7806
     assert segs[0]["gross_margin"] == 0.3528

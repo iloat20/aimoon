@@ -48,7 +48,10 @@ def test_resolve_deepseek_default():
     assert cfg.supports_reasoning_effort is True
     assert cfg.chat_path == "/v1/chat/completions"
     assert cfg.chat_url == "https://api.deepseek.com/v1/chat/completions"
-    assert cfg.analysis_effort == "max"  # settings.py default
+    # C3 归一后默认档位为 high(effort=None → "high");low/medium 也归一为 high。
+    assert cfg.analysis_effort == "high"
+    # C2 降本: 未显式配置思考开关时,DIRECT 直出默认关闭思考(thinking_enabled=False)。
+    assert cfg.thinking_enabled is False
     assert cfg.model == "deepseek-v4-flash"
 
 

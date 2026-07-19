@@ -29,3 +29,7 @@ class AnalysisReport(BaseModel):
     investment_advice: str = ""
 
     report_text: str = ""
+
+    # 系统预渲染数据表(财务时序/同行对比/估值/FCF/情景/舆情/健康/分业务),
+    # 与 report_text 分离,由报告模板渲染为独立的「数据底稿」卡片,前置在 AI 报告之前。
+    data_appendix_md: str = ""

@@ -68,10 +68,8 @@ def _resolve_thinking(
             "temperature": float(getattr(settings, "longcat_temperature", 0.3) or 0.3),
         }
 
-    # deepseek 路径(含旧 deepseek-reasoner 兼容别名)
+    # deepseek 路径
     explicit = getattr(settings, "deepseek_thinking_enabled", None)
-    if explicit is None:
-        explicit = getattr(settings, "deepseek_reasoner_enabled", None)
     if thinking_override is not None:
         enabled = thinking_override
     else:
@@ -231,4 +229,5 @@ class PipelineLlmClient:
                 json=body,
             ) as resp:
                 resp.raise_for_status()
-                return await collect_sse_content(resp)
+                verbose = getattr(settings, "stream_report_to_terminal", False)
+                return await collect_sse_content(resp, verbose=bool(verbose))

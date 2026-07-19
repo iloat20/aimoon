@@ -74,24 +74,22 @@ def _build_skeleton_md(sk: AnalysisSkeleton) -> str:
     if fa.red_flags:
         lines.append(f"**红旗**：{', '.join(fa.red_flags)}\n")
 
-    # Valuation
+    # Valuation (安全边际,无目标价)
     v = sk.valuation
-    t = v.targets
-    lines.append("## 估值与目标价\n")
-    lines.append(
-        f"- 保守：{_fmt2(t.conservative)} | 中性：{_fmt2(t.neutral)}"
-        f" | 乐观：{_fmt2(t.optimistic)}"
-    )
-    if v.implied_g is not None:
-        lines.append(f"- 隐含增长率 g*：{v.implied_g:.2%}")
-    if v.peer_pe:
-        pe_str = "、".join(f"{k} {val}" for k, val in v.peer_pe.items())
-        lines.append(f"- 同业 PE 对比：{pe_str}")
+    lines.append("## 估值安全边际\n")
+    if v.net_cash_pe is not None:
+        lines.append(f"- 净现金调整 PE：{v.net_cash_pe:.2f}")
+    if v.peer_pe_median is not None:
+        lines.append(f"- 同业 PE 中位数：{v.peer_pe_median:.2f}")
+    if v.stress:
+        for s in v.stress:
+            drop = s.get("drop")
+            price = s.get("price")
+            down = s.get("downside_pct")
+            if drop is not None and price is not None:
+                d_s = f"{down:+.1f}%" if isinstance(down, (int, float)) else "N/A"
+                lines.append(f"- 压力(净利 −{drop:.0f}%):股价 {price:.2f} 元(下行 {d_s})")
     lines.append(f"- 预期差判断：{v.expectation_gap}")
-    if v.sensitivity:
-        lines.append("- 敏感度分析：")
-        for s in v.sensitivity:
-            lines.append(f"  - {s.param}：{s.impact}")
     lines.append("")
 
     # Kelly
