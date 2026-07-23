@@ -10,12 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 
-from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.adapters.driven.common.retry import silent_failure
 from aimoon.core.application.ports import CapitalFlowSource
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
@@ -23,23 +21,6 @@ from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from .base import DataCollector
 
 logger = logging.getLogger(__name__)
-
-# 龙虎榜优化(per-symbol 闸门 + 全市场回退):
-#   1. 先用廉价的 per-symbol 接口 `stock_lhb_stock_detail_date_em(symbol)` 列出该标的
-#      全部上榜交易日;若近 30 天内无上榜 → 直接返回空,**完全跳过**昂贵全市场拉取
-#      (常见情况,如格力 000651 近期未上榜),结果与旧逻辑逐字节一致(同样为空)。
-#   2. 仅当该标的近期真上榜(或探针失败兜底)时,才回退到 `stock_lhb_detail_em` 全市场
-#      拉取(按 (start,end) 缓存 1 天,数据逐字节一致,取 净买额/上榜原因 等汇总字段)。
-#   注: `stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细接口在本版 akshare 已损坏
-#      (恒抛 TypeError)且不含 上榜原因,无法用于重建汇总,故近期上榜股仍需全市场回退。
-_LHB_CACHE: DiskTtlCache | None = None
-
-
-def _lhb_cache() -> DiskTtlCache:
-    global _LHB_CACHE
-    if _LHB_CACHE is None:
-        _LHB_CACHE = DiskTtlCache(namespace="lhb", ttl_seconds=86400)
-    return _LHB_CACHE
 
 
 class CapitalFlowCollector(DataCollector[CapitalFlowData]):
@@ -67,12 +48,11 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
         # 1. 先运行 pysnowball（主源）
         await self._fetch_via_pysnowball(symbol, data, sources)
 
-        # 2. 并行运行：akshare（fallback）+ northbound + lhb
+        # 2. 并行运行：akshare（fallback）+ northbound
         #    akshare 内部有判断：如果 pysnowball 已贡献数据则直接返回
         results = await asyncio.gather(
             self._fetch_via_akshare(symbol, data, sources),
             self._fetch_northbound(symbol, data, sources),
-            self._fetch_lhb(symbol, data, sources),
             return_exceptions=True,
         )
 
@@ -243,97 +223,3 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             "change_value": change_value,
             "date": date,
         }
-
-    async def _fetch_lhb(self, symbol: str, data: CapitalFlowData, sources: list[str]) -> None:
-        """龙虎榜（最近上榜记录）. Uses stock_lhb_detail_em for the last ~30 days."""
-        with silent_failure("akshare_lhb"):
-            df = await asyncio.to_thread(self._ak_lhb, symbol)
-            if df is None or df.empty:
-                return
-
-            latest = df.iloc[0]
-
-            for k in ("上榜日", "日期"):
-                if k in df.columns:
-                    d = latest.get(k)
-                    data.lhb_date = str(d)[:10] if d else ""
-                    break
-
-            for k in ("解读", "上榜原因"):
-                if k in df.columns:
-                    data.lhb_reason = str(latest.get(k, "") or "")
-                    break
-
-            for k in ("龙虎榜净买额", "净买额"):
-                if k in df.columns:
-                    data.lhb_net_buy = float(latest.get(k, 0) or 0)
-                    break
-
-            sources.append("akshare(龙虎榜)")
-
-    def _ak_lhb(self, symbol: str):
-        """龙虎榜(近 30 天该标的的上榜记录)。
-
-        per-symbol 闸门优先: 廉价查该标的全部上榜交易日,近 30 天无 → 返回空(跳过全市场
-        大拉取);近期真上榜(或探针失败兜底) → 回退全市场拉取取汇总字段。详见模块顶部注释。
-        """
-        import pandas as pd
-
-        start = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
-        end = datetime.now().strftime("%Y%m%d")
-        window_start = datetime.now() - timedelta(days=30)
-
-        in_window = self._ak_lhb_in_window_dates(symbol, window_start)
-        if in_window is None:
-            # 探针失败 → 保守回退全市场拉取,不丢数据
-            return self._ak_lhb_fullmarket(symbol, start, end)
-        if not in_window:
-            # 近期未上榜 → 跳过昂贵的全市场拉取,结果与原逻辑一致(空)
-            return pd.DataFrame()
-        # 近期真上榜 → per-symbol 明细接口无法给 上榜原因/净买额,回退全市场拉取
-        return self._ak_lhb_fullmarket(symbol, start, end)
-
-    def _ak_lhb_in_window_dates(
-        self, symbol: str, window_start: datetime
-    ) -> list[str] | None:
-        """列出该标的近 30 天内是否上榜。返回近期日期列表(空列表=未上榜);None=探针失败。"""
-        cache_key = f"dates:{symbol}"
-        cached = _lhb_cache().get(cache_key)
-        if cached is not None:
-            all_dates = cached
-        else:
-            try:
-                import akshare as ak
-
-                df = ak.stock_lhb_stock_detail_date_em(symbol=symbol)
-            except Exception:  # noqa: BLE001
-                return None
-            if df is None or df.empty or "交易日" not in df.columns:
-                all_dates = []
-            else:
-                all_dates = [str(x)[:10] for x in df["交易日"].tolist()]
-            _lhb_cache().set(cache_key, all_dates)
-        cutoff = window_start.strftime("%Y-%m-%d")
-        return [d for d in all_dates if d >= cutoff]
-
-    def _ak_lhb_fullmarket(self, symbol: str, start: str, end: str):
-        """全市场龙虎榜拉取(按日缓存),本地按代码过滤。数据与旧逻辑逐字节一致。"""
-        import akshare as ak
-        import pandas as pd
-
-        cache_key = f"lhb:{start}:{end}"
-        records = _lhb_cache().get(cache_key)
-        if records is None:
-            df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
-            if df is None or df.empty:
-                return df
-            records = df.to_dict("records")
-            _lhb_cache().set(cache_key, records)
-        else:
-            df = pd.DataFrame.from_records(records)
-
-        if df is None or df.empty:
-            return df
-        if "代码" not in df.columns:
-            return pd.DataFrame()
-        return df[df["代码"] == symbol]

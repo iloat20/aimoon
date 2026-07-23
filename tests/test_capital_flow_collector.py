@@ -40,12 +40,6 @@ async def _northbound_fill(symbol, data, sources):
     sources.append("eastmoney(北向持股)")
 
 
-@pytest.mark.asyncio
-async def _lhb_fill(symbol, data, sources):
-    data.lhb_date = "2024-01-01"
-    sources.append("akshare(龙虎榜)")
-
-
 def _patch(monkeypatch, collector, attr, fn):
     monkeypatch.setattr(collector, attr, fn)
 
@@ -58,7 +52,6 @@ async def test_primary_fill_fallback_supplements_without_clobber(
     _patch(monkeypatch, c, "_fetch_via_pysnowball", _pysnowball_fill)
     _patch(monkeypatch, c, "_fetch_via_akshare", _akshare_fill)
     _patch(monkeypatch, c, "_fetch_northbound", _noop)
-    _patch(monkeypatch, c, "_fetch_lhb", _noop)
 
     data = await c.fetch("600519")
     # primary value preserved (akshare did NOT overwrite non-zero field)
@@ -76,7 +69,6 @@ async def test_primary_failure_fallback_takes_over(
     _patch(monkeypatch, c, "_fetch_via_pysnowball", _noop)
     _patch(monkeypatch, c, "_fetch_via_akshare", _akshare_fill)
     _patch(monkeypatch, c, "_fetch_northbound", _noop)
-    _patch(monkeypatch, c, "_fetch_lhb", _noop)
 
     data = await c.fetch("600519")
     # fallback filled the gaps
@@ -93,7 +85,6 @@ async def test_all_sources_fail_yields_all_failed(
         "_fetch_via_pysnowball",
         "_fetch_via_akshare",
         "_fetch_northbound",
-        "_fetch_lhb",
     ):
         _patch(monkeypatch, c, attr, _noop)
 

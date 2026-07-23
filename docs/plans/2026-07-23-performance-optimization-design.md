@@ -29,9 +29,8 @@
 - 风险：低。回归保护：`--test`、`--mock`、真实采集均覆盖。
 
 ### B. 数据采集去浪费
-- **B1. LHB 全市场拉取去浪费**（`capital_flow.py`）
-  - akshare 没有「按个股返回同形状汇总」的可靠接口：`stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细在本版 akshare 恒抛 `TypeError` 且不含 `上榜原因`，无法重建报告字段；`stock_lhb_stock_statistic_em` 参数是时间周期非股票代码；`stock_lhb_ggtj_sina` 新浪源已失效。
-  - **最终方案：per-symbol 闸门 + 全市场回退**。先用廉价的 `stock_lhb_stock_detail_date_em(symbol)`（per-symbol，已验证对近期活跃股含近期日期、闸门可信）取该标的全部上榜交易日；近 30 天无 → 直接返回空、**跳过全市场大拉取**（结果与原逻辑一致，均为空）；近期真上榜（或探针失败兜底）→ 回退到按 (start,end) 缓存 1 天的 `stock_lhb_detail_em` 全市场拉取，本地按代码过滤取 `净买额/上榜原因`。常见标的（如 000651 近期未上榜）LHB 子步骤 **1.23s→0.09s**；批量跑若标的均无近期上榜则整段全市场拉取被省去。
+- **B1. 龙虎榜采集 → 已取消**（`capital_flow.py`）
+  - akshare 没有「按个股返回同形状汇总」的可靠接口：`stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细在本版 akshare 恒抛 `TypeError` 且不含 `上榜原因`，无法重建报告字段；`stock_lhb_stock_statistic_em` 参数是时间周期非股票代码；`stock_lhb_ggtj_sina` 新浪源已失效。先落了 per-symbol 闸门（近 30 天未上榜跳过全市场拉取），后按用户要求**直接取消龙虎榜获取**：彻底移除 `CapitalFlowCollector._fetch_lhb` 及全市场/per-symbol 拉取分支、`_LHB_CACHE`、相关 import（`datetime/timedelta/DiskTtlCache`）。`lhb_date/lhb_reason/lhb_net_buy` 实体字段保留为空值，`prompt_builder`/`integrity_checker`/`index.html` 对空值均优雅降级，报告不再出现龙虎榜段落（000651 本就为空，内容不变）。
 - **B2. peer_compare 复用共享客户端**（`peer_compare.py:231-279`）
   - 把 pipeline 共享的 `httpx.Client` 注入 peer 工具；命中 quote 磁盘缓存（60s），不再为每只同业 new `QuoteCollector()` + 新建连接池。
   - 省 8–16 次连接建立 / 重复请求，且复用已有 quote 缓存。
