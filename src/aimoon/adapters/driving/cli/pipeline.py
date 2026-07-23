@@ -20,7 +20,6 @@ from aimoon.adapters.driven.collectors import (
     MockStockAnalysisRepository,
 )
 from aimoon.adapters.driven.config.settings import get_settings
-from aimoon.adapters.driven.financial.akshare_adapter import AkshareFinancialAdapter
 from aimoon.adapters.driven.report.generator import HtmlReportGenerator
 from aimoon.adapters.driven.validation import IntegrityDataValidator
 from aimoon.adapters.driving.cli.run_summary import render_run_summary
@@ -48,6 +47,10 @@ class PipelineOrchestrator:
             timeout=15.0,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         ) as http:
+            # akshare 体量较大,延迟到真正开始采集时才 import,
+            # 使 --help / --test / --mock / import aimoon 等路径免加载 akshare(启动提速)。
+            from aimoon.adapters.driven.financial.akshare_adapter import AkshareFinancialAdapter
+
             repo = CompositeStockAnalysisRepository(
                 financial_collector=AkshareFinancialAdapter(),
                 http_client=http,

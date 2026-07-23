@@ -15,6 +15,7 @@ from typing import Any
 
 import httpx
 
+from aimoon.adapters.driven.common.cache import DiskTtlCache
 from aimoon.adapters.driven.common.retry import silent_failure
 from aimoon.core.application.ports import CapitalFlowSource
 from aimoon.core.domain.entities.capital_flow import CapitalFlowData
@@ -22,6 +23,18 @@ from aimoon.core.domain.entities.capital_flow import CapitalFlowData
 from .base import DataCollector
 
 logger = logging.getLogger(__name__)
+
+# 龙虎榜全市场拉取代价极高(一次拉取近 30 天全市场数据再本地过滤)。
+# 同一天内数据不变,故按 (start,end) 缓存 1 天,后续任意标的/重复运行直接命中,
+# 不再重拉全市场。结果与原逻辑逐字节一致(同样的全市场 df 本地按代码过滤)。
+_LHB_CACHE: DiskTtlCache | None = None
+
+
+def _lhb_cache() -> DiskTtlCache:
+    global _LHB_CACHE
+    if _LHB_CACHE is None:
+        _LHB_CACHE = DiskTtlCache(namespace="lhb", ttl_seconds=86400)
+    return _LHB_CACHE
 
 
 class CapitalFlowCollector(DataCollector[CapitalFlowData]):
@@ -255,14 +268,24 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
 
     def _ak_lhb(self, symbol: str):
         import akshare as ak
+        import pandas as pd
 
         start = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
         end = datetime.now().strftime("%Y%m%d")
-        df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
+        cache_key = f"lhb:{start}:{end}"
+
+        records = _lhb_cache().get(cache_key)
+        if records is None:
+            df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
+            if df is None or df.empty:
+                return df
+            records = df.to_dict("records")
+            _lhb_cache().set(cache_key, records)
+        else:
+            df = pd.DataFrame.from_records(records)
+
         if df is None or df.empty:
             return df
         if "代码" not in df.columns:
-            import pandas as pd
-
             return pd.DataFrame()
         return df[df["代码"] == symbol]

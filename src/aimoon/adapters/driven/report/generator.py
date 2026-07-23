@@ -133,7 +133,11 @@ class HtmlReportGenerator(ReportGeneratorPort):
         return out
 
     def _copy_vendor(self, output_dir: Path) -> None:
-        """复制内置 JS 依赖(chart.js/html2canvas/jspdf)到报告同级 vendor/ 目录。"""
+        """复制内置 JS 依赖(chart.js/html2canvas/jspdf)到报告同级 vendor/ 目录。
+
+        幂等:目标已存在且大小一致(同源版本相同)则跳过,省 ~770KB/次 I/O,
+        多次运行不累积重复拷贝。大小不同(源升级/历史截断)则覆盖。
+        """
         if not _VENDOR_DIR.is_dir():
             logger.warning("[report] 内置 vendor 目录缺失: %s", _VENDOR_DIR)
             return
@@ -141,7 +145,10 @@ class HtmlReportGenerator(ReportGeneratorPort):
         try:
             dest.mkdir(parents=True, exist_ok=True)
             for f in _VENDOR_DIR.glob("*.js"):
-                shutil.copyfile(f, dest / f.name)
+                target = dest / f.name
+                if target.exists() and target.stat().st_size == f.stat().st_size:
+                    continue
+                shutil.copyfile(f, target)
         except OSError as e:
             logger.warning("[report] 复制 vendor 依赖失败: %s", e)
 

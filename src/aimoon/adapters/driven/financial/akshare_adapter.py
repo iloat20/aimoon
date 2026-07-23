@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from typing import Any
 
 import akshare as ak
@@ -63,7 +64,10 @@ class AkshareFinancialAdapter:
         )
         # 进程内(单次运行)原始三表记忆化: fetch/quarterly/history 共享同一份
         # 东方财富原始 DataFrame,避免对利润表/资产负债表/现金流表各拉 2~3 次。
-        self._raw_statements: dict[str, asyncio.Future] = {}
+        # 改为有界 LRU(maxsize≈64):批量/循环多标的分析时不会无界累积 Future 与
+        # 全量 DataFrame,单标的运行无感。
+        self._raw_statements: OrderedDict[str, asyncio.Future] = OrderedDict()
+        self._raw_statements_max = 64
         # 请求间隔:在多次 API 调用之间插入延迟,降低被 WAF 拦截概率。
         # akshare 原生不设间隔选项,我们在采集器层自己控制。
         self._request_interval = 0.5  # 秒
@@ -130,6 +134,16 @@ class AkshareFinancialAdapter:
         if cached is not None:
             if isinstance(cached, dict) and cached.get("_empty"):
                 return FinancialData(symbol=symbol, source="akshare_cache_empty")
+            # 完整 payload 标记(_filled):当前版本已抓取全部字段(含可能为空值的
+            # segment_revenue / annual_report_footnotes / 新浪兜底)。直接返回,
+            # 避免对「已抓取但为空」的字段在每次热命中时重复昂贵补拉(PDF解析/新浪HTTP)。
+            # 数据完全一致:冷运行写入的就是本次真实抓取结果。
+            if isinstance(cached, dict) and cached.get("_filled"):
+                complete = {
+                    k: v for k, v in cached.items() if k not in ("_filled", "_empty")
+                }
+                return FinancialData.model_validate(complete)
+            # 旧版缓存(无 _filled 标记):保留既有健壮性补拉逻辑,补全缺失字段。
             fin = FinancialData.model_validate(cached)
             # 缓存可能写于 segment_revenue / annual_report_footnotes 上线前或
             # 采集抖动时 → 缺失则补拉,避免因陈旧缓存永久回缺失清单。
@@ -320,7 +334,11 @@ class AkshareFinancialAdapter:
         if result.source.startswith("akshare_empty"):
             await self._cache.aset(cache_key, {"_empty": True})
         else:
-            await self._cache.aset(cache_key, result.model_dump())
+            # _filled 标记:声明当前版本已抓取全部字段(含可能为空值者),
+            # 热命中时直接返回、不再对空字段重复补拉。
+            payload = result.model_dump()
+            payload["_filled"] = True
+            await self._cache.aset(cache_key, payload)
 
         return result
 
@@ -418,11 +436,17 @@ class AkshareFinancialAdapter:
 
         结果按 (ak_symbol) 记忆化为 asyncio.Future: 即使 fetch/quarterly/history
         在同一事件循环内并行调用,也只会真正发起一次三表网络请求,其余 await 同一 Future。
+        LRU 有界:超容量时淘汰最久未用(仍在飞行的 Future 仅丢引用,自然完成/GC,不取消)。
         """
         if ak_symbol in self._raw_statements:
-            return await self._raw_statements[ak_symbol]
+            fut = self._raw_statements[ak_symbol]
+            self._raw_statements.move_to_end(ak_symbol)
+            return await fut
         task = asyncio.ensure_future(self._fetch_raw_statements(ak_symbol))
         self._raw_statements[ak_symbol] = task
+        self._raw_statements.move_to_end(ak_symbol)
+        while len(self._raw_statements) > self._raw_statements_max:
+            self._raw_statements.popitem(last=False)
         try:
             return await task
         except Exception:

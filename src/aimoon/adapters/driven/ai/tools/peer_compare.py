@@ -13,9 +13,26 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+import httpx
+
 from aimoon.core.domain.entities.financial import FinancialData
 
 logger = logging.getLogger(__name__)
+
+# 进程级共享 httpx 客户端:供 _curated_peers 内给每只同业创建 QuoteCollector 时复用,
+# 避免每次 run() 为 8~16 只同业各 new 一个连接池 + aclose 的连接/文件描述符抖动。
+# 该客户端随进程存活(CLI 单次运行结束即退出),不作为任何 collector 的"自有"客户端关闭。
+_PEER_HTTP: httpx.AsyncClient | None = None
+
+
+def _peer_http() -> httpx.AsyncClient:
+    global _PEER_HTTP
+    if _PEER_HTTP is None or _PEER_HTTP.is_closed:
+        _PEER_HTTP = httpx.AsyncClient(
+            timeout=10.0,
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+    return _PEER_HTTP
 
 # 简易行业关键词映射(公司名/关键词 → 行业中文名)。
 _INDUSTRY_MAP: list[tuple[list[str], str]] = [
@@ -245,13 +262,12 @@ async def _curated_peers(self_fin: FinancialData, industry: str) -> list[dict[st
     try:
         from aimoon.adapters.driven.collectors.quote import QuoteCollector
 
-        qc = QuoteCollector()
-        try:
-            quotes = await asyncio.gather(
-                *(qc.fetch(c) for c in targets), return_exceptions=True
-            )
-        finally:
-            await qc.aclose()
+        # 复用进程级共享 httpx 客户端(见 _peer_http),避免每只同业 new 连接池 + aclose;
+        # 共享客户端不在此关闭(进程级存活),故不再调用 qc.aclose()。
+        qc = QuoteCollector(client=_peer_http())
+        quotes = await asyncio.gather(
+            *(qc.fetch(c) for c in targets), return_exceptions=True
+        )
 
         peers: list[dict[str, object]] = []
         for q in quotes:
