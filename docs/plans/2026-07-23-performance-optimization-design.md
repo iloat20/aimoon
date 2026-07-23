@@ -29,9 +29,9 @@
 - 风险：低。回归保护：`--test`、`--mock`、真实采集均覆盖。
 
 ### B. 数据采集去浪费
-- **B1. LHB 全市场拉取去浪费**（`capital_flow.py:256-268`）
-  - 实现时先确认 akshare 是否有 per-symbol 龙虎榜接口；有则改用 per-symbol（数据一致、请求最小）。
-  - 若无，则把全市场近 30 天拉取结果按 TTL 1 天缓存，本地按 symbol 过滤。数据完全一致，省每次重拉全市场。
+- **B1. LHB 全市场拉取去浪费**（`capital_flow.py`）
+  - akshare 没有「按个股返回同形状汇总」的可靠接口：`stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细在本版 akshare 恒抛 `TypeError` 且不含 `上榜原因`，无法重建报告字段；`stock_lhb_stock_statistic_em` 参数是时间周期非股票代码；`stock_lhb_ggtj_sina` 新浪源已失效。
+  - **最终方案：per-symbol 闸门 + 全市场回退**。先用廉价的 `stock_lhb_stock_detail_date_em(symbol)`（per-symbol，已验证对近期活跃股含近期日期、闸门可信）取该标的全部上榜交易日；近 30 天无 → 直接返回空、**跳过全市场大拉取**（结果与原逻辑一致，均为空）；近期真上榜（或探针失败兜底）→ 回退到按 (start,end) 缓存 1 天的 `stock_lhb_detail_em` 全市场拉取，本地按代码过滤取 `净买额/上榜原因`。常见标的（如 000651 近期未上榜）LHB 子步骤 **1.23s→0.09s**；批量跑若标的均无近期上榜则整段全市场拉取被省去。
 - **B2. peer_compare 复用共享客户端**（`peer_compare.py:231-279`）
   - 把 pipeline 共享的 `httpx.Client` 注入 peer 工具；命中 quote 磁盘缓存（60s），不再为每只同业 new `QuoteCollector()` + 新建连接池。
   - 省 8–16 次连接建立 / 重复请求，且复用已有 quote 缓存。

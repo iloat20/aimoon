@@ -24,9 +24,14 @@ from .base import DataCollector
 
 logger = logging.getLogger(__name__)
 
-# 龙虎榜全市场拉取代价极高(一次拉取近 30 天全市场数据再本地过滤)。
-# 同一天内数据不变,故按 (start,end) 缓存 1 天,后续任意标的/重复运行直接命中,
-# 不再重拉全市场。结果与原逻辑逐字节一致(同样的全市场 df 本地按代码过滤)。
+# 龙虎榜优化(per-symbol 闸门 + 全市场回退):
+#   1. 先用廉价的 per-symbol 接口 `stock_lhb_stock_detail_date_em(symbol)` 列出该标的
+#      全部上榜交易日;若近 30 天内无上榜 → 直接返回空,**完全跳过**昂贵全市场拉取
+#      (常见情况,如格力 000651 近期未上榜),结果与旧逻辑逐字节一致(同样为空)。
+#   2. 仅当该标的近期真上榜(或探针失败兜底)时,才回退到 `stock_lhb_detail_em` 全市场
+#      拉取(按 (start,end) 缓存 1 天,数据逐字节一致,取 净买额/上榜原因 等汇总字段)。
+#   注: `stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细接口在本版 akshare 已损坏
+#      (恒抛 TypeError)且不含 上榜原因,无法用于重建汇总,故近期上榜股仍需全市场回退。
 _LHB_CACHE: DiskTtlCache | None = None
 
 
@@ -267,13 +272,56 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
             sources.append("akshare(龙虎榜)")
 
     def _ak_lhb(self, symbol: str):
-        import akshare as ak
+        """龙虎榜(近 30 天该标的的上榜记录)。
+
+        per-symbol 闸门优先: 廉价查该标的全部上榜交易日,近 30 天无 → 返回空(跳过全市场
+        大拉取);近期真上榜(或探针失败兜底) → 回退全市场拉取取汇总字段。详见模块顶部注释。
+        """
         import pandas as pd
 
         start = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
         end = datetime.now().strftime("%Y%m%d")
-        cache_key = f"lhb:{start}:{end}"
+        window_start = datetime.now() - timedelta(days=30)
 
+        in_window = self._ak_lhb_in_window_dates(symbol, window_start)
+        if in_window is None:
+            # 探针失败 → 保守回退全市场拉取,不丢数据
+            return self._ak_lhb_fullmarket(symbol, start, end)
+        if not in_window:
+            # 近期未上榜 → 跳过昂贵的全市场拉取,结果与原逻辑一致(空)
+            return pd.DataFrame()
+        # 近期真上榜 → per-symbol 明细接口无法给 上榜原因/净买额,回退全市场拉取
+        return self._ak_lhb_fullmarket(symbol, start, end)
+
+    def _ak_lhb_in_window_dates(
+        self, symbol: str, window_start: datetime
+    ) -> list[str] | None:
+        """列出该标的近 30 天内是否上榜。返回近期日期列表(空列表=未上榜);None=探针失败。"""
+        cache_key = f"dates:{symbol}"
+        cached = _lhb_cache().get(cache_key)
+        if cached is not None:
+            all_dates = cached
+        else:
+            try:
+                import akshare as ak
+
+                df = ak.stock_lhb_stock_detail_date_em(symbol=symbol)
+            except Exception:  # noqa: BLE001
+                return None
+            if df is None or df.empty or "交易日" not in df.columns:
+                all_dates = []
+            else:
+                all_dates = [str(x)[:10] for x in df["交易日"].tolist()]
+            _lhb_cache().set(cache_key, all_dates)
+        cutoff = window_start.strftime("%Y-%m-%d")
+        return [d for d in all_dates if d >= cutoff]
+
+    def _ak_lhb_fullmarket(self, symbol: str, start: str, end: str):
+        """全市场龙虎榜拉取(按日缓存),本地按代码过滤。数据与旧逻辑逐字节一致。"""
+        import akshare as ak
+        import pandas as pd
+
+        cache_key = f"lhb:{start}:{end}"
         records = _lhb_cache().get(cache_key)
         if records is None:
             df = ak.stock_lhb_detail_em(start_date=start, end_date=end)

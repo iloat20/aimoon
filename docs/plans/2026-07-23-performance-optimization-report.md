@@ -10,7 +10,7 @@
 | 编号 | 优化 | 文件 | 数据影响 |
 |---|---|---|---|
 | A | akshare 顶层 import → 懒加载（仅采集时加载） | `cli/pipeline.py` | 无 |
-| B1 | 龙虎榜全市场拉取 → 按 (start,end) 缓存 1 天本地过滤 | `collectors/capital_flow.py` | 无（结果一致） |
+| B1 | 龙虎榜 → **per-symbol 闸门**：先廉价查该标的全部上榜日期，近 30 天无 → 跳过全市场大拉取；近期真上榜才回退全市场(按日缓存) | `collectors/capital_flow.py` | 无（结果一致） |
 | B2 | peer_compare 复用进程级共享 httpx 客户端（不再每只同业 new+aclose） | `ai/tools/peer_compare.py` | 无 |
 | B3 | 财务年报缓存加 `_filled` 完整标记，热命中零补拉 | `financial/akshare_adapter.py` | 无 |
 | C1 | `_raw_statements` 无界 dict → 有界 LRU(maxsize=64) | `financial/akshare_adapter.py` | 无 |
@@ -25,6 +25,7 @@
 | 启动 (--help 均值) | 7.269s（首跑 15.8s 为 uv 冷启动） | 2.068s | **−72%** | 同上 |
 | **冷采集 (--test, 清 cache)** | 33.3s | 31.3s | ≈持平(噪声内) | 冷路径优化本就是热缓存类（B1/B3），冷跑不变，符合设计 |
 | **热采集 (--test, cache 复用)** | — | **6.2s** | 相对冷 31.3s **≈5×** | B1(LHB)+B3(财务)+既有 quote/financial/kline 缓存合力，批量/重复跑收益巨大 |
+| **LHB 子步骤 (000651, 近 30 天未上榜)** | 1.23s（全市场拉取后过滤为空） | 0.09s（per-symbol 探针后跳过） | **≈14× 省** | B1 精细化：近期未上榜的标的直接跳过全市场大拉取，结果仍为空（与旧一致） |
 | **全量冷跑 (真实 AI, 清 cache)** | 118.6s¹ | 167.8s / 174.7s² | 见下 | 见 §3 LLM 延迟说明 |
 | AI 阶段 | 1 次 DIRECT 调用 | 1 次 DIRECT 调用 | 无变化 | 未增 LLM 调用/轮次 |
 
@@ -49,6 +50,7 @@
 - **C1**：`_raw_statements`（`asyncio.Future` 持有全量三表 DataFrame）原无界累积；改为 LRU(maxsize=64)，批量/循环多标的分析不再无界增长、不再长期持有全量 DataFrame。
 - **C2**：每次生成报告原无条件拷贝 3 个 ~770KB vendor JS（chart/html2canvas/jspdf），多次运行累积；改为大小一致则跳过，省 I/O 且不累积。
 - **B2**：peer_compare 原每次 `run()` 为 8–16 只同业各 new 一个 httpx 连接池 + `aclose`，现复用进程级共享客户端，减少连接/文件描述符抖动。
+- **B1（精细化）**：akshare 没有可靠的「按个股返回同形状汇总」接口——`stock_lhb_stock_detail_em(symbol,date,flag)` 席位明细在本版 akshare 恒抛 `TypeError` 且不含 `上榜原因`，无法重建报告字段。故采用 **per-symbol 闸门**：先用廉价的 `stock_lhb_stock_detail_date_em(symbol)` 取该标的全部上榜日期（已验证对近期活跃股含近期日期，闸门可信），近 30 天无 → 跳过全市场大拉取；近期真上榜 → 回退到按日缓存的全市场拉取取 `净买额/上榜原因`。常见标的（如 000651 近期未上榜）LHB 子步骤 **1.23s→0.09s**；批量跑若均无近期上榜则整段全市场拉取被省去（旧逻辑每次必拉）。
 
 ## 5. 报告质量对账（数据准确性）
 
