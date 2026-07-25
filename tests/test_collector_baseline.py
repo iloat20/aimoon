@@ -83,6 +83,7 @@ class TestQuoteCollectorExceptionHandling:
 
     def test_fetch_all_sources_failed_returns_placeholder(self):
         """When both Sina and Tencent fail, should return placeholder."""
+        from aimoon.adapters.driven.collectors import quote as quote_module
         from aimoon.adapters.driven.collectors.quote import QuoteCollector
         from aimoon.core.domain.entities.quote import StockQuote
 
@@ -98,6 +99,9 @@ class TestQuoteCollectorExceptionHandling:
             with (
                 patch.object(collector, "_fetch_sina", side_effect=mock_sina),
                 patch.object(collector, "_fetch_tencent", side_effect=mock_tencent),
+                # 隔离真实 DiskTtlCache: 避免命中历史采集缓存直接返回(违反缓存铁律),
+                # 强制走 _fetch_uncached 以验证全源失败兜底逻辑
+                patch.object(quote_module._quote_cache, "aget", new=AsyncMock(return_value=None)),
             ):
                 quote = await collector.fetch("600519")
 

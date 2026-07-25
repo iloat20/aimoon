@@ -17,6 +17,11 @@ class CapitalFlowData(BaseModel):
     main_net_10d: float = 0.0
     main_net_20d: float = 0.0
 
+    # 主力净流入是否真正取到(任一主源 pysnowball/akshare 实际返回数据)。
+    # 与 source!="all_failed" 不同:北向持股成功也会让 source 非空,但主力净流入可能仍缺失。
+    # 模板据此区分「真实为 0」与「数据缺失」,避免把缺失渲染成误导性的 0.00 亿。
+    main_net_available: bool = False
+
     northbound_chg: float = 0.0
     northbound_hold_shares: float = 0.0
     northbound_hold_value: float = 0.0

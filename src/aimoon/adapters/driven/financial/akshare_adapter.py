@@ -10,14 +10,19 @@ Replaces PysnowballAdapter with direct akshare API calls:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import random
+import re
 from collections import OrderedDict
 from typing import Any
 
 import akshare as ak
+import httpx
 import pandas as pd
 
 from aimoon.adapters.driven.common.cache import DiskTtlCache
+from aimoon.adapters.driven.config.settings import get_settings
 from aimoon.adapters.driven.financial.annual_report_pdf import (
     fetch_annual_report_footnotes,
 )
@@ -61,6 +66,11 @@ class AkshareFinancialAdapter:
         )
         self._history_cache = DiskTtlCache(
             namespace="akshare_history", ttl_seconds=604800
+        )
+        # 主力资金流: 东财偶发限流(共享 IP),用 24h 磁盘缓存做稳定性兜底——
+        # 命中则直接返回,实时拉取失败回退旧缓存,避免退化成 N/A。
+        self._capital_flow_cache = DiskTtlCache(
+            namespace="akshare_capital_flow", ttl_seconds=86400
         )
         # 进程内(单次运行)原始三表记忆化: fetch/quarterly/history 共享同一份
         # 东方财富原始 DataFrame,避免对利润表/资产负债表/现金流表各拉 2~3 次。
@@ -427,7 +437,9 @@ class AkshareFinancialAdapter:
                     "gross_margin": margin,
                 }
             )
-        return out
+
+        return _merge_other_segments(out)
+
 
     async def _get_raw_statements(
         self, ak_symbol: str
@@ -738,7 +750,23 @@ class AkshareFinancialAdapter:
         fcf = _safe_float(latest.get("筹资活动产生的现金流量净额"))
         if fcf != 0 and result.financing_cf == 0.0:
             result.financing_cf = fcf
-        div = _safe_float(latest.get("分配股利、利润或偿付利息所支付的现金"))
+        # 分红现金:新浪现金流量表列名存在多种写法(「所支付的现金」/「支付的现金」/
+        # 「及偿付」等),逐候选精确匹配,避免个别股票因列名微差导致 dividend_paid=0 → 股息率 N/A。
+        div = 0.0
+        _div_candidates = [
+            "分配股利、利润或偿付利息所支付的现金",
+            "分配股利、利润或偿付利息支付的现金",
+            "分配股利、利润及偿付利息支付的现金",
+            "分配股利或偿付利息支付的现金",
+            "分配股利、利润支付的现金",
+            "分配股利支付的现金",
+            "支付的其他与筹资活动有关的现金",
+        ]
+        for _col in _div_candidates:
+            _v = _safe_float(latest.get(_col))
+            if _v > 0:
+                div = _v
+                break
         if div > 0 and result.dividend_paid == 0.0:
             result.dividend_paid = div
         logger.info(
@@ -897,36 +925,127 @@ class AkshareFinancialAdapter:
         return result
 
     async def fetch_capital_flow(self, symbol: str, **kwargs: Any) -> dict:
-        """Fetch individual stock capital flow data.
+        """Fetch individual stock capital flow data (主力 N 日净流入).
 
-        Returns dict with:
-            main_net_5d: 5-day main capital net inflow (in yuan)
-            main_net_3d: 3-day main capital net inflow
-            main_net_10d: 10-day main capital net inflow
-            main_net_20d: 20-day main capital net inflow
-            recent_date: date of the latest data
+        直连东方财富 fflow kline 接口(push2his / push2 交替),自行解析列[1]=主力净流入-净额(元),
+        绕过 akshare ``stock_individual_fund_flow`` 在部分版本下「10 列 vs 7 列」的解析崩溃。
+        主源带激进退避重试 + 多 host 容错(共享 IP 限流下实测偶需 5~7 次重试),命中 24h 磁盘缓存
+        即稳定返回;实时全部失败则回退旧缓存,避免退化成 N/A。
+
+        Returns dict with main_net_5d/3d/10d/20d (yuan) + recent_date. 全失败返回 {}。
         """
-        market = "sh" if symbol.startswith("6") else "sz" if symbol.startswith(("0", "3")) else "bj"
-        try:
-            df = await asyncio.to_thread(ak.stock_individual_fund_flow, stock=symbol, market=market)
-            if df is None or df.empty:
-                return {}
-            # Data is sorted asc by date (oldest first); tail() gets recent days
-            row_count = len(df)
-            main_col = "主力净流入-净额"
-            result: dict[str, Any] = {"recent_date": str(df.iloc[-1]["日期"])}
-            if row_count >= 5:
-                result["main_net_5d"] = float(df.tail(5)[main_col].sum())
-            if row_count >= 3:
-                result["main_net_3d"] = float(df.tail(3)[main_col].sum())
-            if row_count >= 10:
-                result["main_net_10d"] = float(df.tail(10)[main_col].sum())
-            if row_count >= 20:
-                result["main_net_20d"] = float(df.tail(20)[main_col].sum())
+        cache_key = f"flow:{symbol}"
+        cached = await self._capital_flow_cache.aget(cache_key)
+        if cached:
+            return cached
+
+        # 主源: 直连东财 fflow kline(激进退避重试 + 多 host)
+        result = await self._fetch_capital_flow_em_direct(symbol)
+        if result:
+            await self._capital_flow_cache.aset(cache_key, result)
             return result
-        except Exception as e:
-            logger.debug("[akshare] capital_flow failed for %s: %s", symbol, e)
-            return {}
+
+        # 兜底: akshare(仅当东财直连全失败、且 akshare 在该环境可达时)
+        result = await self._fetch_capital_flow_akshare_fallback(symbol)
+        if result:
+            await self._capital_flow_cache.aset(cache_key, result)
+            return result
+
+        # 实时全失败: 回退(可能已过期的)磁盘缓存,避免退化成 N/A
+        if cached is None:
+            cached = await self._capital_flow_cache.aget(cache_key)
+        return cached if cached is not None else {}
+
+    async def _fetch_capital_flow_em_direct(self, symbol: str) -> dict:
+        """直连东财个股资金流 kline,带激进退避重试 + 多 host 容错。
+
+        端点 ``push2his.eastmoney.com/api/qt/stock/fflow/kline/get`` 对共享 IP 偶发限流
+        (RemoteDisconnected)。实测单 run 偶需 5~7 次重试才能稳定拿到数据,故:
+        - 尝试次数提到 6,指数退避(封顶 20s)+ 随机抖动,拉长持久窗口;
+        - 交替使用 push2his / push2 两个 host(共享后端但连接维度不同),分散限流命中;
+        - kline 默认 6 列: ``日期,主力净流入-净额,主力净流入占比,散户净流入,散户净流入占比,...``,
+          列[1] 即主力净流入-净额(元)。
+        """
+        market = "0" if symbol.startswith(("0", "3")) else "1" if symbol.startswith("6") else "0"
+        secid = f"{market}.{symbol}"
+        hosts = [
+            "https://push2his.eastmoney.com/api/qt/stock/fflow/kline/get",
+            "https://push2.eastmoney.com/api/qt/stock/fflow/kline/get",
+        ]
+        headers = {
+            "User-Agent": get_settings().default_user_agent,
+            "Referer": "https://quote.eastmoney.com/",
+        }
+        params = {
+            "lmt": "25",
+            "klt": "101",
+            "fields1": "f1,f2,f3,f7,f8",
+            "fields2": "f51,f52,f53,f54,f55,f56",
+            "secid": secid,
+            "cb": "jQuery",
+        }
+
+        def _once(host: str) -> dict:
+            with httpx.Client(timeout=15) as c:
+                r = c.get(host, params=params, headers=headers)
+                txt = r.text.strip()
+                m = re.match(r"^jQuery\((.*)\);?$", txt)
+                body = m.group(1) if m else txt
+                return parse_em_fflow_klines(json.loads(body))
+
+        last_err: Exception | None = None
+        attempts = 6
+        for attempt in range(attempts):
+            host = hosts[attempt % len(hosts)]
+            try:
+                return await asyncio.to_thread(_once, host)
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                logger.debug(
+                    "[em_fflow] attempt %d/%d (%s) failed for %s: %s",
+                    attempt + 1, attempts, host, symbol, e,
+                )
+            if attempt < attempts - 1:
+                wait = min(2 ** attempt, 20) + random.uniform(0, 3)
+                await asyncio.sleep(wait)
+        logger.debug(
+            "[em_fflow] all %d attempts failed for %s: %s", attempts, symbol, last_err
+        )
+        return {}
+
+    async def _fetch_capital_flow_akshare_fallback(self, symbol: str) -> dict:
+        """akshare 兜底(仅当东财直连全失败、且 akshare 在该环境可达时)。
+
+        ``stock_individual_fund_flow`` 同样走东财、共享 IP 限流时也会 RemoteDisconnected,
+        故本兜底多数情况下帮不上忙,但限流窗口偶然放开时仍可补到数据;解析失败静默忽略。
+        """
+        try:
+            market = (
+                "sh" if symbol.startswith("6")
+                else "sz" if symbol.startswith(("0", "3"))
+                else "bj"
+            )
+            df = await asyncio.to_thread(
+                ak.stock_individual_fund_flow,
+                stock=symbol,
+                market=market,
+            )
+            if df is not None and not df.empty and "主力净流入-净额" in df.columns:
+                main_col = "主力净流入-净额"
+                row_count = len(df)
+                result: dict[str, Any] = {"recent_date": str(df.iloc[-1]["日期"])}
+                if row_count >= 5:
+                    result["main_net_5d"] = float(df.tail(5)[main_col].sum())
+                if row_count >= 3:
+                    result["main_net_3d"] = float(df.tail(3)[main_col].sum())
+                if row_count >= 10:
+                    result["main_net_10d"] = float(df.tail(10)[main_col].sum())
+                if row_count >= 20:
+                    result["main_net_20d"] = float(df.tail(20)[main_col].sum())
+                return result
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[akshare] capital_flow fallback failed for %s: %s", symbol, e)
+        return {}
 
     async def fetch_history(self, symbol: str, years: int = 3) -> list[FinancialData]:
         """拉取近 N 年年报,按报告期降序返回。
@@ -1094,3 +1213,78 @@ class AkshareFinancialAdapter:
                     fd.capex = cap
             out.append(fd)
         return out
+
+
+def _merge_other_segments(rows: list[dict]) -> list[dict]:
+    """合并「其他」类残差行为单一「其他业务」行。
+
+    东财 F10 对格力等公司会把「其他业务」拆成「其他(补充)」/「其他」/「其他主营」
+    多行残差,导致分业务表出现「两行其他」,既冗余又误导。此处将名称以「其他」开头
+    的行合并为单一「其他业务」行(营收/占比求和,毛利率取营收较大者的口径),
+    保证分业务表只有一个残差行。
+    """
+    merged_other: dict[str, dict] = {}
+    clean: list[dict] = []
+    for s in rows:
+        if not isinstance(s, dict):
+            continue
+        if str(s.get("name", "")).startswith("其他"):
+            rev = float(s.get("revenue_yi") or 0.0)
+            if "其他业务" not in merged_other:
+                merged_other["其他业务"] = {
+                    "name": "其他业务",
+                    "revenue_yi": 0.0,
+                    "ratio": 0.0,
+                    "gross_margin": None,
+                    "_max_rev": 0.0,
+                }
+            m = merged_other["其他业务"]
+            m["revenue_yi"] = float(m["revenue_yi"]) + rev
+            m["ratio"] = float(m["ratio"]) + float(s.get("ratio") or 0.0)
+            if rev >= float(m.get("_max_rev", 0.0)):
+                m["gross_margin"] = s.get("gross_margin")
+                m["_max_rev"] = rev
+        else:
+            clean.append(s)
+    if merged_other:
+        m = merged_other["其他业务"]
+        clean.append(
+            {
+                "name": m["name"],
+                "revenue_yi": round(float(m["revenue_yi"]), 2),
+                "ratio": round(float(m["ratio"]), 4),
+                "gross_margin": m["gross_margin"],
+            }
+        )
+    return clean
+
+
+def parse_em_fflow_klines(payload: dict) -> dict:
+    """解析东财 fflow kline JSON → 主力 N 日净流入(元)字典。
+
+    ``payload["data"]["klines"]`` 为 ``["日期,主力净流入-净额,占比,散户,...,", ...]`` 列表,
+    列[1] 即主力净流入-净额(元)。返回 ``{recent_date, main_net_5d/3d/10d/20d}``；
+    无数据则抛 ValueError。
+    """
+    kl = (payload.get("data") or {}).get("klines")
+    if not kl:
+        raise ValueError(f"empty klines rc={payload.get('rc')}")
+    vals: list[float] = []
+    recent_date = kl[-1].split(",")[0]
+    for k in kl:
+        parts = k.split(",")
+        try:
+            vals.append(float(parts[1]))
+        except (IndexError, ValueError):
+            vals.append(0.0)
+    n = len(vals)
+    res: dict[str, Any] = {"recent_date": recent_date}
+    if n >= 5:
+        res["main_net_5d"] = sum(vals[-5:])
+    if n >= 3:
+        res["main_net_3d"] = sum(vals[-3:])
+    if n >= 10:
+        res["main_net_10d"] = sum(vals[-10:])
+    if n >= 20:
+        res["main_net_20d"] = sum(vals[-20:])
+    return res

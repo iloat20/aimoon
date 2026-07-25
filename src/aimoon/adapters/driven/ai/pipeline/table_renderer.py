@@ -56,7 +56,10 @@ def render_financial_temporal(data: Any) -> str:
 def render_peer_comparison(data: Any) -> str:
     """Render peer_compare.peers to Markdown table.
 
-    Columns: 公司 | 最新价 | PE | PB | ROE(%) | 营收增速(%) | 净利增速(%) | 市值(亿)
+    列: 公司 | 最新价 | PE | PB | ROE(%) | 营收增速(%) | 净利增速(%) | 市值(亿)。
+    同行 ROE / 营收增速 / 净利增速 当前 peer_compare 未采集(仅 PE/PB/市值),
+    **整列全空时自动隐藏该列**,避免报告出现一排无信息的空列(P1 完整性修正)。
+    若未来数据源补齐这些字段,对应列会自动重新出现。
     """
     if not isinstance(data, dict):
         return ""
@@ -74,50 +77,105 @@ def render_peer_comparison(data: Any) -> str:
         lines.append(f"> ⚠️ **同行数据异常**:{msg}。")
         lines.append("")
 
-    lines.extend(
-        [
-            "| 公司 | 最新价 | PE | PB | ROE(%) | 营收增速(%) | 净利增速(%) | 市值(亿) |",
-            "|------|--------|----|----|--------|------------|------------|----------|",
-        ]
-    )
+    def _first(p: dict, *keys: str) -> Any:
+        for k in keys:
+            if k in p and p[k] is not None:
+                return p[k]
+        return None
+
+    def _roe(p: dict) -> str | None:
+        # peer_compare 未采集 ROE 时返回 0.0(哨兵),与「无增速」同义 → 视为空。
+        v = _first(p, "roe")
+        return None if not v else _fmt_pct(v)
+
+    def _rev_g(p: dict) -> str | None:
+        v = _first(p, "rev_g", "revenue_growth")
+        return None if not v else _fmt_pct(v)
+
+    def _np_g(p: dict) -> str | None:
+        v = _first(p, "np_g", "profit_growth")
+        return None if not v else _fmt_pct(v)
+
+    # (表头, 取值函数, 空值标记) — 整列均等于空值标记则隐藏。
+    columns: list[tuple[str, Any, str | None]] = [
+        ("公司", lambda p: str(p.get("name") or "N/A"), None),
+        ("最新价", lambda p: _fmt_num(_first(p, "price", "latest_price")), None),
+        ("PE", lambda p: _fmt_num(p.get("pe")), None),
+        ("PB", lambda p: _fmt_num(p.get("pb")), None),
+        ("ROE(%)", _roe, None),
+        ("营收增速(%)", _rev_g, None),
+        ("净利增速(%)", _np_g, None),
+        ("市值(亿)", lambda p: _fmt_num(_first(p, "mcap", "market_cap")), None),
+    ]
+
+    rows_vals: list[list[Any]] = []
     for p in peers:
         if not isinstance(p, dict):
             continue
-        name = str(p.get("name") or "N/A")
-        price = _fmt_num(p.get("price") or p.get("latest_price"))
-        pe = _fmt_num(p.get("pe"))
-        pb = _fmt_num(p.get("pb"))
-        # 同行 ROE 当前未采集(peer_compare 仅取 PE/PB/市值),渲染为"—"避免误导为 0。
-        _roe_raw = p.get("roe")
-        roe = "—" if not _roe_raw else _fmt_pct(_roe_raw)
-        rev_g = _fmt_pct(p.get("rev_g") or p.get("revenue_growth"))
-        np_g = _fmt_pct(p.get("np_g") or p.get("profit_growth"))
-        mcap = _fmt_num(p.get("mcap") or p.get("market_cap"))
-        lines.append(
-            f"| {name} | {price} | {pe} | {pb} | {roe} | {rev_g} | {np_g} | {mcap} |"
+        rows_vals.append([c[1](p) for c in columns])
+    if not rows_vals:
+        return ""
+
+    # 仅保留「至少一行有非空值」的列(空值标记视为空)。
+    keep: list[bool] = []
+    for ci, (_, _, empty_marker) in enumerate(columns):
+        has_data = any(
+            (rv[ci] is not None) and (empty_marker is None or rv[ci] != empty_marker)
+            for rv in rows_vals
         )
+        keep.append(has_data)
+    kept_cols = [(h, fn, em) for (h, fn, em), k in zip(columns, keep) if k]
+    kept_idx = [i for i, k in enumerate(keep) if k]
+    if not kept_cols:
+        return ""
 
     # 行业中位数(PE/PB):供估值规则对照,消 8.1「同行业 PE/PB 中位数」缺失。
+    # 口径须与 margin_of_safety.peer_pe_median 一致:仅取 PE/PB > 0 的同业,
+    # 剔除亏损股(负 PE 不可比),否则会把澳柯玛等负 PE 拉低中位数,与情景卡 14.62 打架。
     pes = [
         float(p.get("pe") or 0.0)
         for p in peers
-        if isinstance(p, dict) and p.get("pe") not in (None, 0.0, 0)
+        if isinstance(p, dict) and (float(p.get("pe") or 0.0)) > 0
     ]
     pbs = [
         float(p.get("pb") or 0.0)
         for p in peers
-        if isinstance(p, dict) and p.get("pb") not in (None, 0.0, 0)
+        if isinstance(p, dict) and (float(p.get("pb") or 0.0)) > 0
     ]
+
+    header = "| " + " | ".join(h for h, _, _ in kept_cols) + " |"
+    sep = "|" + "|".join("------" for _ in kept_cols) + "|"
+    lines.extend([header, sep])
+    for rv in rows_vals:
+        cells = [
+            rv[i] if rv[i] is not None else (columns[i][2] or "N/A") for i in kept_idx
+        ]
+        lines.append("| " + " | ".join(str(c) for c in cells) + " |")
+
     if pes or pbs:
         median_pe = statistics.median(pes) if pes else None
         median_pb = statistics.median(pbs) if pbs else None
-        lines.append(
-            f"| **行业中位数** | - | {_fmt_num(median_pe)} | "
-            f"{_fmt_num(median_pb)} | - | - | - | - |"
-        )
-    # 同行 ROE 由 peer_compare 未采集(仅 PE/PB/市值),统一以"—"呈现,避免误读为 0。
+        med_cells = []
+        for h, _, _ in kept_cols:
+            if h == "PE":
+                med_cells.append(_fmt_num(median_pe))
+            elif h == "PB":
+                med_cells.append(_fmt_num(median_pb))
+            else:
+                med_cells.append("-")
+        # 首列(公司)用「行业中位数」占位
+        med_cells[0] = "**行业中位数**"
+        lines.append("| " + " | ".join(med_cells) + " |")
+
+    hidden = [h for (h, _, _), k in zip(columns, keep) if not k]
+    note = (
+        "PE/PB/市值来自行情接口(新浪→腾讯);行业中位数为 PE/PB>0 同业的中位值"
+        "(已剔除亏损股)。"
+    )
+    if hidden:
+        note += "ROE/营收增速/净利增速当前数据源未采集,空列已隐藏。"
     lines.append("")
-    lines.append('> 注:同行 ROE 未采集,以"—"表示;PE/PB/市值来自行情接口(新浪→腾讯)。')
+    lines.append(f"> 注:{note}")
     return "\n".join(lines)
 
 
@@ -537,19 +595,79 @@ def render_quarterly_breakdown(financial: Any) -> str:
     if not isinstance(qb, dict) or not qb.get("available") or not qb.get("quarters"):
         return ""
     quarters = qb["quarters"]
-    lines = [
-        "## 分季度主要财务指标(单季值,来源: 巨潮年报 PDF)",
-        "",
-        "| 季度 | 营业收入(亿) | 营收同比(%) | 归母净利润(亿) | 净利同比(%) |",
-        "|------|--------------|--------------|----------------|--------------|",
-    ]
-    for q in quarters:
-        rev = _fmt_num(q.get("revenue_yi"))
-        rev_yoy = _fmt_pct(q.get("revenue_yoy"))
-        np_ = _fmt_num(q.get("net_profit_yi"))
-        np_yoy = _fmt_pct(q.get("net_profit_yoy"))
-        lines.append(f"| {q.get('quarter')} | {rev} | {rev_yoy} | {np_} | {np_yoy} |")
+    # 同比需上年同期年报合并;若四个季度同比全部缺失,则隐藏同比列
+    # (P1 完整性修正:避免出现一整排无信息的 N/A 列),仅保留单季营收/净利。
+    has_yoy = any(
+        q.get("revenue_yoy") is not None or q.get("net_profit_yoy") is not None
+        for q in quarters
+    )
+    if has_yoy:
+        lines = [
+            "## 分季度主要财务指标(单季值,来源: 巨潮年报 PDF)",
+            "",
+            "| 季度 | 营业收入(亿) | 营收同比(%) | 归母净利润(亿) | 净利同比(%) |",
+            "|------|--------------|--------------|----------------|--------------|",
+        ]
+        for q in quarters:
+            rev = _fmt_num(q.get("revenue_yi"))
+            rev_yoy = _fmt_pct(q.get("revenue_yoy"))
+            np_ = _fmt_num(q.get("net_profit_yi"))
+            np_yoy = _fmt_pct(q.get("net_profit_yoy"))
+            lines.append(f"| {q.get('quarter')} | {rev} | {rev_yoy} | {np_} | {np_yoy} |")
+    else:
+        lines = [
+            "## 分季度主要财务指标(单季值,来源: 巨潮年报 PDF)",
+            "",
+            "| 季度 | 营业收入(亿) | 归母净利润(亿) |",
+            "|------|--------------|----------------|",
+        ]
+        for q in quarters:
+            rev = _fmt_num(q.get("revenue_yi"))
+            np_ = _fmt_num(q.get("net_profit_yi"))
+            lines.append(f"| {q.get('quarter')} | {rev} | {np_} |")
+        lines.append("")
+        lines.append("> 注:单季同比需上年同期年报合并,本次未采集,故省略同比列。")
+    note = _quarterly_reconcile_note(financial, quarters)
+    if note:
+        lines.append("")
+        lines.append(note)
     return "\n".join(lines)
+
+
+def _quarterly_reconcile_note(financial: Any, quarters: list[dict]) -> str:
+    """P2 勾稽脚注: 单季加总 vs 全年合计数口径差。
+
+    年报「分季度主要财务指标」单季值加总,与利润表全年合计数常因追溯调整/
+    重分类而不一致(典型差 ~0.5%),属正常口径差异而非数据错误。此脚注让读者
+    不必困惑于两处数字对不上,也避免模型把差异误读为错误。
+    """
+    ann_rev = (getattr(financial, "revenue", 0.0) or 0.0) / 1e8
+    ann_np = (getattr(financial, "net_profit", 0.0) or 0.0) / 1e8
+    if ann_rev <= 0 and ann_np <= 0:
+        return ""
+    sum_rev = sum(float(q.get("revenue_yi") or 0.0) for q in quarters)
+    sum_np = sum(float(q.get("net_profit_yi") or 0.0) for q in quarters)
+    parts: list[str] = []
+    if ann_rev > 0:
+        d = ann_rev - sum_rev
+        pct = (d / ann_rev * 100) if ann_rev else 0.0
+        parts.append(
+            f"单季营收加总 {sum_rev:.1f} 亿,与全年营收 {ann_rev:.1f} 亿"
+            f"相差 {d:+.1f} 亿({pct:+.1f}%)"
+        )
+    if ann_np > 0:
+        d = ann_np - sum_np
+        pct = (d / ann_np * 100) if ann_np else 0.0
+        parts.append(
+            f"单季净利加总 {sum_np:.1f} 亿,与全年归母净利 {ann_np:.1f} 亿"
+            f"相差 {d:+.1f} 亿({pct:+.1f}%)"
+        )
+    if not parts:
+        return ""
+    return (
+        "> 注: " + ";".join(parts) + "。差异系年报「分季度主要财务指标」口径"
+        "(含追溯调整/重分类)与全年合计数不同,非数据错误。"
+    )
 
 
 def render_region_breakdown(financial: Any) -> str:
@@ -587,6 +705,15 @@ def render_region_breakdown(financial: Any) -> str:
         "> 注: 上述为**公司主营业务**层面内销/外销拆分(年报「分地区」),非空调业务专属。"
         "空调专属内销/出口无公开确定性来源(仅产业在线等第三方),详见 8.1 关键缺失数据清单。"
     )
+    # P2 勾稽脚注: 内销+外销 占比合计 <100% 时,残差为其他业务/未分区收入
+    total_ratio = sum(float(r.get("ratio") or 0.0) for r in regions)
+    residual = 100.0 - total_ratio
+    if residual >= 0.05:
+        lines.append("")
+        lines.append(
+            f"> 注: 内销+外销收入占比合计 {total_ratio:.1f}%,残差 {residual:.1f}% "
+            "为其他业务/未分区收入,年报未单列地区。"
+        )
     return "\n".join(lines)
 
 

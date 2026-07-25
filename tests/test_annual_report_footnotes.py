@@ -160,6 +160,37 @@ def test_parse_quarterly_breakdown_empty() -> None:
     assert arp.parse_quarterly_breakdown_from_text("无相关章节")["available"] is False
 
 
+# 2024 年报真实抽取结构: 标签「归属于上市公司股东的净利润」被折行,
+# 数字夹在前后两片标签之间("归属于上市公司股东" / <4数> / "的净利润")。
+# 回归测试: 该夹心结构必须仍能抽出归母净利单季值(P1 #10)。
+_QUARTERLY_SANDWICH_SYNTH = """
+八、分季度主要财务指标
+单位：元
+项目 第一季度 第二季度 第三季度 第四季度
+营业收入 36,364,269,766.89 63,418,846,729.70 46,939,261,479.69 42,441,276,088.36
+归属于上市公司股东
+4,675,160,247.24 9,460,959,120.36 7,824,777,633.58 10,223,673,371.10
+的净利润
+归属于上市公司股东
+的扣除非经常性损益 4,525,486,717.09 9,338,477,416.48 7,298,976,638.82 8,936,819,610.60
+的净利润
+经营活动产生的现金
+-2,940,867,716.29 8,063,034,127.69 7,590,273,332.59 16,656,810,826.67
+流量净额
+"""
+
+
+def test_parse_quarterly_breakdown_sandwiched_label() -> None:
+    res = arp.parse_quarterly_breakdown_from_text(_QUARTERLY_SANDWICH_SYNTH)
+    assert res["available"] is True
+    qs = res["quarters"]
+    # 营收 intact(同行),净利经夹心结构抽出,且应取「归母」而非「扣非」行。
+    assert qs[0]["revenue_yi"] == pytest.approx(363.64, abs=0.1)
+    assert qs[0]["net_profit_yi"] == pytest.approx(46.75, abs=0.1)
+    assert qs[1]["net_profit_yi"] == pytest.approx(94.61, abs=0.1)
+    assert qs[3]["net_profit_yi"] == pytest.approx(102.24, abs=0.1)
+
+
 def test_parse_region_breakdown_synthetic() -> None:
     res = arp.parse_region_breakdown_from_text(_REGION_SYNTH)
     assert res["available"] is True

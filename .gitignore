@@ -49,3 +49,6 @@ docs/screenshots/
 
 # MediaCrawler
 ~/.mediacrawler/
+
+# Project memory (sensitive — never commit)
+.workbuddy/

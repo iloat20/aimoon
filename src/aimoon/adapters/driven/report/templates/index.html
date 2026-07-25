@@ -68,7 +68,7 @@
     {% set cf = capital_flow %}
     <div class="tldr-item">
       <div class="tldr-label">近5日主力净流入</div>
-      {% if cf and cf.source != "all_failed" %}
+      {% if cf and cf.main_net_available %}
       <div class="tldr-value" style="color:{% if cf.main_net_5d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ "%.2f"|format(cf.main_net_5d/1e8) }}亿</div>
       {% else %}
       <div class="tldr-value muted">N/A</div>
@@ -94,10 +94,11 @@
       <div class="tldr-value muted">N/A</div>
       {% endif %}
     </div>
-    {% set _ks = kline.summary %}
-    {% set _hi = _ks.get('period_high') if _ks else none %}
-    {% set _lo = _ks.get('period_low') if _ks else none %}
-    {% set _win = _ks.get('bar_count') if _ks else 0 %}
+    {% set _bars = kline.bars[-180:] if kline.bars and kline.bars | length > 180 else (kline.bars if kline.bars else []) %}
+    {% set _closes = _bars | map(attribute='close') | list %}
+    {% set _hi = (_closes | max) if _closes else none %}
+    {% set _lo = (_closes | min) if _closes else none %}
+    {% set _win = _bars | length %}
     {% set _amp = (_hi - _lo) / _lo * 100 if _hi and _lo and _lo > 0 else none %}
     <div class="tldr-item">
       <div class="tldr-label">{% if _win %}{{ _win }}日振幅{% else %}区间振幅{% endif %}</div>
@@ -223,14 +224,18 @@
       {% if conf %}<span class="badge {% if conf == '高' %}badge-up{% elif conf == '低' %}badge-down{% else %}badge-warn{% endif %}">可信度{{ conf }}</span>{% endif %}
     </div>
     {% set cf = capital_flow %}
-    {% if cf and cf.source != "all_failed" %}
+    {% if cf and (cf.main_net_available or cf.northbound_hold_value != 0) %}
     {% macro yuan2yi(v) %}{{ "%.2f"|format(v/1e8) }}{% endmacro %}
     {% set mf_color = 'var(--red)' if cf.main_net_5d > 0 else ('var(--green)' if cf.main_net_5d < 0 else 'var(--amber)') %}
     <table class="fin-table">
+      {% if cf.main_net_available %}
       <tr><td>近5日主力净流入</td><td style="color:{{ mf_color }}">{{ yuan2yi(cf.main_net_5d) }}亿</td></tr>
       <tr><td>3日净流入</td><td style="color:{% if cf.main_net_3d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.main_net_3d) }}亿</td></tr>
       <tr><td>10日净流入</td><td style="color:{% if cf.main_net_10d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.main_net_10d) }}亿</td></tr>
       <tr><td>20日净流入</td><td style="color:{% if cf.main_net_20d >= 0 %}var(--red){% else %}var(--green){% endif %}">{{ yuan2yi(cf.main_net_20d) }}亿</td></tr>
+      {% else %}
+      <tr><td>主力净流入</td><td class="muted">N/A（接口受限）</td></tr>
+      {% endif %}
       {% if cf.northbound_hold_value != 0 %}
       <tr><td>北向持股市值</td><td style="color:var(--blue)">{{ yuan2yi(cf.northbound_hold_value) }}亿</td></tr>
       {% endif %}
@@ -336,14 +341,14 @@
     <span class="badge badge-warn">共 {{ total_posts }} 条</span>
   </div>
   <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-    全平台共 <strong style="color:var(--text)">{{ total_posts }}</strong> 条相关讨论
+    全平台共 <strong style="color:var(--text)">{{ total_posts }}</strong> 条相关内容（股吧/公众号为讨论，巨潮为公告）
     {% if total_failed > 0 %} · <span style="color:var(--amber)">{{ total_failed }} 个数据源暂不可用</span>{% endif %}
   </div>
   <div class="social-grid">
     {% for platform, stat in platform_stats.items() %}
     <div class="social-card">
       <div style="font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-        <span>{{ platform }}</span>
+        <span>{{ {'巨潮资讯':'巨潮公告', '东方财富股吧':'东方财富股吧', '微信公众号':'微信公众号', '雪球':'雪球', '同花顺':'同花顺'}.get(platform, platform) }}</span>
         <span class="muted">{{ stat.count }}条</span>
       </div>
       {% if stat.top_posts %}
@@ -717,32 +722,112 @@ document.addEventListener('DOMContentLoaded', function() {
 // Export functions
 function getTarget() { return document.querySelector('.container'); }
 
+// 浏览器对单个 canvas 的像素尺寸有上限（通常为 16384px）。超高报告在 scale=2 下
+// 会撞上限导致生成空白/底部截断，这里按完整内容高度反推安全 scale。
+function safeScaleForHeight(scrollH, baseScale, maxPx) {
+  var need = scrollH * baseScale;
+  if (need <= maxPx) return baseScale;
+  return Math.max(1, Math.floor((maxPx / scrollH) * 100) / 100);
+}
+
+function renderTarget(bg, baseScale, maxPx) {
+  var el = getTarget();
+  var fullH = el.scrollHeight;
+  var scale = safeScaleForHeight(fullH, baseScale, maxPx);
+  return html2canvas(el, {
+    scale: scale,
+    useCORS: true,
+    backgroundColor: bg,
+    width: el.scrollWidth,
+    height: fullH,
+    windowWidth: document.documentElement.clientWidth,
+    windowHeight: fullH
+  });
+}
+
 function exportAsImage() {
   var btn = document.getElementById('exportImg');
   btn.textContent = '⏳ 生成中...'; btn.disabled = true;
   var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
-  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+  renderTarget(bg, 2, 16384).then(function(canvas) {
     var a = document.createElement('a');
     a.download = '{{ name }}_{{ symbol }}_report.png';
     a.href = canvas.toDataURL('image/png');
     a.click();
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false;
-  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false; });
+  }).catch(function() {
+    // 失败时回退到 scale=1，确保至少能导出完整内容
+    renderTarget(bg, 1, 16384).then(function(canvas) {
+      var a = document.createElement('a');
+      a.download = '{{ name }}_{{ symbol }}_report.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    }).finally(function() {
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h12v14H4V3zm2 2v10h8V5H6z"/></svg> 导出图片'; btn.disabled = false;
+    });
+  });
 }
 
 function exportAsPdf() {
   var btn = document.getElementById('exportPdf');
   btn.textContent = '⏳ 生成中...'; btn.disabled = true;
   var bg = getComputedStyle(document.body).getPropertyValue('--bg').trim();
-  html2canvas(getTarget(), { scale: 2, useCORS: true, backgroundColor: bg }).then(function(canvas) {
+  renderTarget(bg, 2, 16384).then(function(canvas) {
     var jsPDF = window.jspdf.jsPDF;
+    var pdfW = 210;                 // A4 宽(mm)
+    var pageH = 297;                // A4 高(mm)
     var imgW = canvas.width, imgH = canvas.height;
-    var pdfW = 210, pdfH = (imgH * pdfW) / imgW;
-    var pdf = new jsPDF('p', 'mm', [pdfW, pdfH]);
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+    var pdfH = (imgH * pdfW) / imgW;          // 整图在 A4 宽度下的高度(mm)
+    var pxPerMm = imgH / pdfH;                // 每 mm 对应像素
+    var pagePx = Math.floor(pageH * pxPerMm); // 每页像素高度
+    var pdf = new jsPDF('p', 'mm', [pdfW, pageH]);
+    var rendered = 0, pageIdx = 0;
+    while (rendered < imgH) {
+      var sliceH = Math.min(pagePx, imgH - rendered);
+      var slice = document.createElement('canvas');
+      slice.width = imgW; slice.height = sliceH;
+      var sctx = slice.getContext('2d');
+      sctx.fillStyle = bg || '#ffffff';
+      sctx.fillRect(0, 0, imgW, sliceH);
+      sctx.drawImage(canvas, 0, rendered, imgW, sliceH, 0, 0, imgW, sliceH);
+      var data = slice.toDataURL('image/png');
+      var sliceMm = sliceH / pxPerMm;
+      if (pageIdx > 0) pdf.addPage([pdfW, pageH]);
+      // 末页不足整页高时，仅用实际内容高度，避免尾部大段空白
+      pdf.addImage(data, 'PNG', 0, 0, pdfW, (rendered + sliceH >= imgH) ? sliceMm : pageH);
+      rendered += sliceH; pageIdx++;
+    }
     pdf.save('{{ name }}_{{ symbol }}_report.pdf');
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false;
-  }).catch(function() { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false; });
+  }).catch(function() {
+    renderTarget(bg, 1, 16384).then(function(canvas) {
+      var jsPDF = window.jspdf.jsPDF;
+      var pdfW = 210, pageH = 297;
+      var imgW = canvas.width, imgH = canvas.height;
+      var pdfH = (imgH * pdfW) / imgW;
+      var pxPerMm = imgH / pdfH;
+      var pagePx = Math.floor(pageH * pxPerMm);
+      var pdf = new jsPDF('p', 'mm', [pdfW, pageH]);
+      var rendered = 0, pageIdx = 0;
+      while (rendered < imgH) {
+        var sliceH = Math.min(pagePx, imgH - rendered);
+        var slice = document.createElement('canvas');
+        slice.width = imgW; slice.height = sliceH;
+        var sctx = slice.getContext('2d');
+        sctx.fillStyle = bg || '#ffffff';
+        sctx.fillRect(0, 0, imgW, sliceH);
+        sctx.drawImage(canvas, 0, rendered, imgW, sliceH, 0, 0, imgW, sliceH);
+        var data = slice.toDataURL('image/png');
+        var sliceMm = sliceH / pxPerMm;
+        if (pageIdx > 0) pdf.addPage([pdfW, pageH]);
+        pdf.addImage(data, 'PNG', 0, 0, pdfW, (rendered + sliceH >= imgH) ? sliceMm : pageH);
+        rendered += sliceH; pageIdx++;
+      }
+      pdf.save('{{ name }}_{{ symbol }}_report.pdf');
+    }).finally(function() {
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M4 3h8l4 4v10H4V3zm2 2v2h4V5H6zm0 4v6h8V9H6zm2 2h4v2H8v-2z"/></svg> 导出PDF'; btn.disabled = false;
+    });
+  });
 }
 </script>
 

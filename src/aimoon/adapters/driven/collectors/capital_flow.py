@@ -95,6 +95,7 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
                             v = None
                         if v is not None:
                             setattr(data, attr, float(v))
+                            data.main_net_available = True
             elif data_sum:  # 兜底:扁平结构(旧假设)
                 for attr, key in (
                     ("main_net_5d", "sum5"),
@@ -154,6 +155,12 @@ class CapitalFlowCollector(DataCollector[CapitalFlowData]):
                     data.main_net_10d = cf.get("main_net_10d", 0.0)
                 if data.main_net_20d == 0.0:
                     data.main_net_20d = cf.get("main_net_20d", 0.0)
+                # akshare 兜底实际返回了数据(即便值为 0,也是真实读数),标记可用。
+                if any(
+                    cf.get(k) is not None
+                    for k in ("main_net_5d", "main_net_3d", "main_net_10d", "main_net_20d")
+                ):
+                    data.main_net_available = True
                 sources.append("akshare(个股资金流)")
         except Exception as e:
             logging.warning("[akshare_capital_flow_fallback] %s: %s", type(e).__name__, e)

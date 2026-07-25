@@ -106,6 +106,17 @@ def _cninfo_query(symbol: str, stock_name: str) -> list[dict]:
     return out
 
 
+def _extract_report_year(title: str) -> int | None:
+    """从年报标题(如「格力电器2025年年度报告」)提取报告年份。"""
+    m = re.search(r"(\d{4})\s*年年度报告", title)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
 async def _download_pdf(pdf_url: str) -> bytes | None:
     async with httpx.AsyncClient(
         timeout=60.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}
@@ -199,16 +210,32 @@ def parse_quarterly_breakdown_from_text(text: str, report_title: str = "") -> di
 
     revenue: list[float] | None = None
     net_profit: list[float] | None = None
-    for line in lines[header_idx : header_idx + 14]:
-        s = line.strip()
-        m = re.match(r"^营业收入\s+" + _NUM4_RE, s)
-        if m and revenue is None:
-            revenue = [float(x.replace(",", "")) for x in m.groups()]
-            continue
-        m = re.match(r"^归属于上市公司股东的净利润\s+" + _NUM4_RE, s)
-        if m and net_profit is None:
-            net_profit = [float(x.replace(",", "")) for x in m.groups()]
-            continue
+    # 年报 PDF 文本抽取常有「标签-数字」错位(P1 #10: 净利同比不再全 N/A):
+    #  · 同行(如 2025):「归属于上市公司股东的净利润 <4数>」
+    #  · 标签折行把数字夹在中间(如 2024):「归属于上市公司股东 <4数> 的净利润」
+    # 把候选行拼成一个 blob,先试同行正则,失败再试「标签…数字…的净利润」夹心结构。
+    blob = " ".join(s.strip() for s in lines[header_idx : header_idx + 14])
+
+    def _num4(s: str) -> list[float] | None:
+        m = re.search(_NUM4_RE, s)
+        return [float(x.replace(",", "")) for x in m.groups()] if m else None
+
+    m = re.search(r"营业收入\s+" + _NUM4_RE, blob)
+    if m:
+        revenue = _num4(m.group(0))
+    m = re.search(r"归属于上市公司股东\s*(?:的)?\s*净利润\s+" + _NUM4_RE, blob)
+    if m:
+        net_profit = _num4(m.group(0))
+    else:
+        # 夹心结构: 标签前片在,数字在后片「的净利润」之前。
+        idx = blob.find("归属于上市公司股东")
+        if idx >= 0:
+            m2 = re.search(
+                r"([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*的净利润",
+                blob[idx : idx + 400],
+            )
+            if m2:
+                net_profit = [float(x.replace(",", "")) for x in m2.groups()]
     if not revenue and not net_profit:
         return {"available": False, "quarters": [], "source": _SOURCE}
     quarters = []
@@ -324,17 +351,38 @@ async def fetch_annual_report_footnotes(symbol: str, stock_name: str = "") -> di
         rb = parse_region_breakdown_from_text(text)
         if rb["available"]:
             result["region_breakdown"] = rb
-        # 上年同期年报(用于单季同比, best-effort): 取 metas[1](按公告时间倒序的次新)。
-        if len(metas) > 1:
-            try:
-                pdf2 = await _download_pdf(metas[1]["pdf_url"])
-                if pdf2:
-                    text2 = await asyncio.to_thread(_extract_text, pdf2)
-                    qb_prev = parse_quarterly_breakdown_from_text(text2)
-                    if qb_prev["available"]:
-                        result["quarterly_breakdown"] = _compute_quarterly_yoy(qb, qb_prev)
-            except Exception:  # noqa: BLE001 — 上年同期缺失仅影响同比,不影响主表
-                pass
+        # 上年同期年报(用于单季同比): 显式定位「上一年年度报告」,而非盲取 metas[1]
+        # (后者可能是同年的英文版/更正版或摘要,导致同比解析失败)。best-effort 合并。
+        cur_year = _extract_report_year(meta["title"])
+        if cur_year:
+            prev_year = cur_year - 1
+            prev_meta = next(
+                (m for m in metas if _extract_report_year(m["title"]) == prev_year),
+                None,
+            )
+            if prev_meta is not None and prev_meta is not meta:
+                try:
+                    pdf2 = await _download_pdf(prev_meta["pdf_url"])
+                    if pdf2:
+                        text2 = await asyncio.to_thread(_extract_text, pdf2)
+                        qb_prev = parse_quarterly_breakdown_from_text(text2)
+                        if qb_prev["available"]:
+                            result["quarterly_breakdown"] = _compute_quarterly_yoy(
+                                qb, qb_prev
+                            )
+                        else:
+                            logger.debug(
+                                "[annual_report_pdf] %s %d年报 分季度解析不可用,同比保留 N/A",
+                                symbol,
+                                prev_year,
+                            )
+                except Exception as e:  # noqa: BLE001 — 上年同期缺失仅影响同比,不影响主表
+                    logger.debug(
+                        "[annual_report_pdf] %s 上年同期(%d)年报获取失败: %s",
+                        symbol,
+                        prev_year,
+                        e,
+                    )
         logger.warning(
             "[annual_report_pdf] %s 年报解析: 附注 %d/%d 主题 | 分季度 %s | 分地区 %s "
             "(来源: 巨潮 %s)",

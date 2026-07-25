@@ -1,6 +1,6 @@
 [project]
 name = "aimoon"
-version = "0.5.0"
+version = "0.6.0"
 description = "AI-powered A-share stock analysis with multi-platform data collection"
 requires-python = ">=3.12"
 readme = "README.md"
@@ -53,7 +53,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aimoon = ["**/*.html", "**/*.css", "**/*.js"]
+aimoon = ["**/*.html", "**/*.css", "**/*.js", "**/*.md", "**/*.txt"]
 
 [project.scripts]
 aimoon = "aimoon.adapters.driving.cli.main:main"

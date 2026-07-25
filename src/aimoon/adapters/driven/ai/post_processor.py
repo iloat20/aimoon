@@ -187,6 +187,13 @@ _SCI_NUM = re.compile(r"\d+(?:\.\d+)?[eE][+-]?\d+\s*(?:元|%)?")
 _BARE_HUGE_PCT = re.compile(r"(?<![\d.,])[\d,]{10,}\s*%")
 _STRAY_PCT = re.compile(r"(?<![0-9.])(%)")
 
+# 模型偶尔把同一个营收灾难 token 连写多遍(如
+# "营收 X%，营收为 X%，营收为 X%"),经 _fix_revenue_artifact 逐个换算后
+# 会得到"营收约 N亿，营收为约 N亿，营收为约 N亿"这种口吃。折叠为首个即可。
+# 连接词按长度降序,避免 "营收" 抢先吞掉 "营收为"/"营收端为"。
+_REV_PHRASE = r"(?:占营收|营收端为|营收为|营收|占比|占)约\s*\d[\d.]*\s*亿"
+_REVENUE_STUTTER = re.compile(r"(" + _REV_PHRASE + r")(?:\s*[，,、]\s*" + _REV_PHRASE + r")+")
+
 
 def _sci_to_yi(token: str) -> str:
     """把科学计数法 token 换算成「亿」,去掉尾随的 元/% 。"""
@@ -202,12 +209,38 @@ def _sci_to_yi(token: str) -> str:
     return ""
 
 
+def _fix_revenue_artifact(m: re.Match) -> str:
+    """把「连接词 + 元单位超大数 + %」这类灾难 token 换算回可读的「亿」单位。
+
+    模型常把原始元单位数值(如 1.71118e+11 / 171118000000)错写成
+    「占营收 1.7e11%」「营收为 171,118,000,000%」。这些数值在中文财经正文里
+    绝不可能合法,但原始数值本身可信(= 元单位营收混入了正文)。
+
+    处理方式:保留连接词,把数值换算成「亿」回填,去掉荒谬的 %,得到自包含、
+    与全报告计量单位一致的片段(如「占营收约 1711.2亿」),不再留悬空的
+    「(见近年财务时序表)」占位符。
+    """
+    connector = m.group(1)
+    raw = m.group(2).replace(",", "")
+    try:
+        val = float(raw)
+    except ValueError:
+        return ""
+    if val <= 0:
+        return ""
+    yi = val / 1e8
+    # 汇报粒度:≥100 亿取整,否则 1 位小数,与报告其余金额口径一致。
+    yi_str = f"{yi:.0f}亿" if yi >= 100 else f"{yi:.1f}亿"
+    return f"{connector}约 {yi_str}"
+
+
 def sanitize_numeric_artifacts(md: str) -> str:
     """清除模型把原始元单位数值错写进正文的灾难性 token。
 
     这些 pattern 在中文财经正文里绝不可能合法出现,因此清洗是安全的:
     - 连接词(占营收/营收为/占比/占)+ 科学计数法或 9 位以上整数 + %
-      → 连接词保留,替换为「(见近年财务时序表)」避免悬空。
+      → 连接词保留,数值换算成「亿」回填(如「占营收约 1711.2亿」),
+      去掉荒谬的 %,消除悬空占位符。
     - 任何科学计数法数值(元单位,如 1.71118e+11元)→ 按「元→亿」换算回填
       (1.71118e+11 → 1711.2亿),消除 1.7e11 这类灾难 token。
     - 裸「171,118,000,000%」等 10 位以上整数 + % → 直接删除。
@@ -217,14 +250,119 @@ def sanitize_numeric_artifacts(md: str) -> str:
     """
     if not md:
         return md
-    # 1) 连接词 + 超长/科学计数法数值 + % → 连接词保留,替换为「(见近年财务时序表)」
-    md = _NUMERIC_ARTIFACT.sub(r"\1（见近年财务时序表）", md)
+    # 1) 连接词 + 超长/科学计数法数值 + % → 连接词保留,数值换算成「亿」回填
+    #    (消除 1.7e11% / 171118000000% 这类灾难 token,不再留悬空占位符)
+    md = _NUMERIC_ARTIFACT.sub(_fix_revenue_artifact, md)
+    # 1.5) 折叠模型连写导致的营收 token 口吃(仅保留首个),避免
+    #    "营收约 N亿，营收为约 N亿，营收为约 N亿"这种重复。
+    md = _REVENUE_STUTTER.sub(r"\1", md)
     # 2) 科学计数法数值(元单位)→ 换算成「亿」回填
     md = _SCI_NUM.sub(lambda m: _sci_to_yi(m.group(0)), md)
     # 3) 裸 10 位以上整数 + % → 直接删除
     md = _BARE_HUGE_PCT.sub("", md)
     # 4) 没有前置数字的游离 % → 删除
     md = _STRAY_PCT.sub("", md)
+    return md
+
+
+def _fix_net_cash_pe(md: str, appendix_md: str) -> str:
+    """纠正正文把「净现金调整 PE」误写成 PE(TTM) 值的情况。
+
+    模型常把 净现金调整 PE(权威表 = (市值−货币资金)/净利润, 恒 < PE(TTM))
+    误写成 PE(TTM) 的数值(如把 4.04 写成 7.79),造成"剔除现金后 PE 更低"的
+    论证自相矛盾。以系统预渲染的「估值安全边际表」为权威真值,仅当正文数值
+    恰好等于 PE(TTM)(即典型的两者混淆)时才纠正,绝不改写压力情景等其他数值。
+    """
+    if not md or not appendix_md:
+        return md
+    m_nc = re.search(r"净现金调整\s*PE\s*[|｜]\s*([0-9]+(?:\.[0-9]+)?)", appendix_md)
+    m_pe = re.search(r"PE\s*\(\s*TTM\s*\)\s*[|｜]\s*([0-9]+(?:\.[0-9]+)?)", appendix_md)
+    if not m_nc or not m_pe:
+        return md
+    auth, pe_ttm = m_nc.group(1), m_pe.group(1)
+    try:
+        auth_f, pe_f = float(auth), float(pe_ttm)
+    except ValueError:
+        return md
+    if abs(auth_f - pe_f) < 1e-9:
+        return md  # 两者相等则无从判别,不动
+
+    def _same_as_pe(num: str) -> bool:
+        try:
+            return abs(float(num) - pe_f) < 1e-6
+        except ValueError:
+            return False
+
+    # 正序: 净现金调整 PE [约] N [倍] —— 仅当 N == PE(TTM) 时替换为权威值
+    def _fwd(mm: re.Match) -> str:
+        num, suffix = mm.group(1), mm.group(2) or ""
+        return f"净现金调整 PE {auth}{suffix}" if _same_as_pe(num) else mm.group(0)
+
+    md = re.sub(
+        r"净现金调整\s*PE\s*(?:约\s*)?([0-9]+(?:\.[0-9]+)?)(\s*倍)?", _fwd, md
+    )
+
+    # 反序: N倍净现金调整 PE
+    def _rev(mm: re.Match) -> str:
+        return f"{auth}倍净现金调整 PE" if _same_as_pe(mm.group(1)) else mm.group(0)
+
+    md = re.sub(r"([0-9]+(?:\.[0-9]+)?)\s*倍净现金调整\s*PE", _rev, md)
+    return md
+
+
+def _fix_capex(md: str, appendix_md: str) -> str:
+    """纠正正文把「资本开支 Capex」误写成 PE(TTM) 值的情况(如把 17.2 亿写成 7.79 亿)。
+
+    模型偶发把 PE(TTM) 数值(如 7.79)错抄为 Capex(资本开支),
+    造成「资本开支仅 7.79 亿」与财务健康扩展表 Capex≈17 亿自相矛盾。
+    以系统预渲染的「财务健康扩展表」权威 Capex 为真值,仅当正文 Capex 数值
+    恰好等于 PE(TTM)(典型的两者混淆)时才纠正,绝不改写其他数值/其他单位。
+    """
+    if not md or not appendix_md:
+        return md
+    # 权威 Capex 来自「财务健康扩展表」: `| 资本开支 Capex | 17.2 亿 | ... |`
+    m_capex = re.search(
+        r"资本开支\s*Capex\s*[|｜]\s*([0-9]+(?:\.[0-9]+)?)\s*亿", appendix_md
+    )
+    if not m_capex:
+        return md
+    auth_capex = m_capex.group(1)
+    try:
+        auth_f = float(auth_capex)
+    except ValueError:
+        return md
+    if auth_f == 0:
+        return md
+    # PE(TTM) 来自「估值安全边际表」: `| 当前 PE(TTM) | 7.79 | ... |`
+    m_pe = re.search(r"PE\s*\(\s*TTM\s*\)\s*[|｜]\s*([0-9]+(?:\.[0-9]+)?)", appendix_md)
+    if not m_pe:
+        return md
+    pe_ttm = m_pe.group(1)
+    try:
+        pe_f = float(pe_ttm)
+    except ValueError:
+        return md
+    if abs(auth_f - pe_f) < 1e-9:
+        return md  # Capex 与 PE 相等则无从判别,不动
+
+    def _same_as_pe(num: str) -> bool:
+        try:
+            return abs(float(num) - pe_f) < 1e-6
+        except ValueError:
+            return False
+
+    # 匹配「Capex N 亿」或「资本开支 Capex N 亿」(中英文混排,大小写不敏感),
+    # 仅当 N 恰好等于 PE(TTM)(= 典型的两者混淆)时替换为权威 Capex。
+    def _rep(mm: re.Match) -> str:
+        prefix, num = mm.group(1), mm.group(2)
+        return f"{prefix} {auth_capex} 亿" if _same_as_pe(num) else mm.group(0)
+
+    md = re.sub(
+        r"((?:资本开支\s*)?Capex)\s*([0-9]+(?:\.[0-9]+)?)\s*亿",
+        _rep,
+        md,
+        flags=re.IGNORECASE,
+    )
     return md
 
 
@@ -243,6 +381,8 @@ def build_analysis_report(
     both the legacy and v2 analyzers.
     """
     md = sanitize_numeric_artifacts(md)
+    md = _fix_net_cash_pe(md, data_appendix_md)
+    md = _fix_capex(md, data_appendix_md)
     short = clean_summary_text(md)
     result = AnalysisReport(
         symbol=symbol,

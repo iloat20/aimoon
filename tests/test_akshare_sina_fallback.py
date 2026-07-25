@@ -155,6 +155,24 @@ def test_parse_cash_flow_sina_no_annual_rows_is_noop():
     assert res.operating_cf == 0.0
 
 
+def test_parse_cash_flow_sina_dividend_variant_column():
+    """新浪现金流量表分红列名存在多种写法(「所支付的现金」/「支付的现金」等),
+    逐候选精确匹配,避免个别股票因列名微差导致 dividend_paid=0 → 股息率 N/A。"""
+    adp = AkshareFinancialAdapter()
+    res = FinancialData(symbol="600519")
+    df = pd.DataFrame([
+        {"报告日": "20251231",
+         "购建固定资产、无形资产和其他长期资产所支付的现金": 17.17 * YI,
+         "经营活动产生的现金流量净额": 463.83 * YI,
+         "投资活动产生的现金流量净额": -485.99 * YI,
+         "筹资活动产生的现金流量净额": 86.06 * YI,
+         # 变体列名: 缺「所」
+         "分配股利、利润或偿付利息支付的现金": 200.0 * YI},
+    ])
+    adp._parse_cash_flow_sina(res, df)
+    assert res.dividend_paid == pytest.approx(200.0 * YI)
+
+
 def test_fetch_source_label_em_softblocked_uses_sina():
     """东财三表原始数据全空(被风控软封)→ 整体回退新浪, source 标记新浪兜底。"""
     adp = AkshareFinancialAdapter()

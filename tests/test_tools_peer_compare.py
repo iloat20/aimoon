@@ -195,8 +195,12 @@ def test_render_peer_comparison_shows_anomaly_warning() -> None:
 
 
 def test_render_peer_comparison_roe_blank_not_zero() -> None:
-    # 同行 ROE 未采集(=0)应渲染为"—"而非误导性的 0.0%。
+    # 同行 ROE/营收增速/净利增速 未采集(=0 哨兵)时整列隐藏:
+    # 既不渲染误导性的 0.0%,也不留一排空列(P1 #11 完整性修正)。
     data = {"peers": [_peer("美的集团", 14.25)], "industry": "白色家电"}
     out = render_peer_comparison(data)
-    assert "| — |" in out
-    assert "0.0%" not in out.split("| 美的集团 |")[1].split("\n")[0]
+    assert "ROE(%)" not in out
+    assert "营收增速(%)" not in out
+    assert "净利增速(%)" not in out
+    assert "0.0%" not in out
+    assert "空列已隐藏" in out

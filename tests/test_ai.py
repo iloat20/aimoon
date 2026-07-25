@@ -109,6 +109,103 @@ class TestDeepSeekAIAnalyzer:
         assert result.report_text == report.report_text
 
 
+def test_sanitize_numeric_artifacts_revenue_to_yi():
+    """营收类灾难 token(元单位 + %)应换算成「亿」回填,不留悬空占位符。"""
+    from aimoon.adapters.driven.ai.post_processor import sanitize_numeric_artifacts
+
+    cases = [
+        # 科学计数法元单位:1.7e11 = 1700亿(≥100亿取整)
+        ("空调业务占营收 1.7e11%", "空调业务占营收约 1700亿"),
+        # 9 位以上整数(含千分位逗号):171,118,000,000 = 1711.18亿 → 取整 1711亿
+        ("主营业务营收为 171,118,000,000%", "主营业务营收为约 1711亿"),
+        # 连接词「营收」直接连数值
+        ("其中营收 2.01e11%", "其中营收约 2010亿"),
+        # 连接词「占比」:5.55e10 = 555亿
+        ("该板块占比 5.55e10%", "该板块占比约 555亿"),
+    ]
+    for src, expected in cases:
+        got = sanitize_numeric_artifacts(src)
+        assert expected in got, f"{src!r} -> {got!r} (期望含 {expected!r})"
+        # 不再残留悬空占位符
+        assert "见近年财务时序表" not in got
+
+
+def test_sanitize_numeric_artifacts_no_dangling_placeholder():
+    """整篇正文的灾难 token 清洗后,不应再出现悬空占位符。"""
+    from aimoon.adapters.driven.ai.post_processor import sanitize_numeric_artifacts
+
+    md = (
+        "公司主业稳健,占营收 1.7e11%。\n"
+        "毛利率稳定,营收端为 99999999999%。\n"
+        "其余科目正常。"
+    )
+    got = sanitize_numeric_artifacts(md)
+    assert "见近年财务时序表" not in got
+    assert "占营收约" in got
+    assert "营收约" in got
+
+
+def test_sanitize_numeric_artifacts_collapse_stutter():
+    """模型把同一营收灾难 token 连写多遍,清洗后应折叠为首个,消除口吃。"""
+    from aimoon.adapters.driven.ai.post_processor import sanitize_numeric_artifacts
+
+    src = "经销商出走,营收 171118000000%,营收为 171118000000%,营收为 171118000000% 连续两年。"
+    got = sanitize_numeric_artifacts(src)
+    # 只保留一个营收片段,不再三连
+    assert got.count("1711亿") == 1, got
+    assert "，营收为约" not in got and ",营收为约" not in got
+    assert "连续两年" in got
+
+
+def test_fix_net_cash_pe_corrects_pe_confusion():
+    """正文把净现金调整 PE 误写成 PE(TTM) 值时,应按附录权威表纠正。"""
+    from aimoon.adapters.driven.ai.post_processor import _fix_net_cash_pe
+
+    appendix = (
+        "| 当前 PE(TTM) | 7.79 | 行情派生 |\n"
+        "| 净现金调整 PE | 4.04 | (市值−货币资金)/净利润 |\n"
+    )
+    # 正序:误写 7.79 → 纠正为 4.04
+    body = "格力以净现金调整 PE 7.79倍交易,剔除现金后仍便宜。"
+    assert "净现金调整 PE 4.04倍" in _fix_net_cash_pe(body, appendix)
+    # 反序:7.79倍净现金调整 PE → 4.04倍净现金调整 PE
+    body2 = "以 7.79 倍PE、7.79倍净现金调整 PE 交易"
+    assert "4.04倍净现金调整 PE" in _fix_net_cash_pe(body2, appendix)
+    # 正确值不动
+    body3 = "净现金调整 PE 4.04(见估值表)"
+    assert "净现金调整 PE 4.04" in _fix_net_cash_pe(body3, appendix)
+    # 非混淆数值(如压力情景另述)不误改:此处 PE 后紧跟文字而非数字
+    body4 = "压力情景下净现金调整 PE 被动升至 15 倍以上"
+    assert "15 倍" in _fix_net_cash_pe(body4, appendix)
+
+
+def test_fix_capex_corrects_pe_confusion():
+    """正文把资本开支 Capex 误写成 PE(TTM) 值时,应按附录权威表纠正(P1 #13)。"""
+    from aimoon.adapters.driven.ai.post_processor import _fix_capex
+
+    # 附录:财务健康扩展表给权威 Capex,估值安全边际表给 PE(TTM)
+    appendix = (
+        "| 资本开支 Capex | 17.2 亿 | 购建固定资产(真实 capex) |\n"
+        "| 当前 PE(TTM) | 7.79 | 行情派生 |\n"
+    )
+    # 误写 7.79(=PE) → 纠正为权威 17.2
+    body = "资本开支 Capex 7.79 亿，占营收约 1711亿（见财务健康扩"
+    assert "资本开支 Capex 17.2 亿" in _fix_capex(body, appendix)
+    # 英文前缀 capex(大小写不敏感)同样纠正
+    body_l = "capex 7.79亿,远低于同行"
+    assert "capex 17.2 亿" in _fix_capex(body_l, appendix)
+    # 亿元连写
+    body_yuan = "资本开支 Capex 7.79亿元,自由现金流充裕"
+    assert "资本开支 Capex 17.2 亿元" in _fix_capex(body_yuan, appendix)
+    # 正确值不动(已是权威 17.2)
+    body_ok = "资本开支 Capex 17.2 亿,真实 capex 可控"
+    assert _fix_capex(body_ok, appendix) == body_ok
+    # 附录缺 PE(TTM) → 无从判别,不动
+    appendix_no_pe = "| 资本开支 Capex | 17.2 亿 | 购建固定资产 |\n"
+    body2 = "资本开支 Capex 7.79 亿"
+    assert _fix_capex(body2, appendix_no_pe) == body2
+
+
 # ---- Task 11: use_pipeline_v2 routing ----
 
 
