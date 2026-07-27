@@ -3,7 +3,7 @@
 输入股票代码，自动完成 **采集 → 整合 → AI分析 → 可视化报告** 四步流程。
 
 ```bash
-# 安装（二选一，v0.6.0 已发布到 PyPI）
+# 安装（二选一，v0.6.1 已发布到 PyPI）
 pip install aimoon              # 方式一：从 PyPI 直接安装（推荐）
 cd aimoon && uv sync && pip install -e .   # 方式二：从源码安装（开发/贡献用）
 
